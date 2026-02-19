@@ -39,6 +39,12 @@ No primeiro boot, é criado automaticamente:
 
 > Troque essa senha assim que possível.
 
+## Documentação completa
+
+A documentação técnica e operacional completa está em:
+
+- `docs/README.md`
+
 ## Como rodar
 
 ```bash
