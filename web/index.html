@@ -9,9 +9,43 @@
 <body>
   <header>
     <h1>📋 ProjectDashboard — Kanban Simples</h1>
-    <button id="refreshBtn">Atualizar</button>
+    <div class="header-actions">
+      <button id="newBtn">+ Novo projeto</button>
+      <button id="refreshBtn">Atualizar</button>
+    </div>
   </header>
+
+  <section id="filters">
+    <input id="searchInput" placeholder="Buscar por nome/descrição" />
+    <select id="statusFilter"><option value="">Todos os status</option></select>
+    <select id="priorityFilter"><option value="">Todas prioridades</option></select>
+    <input id="ownerFilter" placeholder="Filtrar por responsável" />
+  </section>
+
   <main id="board"></main>
+
+  <dialog id="projectDialog">
+    <form method="dialog" id="projectForm">
+      <h3>Novo projeto</h3>
+      <label>Nome</label>
+      <input id="pName" required />
+      <label>Descrição</label>
+      <textarea id="pDescription" rows="3"></textarea>
+      <label>Status</label>
+      <select id="pStatus"></select>
+      <label>Prioridade</label>
+      <select id="pPriority"></select>
+      <label>Responsável</label>
+      <input id="pOwner" />
+      <label>Prazo</label>
+      <input id="pDueDate" type="date" />
+      <div class="dialog-actions">
+        <button type="button" id="cancelDialogBtn">Cancelar</button>
+        <button type="submit">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/app.js"></script>
 </body>
 </html>
