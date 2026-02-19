@@ -2,6 +2,8 @@ const board = document.getElementById('board');
 const refreshBtn = document.getElementById('refreshBtn');
 const newBtn = document.getElementById('newBtn');
 const logoutBtn = document.getElementById('logoutBtn');
+const usersLink = document.getElementById('usersLink');
+const whoami = document.getElementById('whoami');
 
 const searchInput = document.getElementById('searchInput');
 const statusFilter = document.getElementById('statusFilter');
@@ -19,58 +21,21 @@ const pPriority = document.getElementById('pPriority');
 const pOwner = document.getElementById('pOwner');
 const pDueDate = document.getElementById('pDueDate');
 
+let me = null;
 let state = { projects: [], statuses: [], priorities: [] };
 
-async function requireAuth() {
-  const res = await fetch('/api/me');
-  if (!res.ok) {
-    window.location.href = '/login.html';
-    return false;
-  }
-  return true;
+async function api(url, opts = {}) {
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Erro na API');
+  return data;
 }
 
-async function fetchData() {
-  const res = await fetch('/api/projects');
-  if (!res.ok) throw new Error('Falha ao carregar projetos');
-  return res.json();
-}
-
-async function createProject(payload) {
-  const res = await fetch('/api/projects', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!res.ok || !data.ok) throw new Error(data.error || 'Erro ao criar projeto');
-}
-
-async function patchProject(slug, payload) {
-  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!res.ok || !data.ok) throw new Error(data.error || 'Erro ao editar projeto');
-}
-
-function makeColumn(status) {
-  const col = document.createElement('div');
-  col.className = 'column';
-  col.dataset.status = status;
-
-  const title = document.createElement('h2');
-  title.textContent = status;
-  col.appendChild(title);
-
-  const info = document.createElement('div');
-  info.className = 'small';
-  info.textContent = '0 projetos';
-  col.appendChild(info);
-
-  return col;
+async function loadMe() {
+  const data = await api('/api/me');
+  me = data.user;
+  whoami.textContent = `${me.username} (${me.role})`;
+  usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
 }
 
 function currentFilters() {
@@ -91,208 +56,79 @@ function passesFilters(project, f) {
   return true;
 }
 
-function makeMeta(project) {
-  const wrap = document.createElement('div');
-  wrap.className = 'meta';
-  wrap.innerHTML = `Prioridade: <b>${project.priority || 'Média'}</b><br/>Responsável: <b>${project.owner || '-'}</b><br/>Prazo: <b>${project.dueDate || '-'}</b>`;
-  return wrap;
+function makeColumn(status) {
+  const col = document.createElement('div');
+  col.className = 'column';
+  col.innerHTML = `<h2>${status}</h2><div class="small">0 projetos</div>`;
+  col.dataset.status = status;
+  return col;
 }
 
-function makeCard(project, statuses, priorities) {
+function makeCard(p, statuses, priorities) {
   const card = document.createElement('div');
   card.className = 'card';
+  card.innerHTML = `
+    <h3>${p.name}</h3>
+    <p>${p.description || 'Sem descrição'}</p>
+    <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b></div>
+  `;
 
-  const title = document.createElement('h3');
-  title.textContent = project.name;
-  card.appendChild(title);
+  const st = document.createElement('select');
+  statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; if (s === p.status) o.selected = true; st.appendChild(o); });
+  st.onchange = async () => { await api(`/api/projects/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})}); render(); };
 
-  const desc = document.createElement('p');
-  desc.textContent = project.description || 'Sem descrição';
-  card.appendChild(desc);
-
-  card.appendChild(makeMeta(project));
-
-  const statusSelect = document.createElement('select');
-  for (const st of statuses) {
-    const opt = document.createElement('option');
-    opt.value = st;
-    opt.textContent = st;
-    if (st === project.status) opt.selected = true;
-    statusSelect.appendChild(opt);
-  }
-
-  statusSelect.addEventListener('change', async () => {
-    const oldValue = project.status;
-    try {
-      await patchProject(project.slug, { status: statusSelect.value });
-      project.status = statusSelect.value;
-      await render();
-    } catch (err) {
-      alert(err.message);
-      statusSelect.value = oldValue;
-    }
-  });
-
-  const prioritySelect = document.createElement('select');
-  for (const p of priorities) {
-    const opt = document.createElement('option');
-    opt.value = p;
-    opt.textContent = `Prioridade: ${p}`;
-    if (p === project.priority) opt.selected = true;
-    prioritySelect.appendChild(opt);
-  }
-
-  prioritySelect.addEventListener('change', async () => {
-    const oldValue = project.priority;
-    try {
-      await patchProject(project.slug, { priority: prioritySelect.value });
-      project.priority = prioritySelect.value;
-      await render();
-    } catch (err) {
-      alert(err.message);
-      prioritySelect.value = oldValue;
-    }
-  });
+  const pr = document.createElement('select');
+  priorities.forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = `Prioridade: ${x}`; if (x === p.priority) o.selected = true; pr.appendChild(o); });
+  pr.onchange = async () => { await api(`/api/projects/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
 
   const actions = document.createElement('div');
   actions.className = 'card-actions';
+  actions.innerHTML = `<button class="secondary">Editar</button><button>Copiar pasta</button>`;
+  actions.children[0].onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}`;
+  actions.children[1].onclick = async () => { await navigator.clipboard.writeText(p.path); alert('Caminho copiado!'); };
 
-  const editBtn = document.createElement('button');
-  editBtn.className = 'secondary';
-  editBtn.textContent = 'Editar';
-  editBtn.addEventListener('click', () => {
-    window.location.href = `/edit.html?slug=${encodeURIComponent(project.slug)}`;
-  });
-
-  const openBtn = document.createElement('button');
-  openBtn.textContent = 'Copiar pasta';
-  openBtn.addEventListener('click', () => {
-    navigator.clipboard?.writeText(project.path);
-    alert(`Caminho copiado:\n${project.path}`);
-  });
-
-  actions.appendChild(editBtn);
-  actions.appendChild(openBtn);
-
-  card.appendChild(statusSelect);
-  card.appendChild(prioritySelect);
-  card.appendChild(actions);
+  card.append(st, pr, actions);
   return card;
 }
 
 function fillFilters(statuses, priorities) {
-  if (statusFilter.options.length <= 1) {
-    statuses.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s;
-      opt.textContent = s;
-      statusFilter.appendChild(opt);
-    });
-  }
-  if (priorityFilter.options.length <= 1) {
-    priorities.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p;
-      opt.textContent = p;
-      priorityFilter.appendChild(opt);
-    });
-  }
-}
-
-function fillDialogOptions(statuses, priorities) {
-  pStatus.innerHTML = '';
-  pPriority.innerHTML = '';
-  statuses.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s;
-    opt.textContent = s;
-    pStatus.appendChild(opt);
-  });
-  priorities.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p;
-    opt.textContent = p;
-    pPriority.appendChild(opt);
-  });
-  pStatus.value = 'Backlog';
-  pPriority.value = 'Média';
+  if (statusFilter.options.length <= 1) statuses.forEach(s => statusFilter.append(new Option(s, s)));
+  if (priorityFilter.options.length <= 1) priorities.forEach(p => priorityFilter.append(new Option(p, p)));
+  pStatus.innerHTML = ''; pPriority.innerHTML = '';
+  statuses.forEach(s => pStatus.append(new Option(s, s)));
+  priorities.forEach(p => pPriority.append(new Option(p, p)));
+  pStatus.value = 'Backlog'; pPriority.value = 'Média';
 }
 
 async function render() {
-  state = await fetchData();
+  state = await api('/api/projects');
   fillFilters(state.statuses, state.priorities);
-  fillDialogOptions(state.statuses, state.priorities);
-
-  const filters = currentFilters();
-  const visible = state.projects.filter(p => passesFilters(p, filters));
-
+  const filtered = state.projects.filter(p => passesFilters(p, currentFilters()));
   board.innerHTML = '';
-  const columns = new Map();
-  for (const status of state.statuses) {
-    const col = makeColumn(status);
-    columns.set(status, col);
-    board.appendChild(col);
-  }
+  const cols = new Map(state.statuses.map(s => [s, makeColumn(s)]));
+  cols.forEach(c => board.appendChild(c));
 
-  visible
-    .slice()
-    .sort((a, b) => {
-      const rank = { 'Urgente': 0, 'Alta': 1, 'Média': 2, 'Baixa': 3 };
-      return (rank[a.priority] ?? 99) - (rank[b.priority] ?? 99);
-    })
-    .forEach(project => {
-      const col = columns.get(project.status) || columns.get('Backlog');
-      col.appendChild(makeCard(project, state.statuses, state.priorities));
-    });
-
-  for (const [, col] of columns) {
-    const count = col.querySelectorAll('.card').length;
-    col.querySelector('.small').textContent = `${count} projeto(s)`;
-  }
+  filtered.sort((a,b) => ({Urgente:0,Alta:1,'Média':2,Baixa:3}[a.priority] - ({Urgente:0,Alta:1,'Média':2,Baixa:3}[b.priority])));
+  filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
+  cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} projeto(s)`);
 }
 
-[newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter].forEach(el => {
-  const eventName = el.tagName === 'INPUT' ? 'input' : 'change';
-  el.addEventListener(eventName, () => render());
-});
+[newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
 
-newBtn.addEventListener('click', () => {
-  pName.value = '';
-  pDescription.value = '';
-  pOwner.value = '';
-  pDueDate.value = '';
-  dialog.showModal();
-});
+newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; dialog.showModal(); };
+cancelDialogBtn.onclick = () => dialog.close();
 
-cancelDialogBtn.addEventListener('click', () => dialog.close());
-
-form.addEventListener('submit', async (e) => {
+form.onsubmit = async (e) => {
   e.preventDefault();
   try {
-    await createProject({
-      name: pName.value,
-      description: pDescription.value,
-      status: pStatus.value,
-      priority: pPriority.value,
-      owner: pOwner.value,
-      dueDate: pDueDate.value,
-    });
+    await api('/api/projects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner:pOwner.value, dueDate:pDueDate.value })});
     dialog.close();
-    await render();
-  } catch (err) {
-    alert(err.message);
-  }
-});
+    render();
+  } catch (e) { alert(e.message); }
+};
 
-logoutBtn.addEventListener('click', async () => {
-  await fetch('/api/logout', { method: 'POST' });
-  window.location.href = '/login.html';
-});
+logoutBtn.onclick = async () => { await api('/api/logout', {method:'POST'}); window.location.href = '/login.html'; };
 
-(async function init() {
-  const ok = await requireAuth();
-  if (!ok) return;
-  render().catch((e) => {
-    board.innerHTML = `<p style="color:red">Erro: ${e.message}</p>`;
-  });
+(async () => {
+  try { await loadMe(); await render(); } catch { window.location.href = '/login.html'; }
 })();

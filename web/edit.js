@@ -1,12 +1,12 @@
-const params = new URLSearchParams(window.location.search);
-const slug = params.get('slug');
-
-const form = document.getElementById('editForm');
+const slug = new URLSearchParams(location.search).get('slug');
+const usersLink = document.getElementById('usersLink');
+const whoami = document.getElementById('whoami');
 const backBtn = document.getElementById('backBtn');
 const logoutBtn = document.getElementById('logoutBtn');
+const deleteBtn = document.getElementById('deleteBtn');
 const feedback = document.getElementById('feedback');
 
-const fields = {
+const f = {
   name: document.getElementById('name'),
   description: document.getElementById('description'),
   status: document.getElementById('status'),
@@ -16,80 +16,52 @@ const fields = {
   path: document.getElementById('path'),
 };
 
-async function requireAuth() {
-  const res = await fetch('/api/me');
-  if (!res.ok) window.location.href = '/login.html';
+let me = null;
+
+async function api(url, opts={}) {
+  const r = await fetch(url, opts);
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(d.error || 'Erro');
+  return d;
 }
 
-function fillSelect(select, values, current) {
-  select.innerHTML = '';
-  values.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v;
-    opt.textContent = v;
-    if (v === current) opt.selected = true;
-    select.appendChild(opt);
-  });
+async function initMe() {
+  const d = await api('/api/me');
+  me = d.user;
+  whoami.textContent = `${me.username} (${me.role})`;
+  usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
+  deleteBtn.style.display = me.role === 'admin' ? 'inline-block' : 'none';
 }
 
 async function loadProject() {
-  if (!slug) {
-    feedback.textContent = 'Projeto inválido.';
-    return;
-  }
-
-  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}`);
-  const data = await res.json();
-  if (!res.ok || !data.ok) {
-    feedback.textContent = data.error || 'Erro ao carregar projeto';
-    return;
-  }
-
-  const p = data.project;
-  fields.name.value = p.name || '';
-  fields.description.value = p.description || '';
-  fillSelect(fields.status, data.statuses, p.status);
-  fillSelect(fields.priority, data.priorities, p.priority);
-  fields.owner.value = p.owner || '';
-  fields.dueDate.value = p.dueDate || '';
-  fields.path.value = p.path || '';
+  const d = await api(`/api/projects/${encodeURIComponent(slug)}`);
+  const p = d.project;
+  f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate; f.path.value = p.path;
+  d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
+  d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
 }
 
-form.addEventListener('submit', async (e) => {
+document.getElementById('editForm').onsubmit = async (e) => {
   e.preventDefault();
-  feedback.textContent = '';
+  try {
+    await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner:f.owner.value, dueDate:f.dueDate.value
+    })});
+    feedback.textContent = 'Salvo com sucesso ✅';
+  } catch (e) { feedback.textContent = e.message; }
+};
 
-  const payload = {
-    name: fields.name.value,
-    description: fields.description.value,
-    status: fields.status.value,
-    priority: fields.priority.value,
-    owner: fields.owner.value,
-    dueDate: fields.dueDate.value,
-  };
+deleteBtn.onclick = async () => {
+  if (!confirm('Apagar este projeto do dashboard? (somente admin)')) return;
+  try {
+    await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'DELETE'});
+    location.href = '/';
+  } catch (e) { feedback.textContent = e.message; }
+};
 
-  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
+backBtn.onclick = () => location.href = '/';
+logoutBtn.onclick = async () => { await api('/api/logout',{method:'POST'}); location.href='/login.html'; };
 
-  if (!res.ok || !data.ok) {
-    feedback.textContent = data.error || 'Erro ao salvar';
-    return;
-  }
-
-  feedback.textContent = 'Alterações salvas com sucesso ✅';
-});
-
-backBtn.addEventListener('click', () => window.location.href = '/');
-logoutBtn.addEventListener('click', async () => {
-  await fetch('/api/logout', { method: 'POST' });
-  window.location.href = '/login.html';
-});
-
-(async function init() {
-  await requireAuth();
-  await loadProject();
+(async () => {
+  try { await initMe(); await loadProject(); } catch { location.href='/login.html'; }
 })();

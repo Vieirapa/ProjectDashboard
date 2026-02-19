@@ -3,47 +3,45 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Editar Projeto - ProjectDashboard</title>
+  <title>Editar Projeto</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <header>
-    <h1>✏️ Editar Projeto</h1>
-    <div class="header-actions">
-      <button id="backBtn" class="secondary">Voltar</button>
-      <button id="logoutBtn" class="secondary">Logout</button>
-    </div>
-  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>ProjectDashboard</h2>
+      <div class="side-group">Workspace</div>
+      <a class="side-link" href="/">Kanban</a>
+      <div class="side-group">Administração</div>
+      <a id="usersLink" class="side-link" href="/admin-users.html">Usuários & Convites</a>
+      <div class="side-foot" id="whoami"></div>
+    </aside>
 
-  <main class="edit-wrap">
-    <form id="editForm" class="edit-form">
-      <label>Nome</label>
-      <input id="name" required />
+    <main class="content">
+      <header>
+        <h1>✏️ Editar Projeto</h1>
+        <div class="header-actions">
+          <button id="backBtn" class="secondary">Voltar</button>
+          <button id="deleteBtn" class="danger">Apagar projeto</button>
+          <button id="logoutBtn" class="secondary">Logout</button>
+        </div>
+      </header>
 
-      <label>Descrição</label>
-      <textarea id="description" rows="4"></textarea>
-
-      <label>Status</label>
-      <select id="status"></select>
-
-      <label>Prioridade</label>
-      <select id="priority"></select>
-
-      <label>Responsável</label>
-      <input id="owner" />
-
-      <label>Prazo</label>
-      <input id="dueDate" type="date" />
-
-      <label>Caminho</label>
-      <input id="path" readonly />
-
-      <div class="dialog-actions">
-        <button id="saveBtn" type="submit">Salvar alterações</button>
-      </div>
-      <p id="feedback" class="small"></p>
-    </form>
-  </main>
+      <section class="edit-wrap">
+        <form id="editForm" class="edit-form">
+          <label>Nome</label><input id="name" required />
+          <label>Descrição</label><textarea id="description" rows="4"></textarea>
+          <label>Status</label><select id="status"></select>
+          <label>Prioridade</label><select id="priority"></select>
+          <label>Responsável</label><input id="owner" />
+          <label>Prazo</label><input id="dueDate" type="date" />
+          <label>Caminho</label><input id="path" readonly />
+          <div class="dialog-actions"><button id="saveBtn" type="submit">Salvar alterações</button></div>
+          <p id="feedback" class="small"></p>
+        </form>
+      </section>
+    </main>
+  </div>
   <script src="/edit.js"></script>
 </body>
 </html>

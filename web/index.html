@@ -7,39 +7,46 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <header>
-    <h1>📋 ProjectDashboard — Kanban Simples</h1>
-    <div class="header-actions">
-      <button id="newBtn">+ Novo projeto</button>
-      <button id="refreshBtn">Atualizar</button>
-      <button id="logoutBtn" class="secondary">Logout</button>
-    </div>
-  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>ProjectDashboard</h2>
+      <div class="side-group">Workspace</div>
+      <a class="side-link active" href="/">Kanban</a>
+      <div class="side-group">Administração</div>
+      <a id="usersLink" class="side-link" href="/admin-users.html">Usuários & Convites</a>
+      <div class="side-foot" id="whoami"></div>
+    </aside>
 
-  <section id="filters">
-    <input id="searchInput" placeholder="Buscar por nome/descrição" />
-    <select id="statusFilter"><option value="">Todos os status</option></select>
-    <select id="priorityFilter"><option value="">Todas prioridades</option></select>
-    <input id="ownerFilter" placeholder="Filtrar por responsável" />
-  </section>
+    <main class="content">
+      <header>
+        <h1>📋 Kanban</h1>
+        <div class="header-actions">
+          <button id="newBtn">+ Novo projeto</button>
+          <button id="refreshBtn">Atualizar</button>
+          <button id="logoutBtn" class="secondary">Logout</button>
+        </div>
+      </header>
 
-  <main id="board"></main>
+      <section id="filters">
+        <input id="searchInput" placeholder="Buscar por nome/descrição" />
+        <select id="statusFilter"><option value="">Todos os status</option></select>
+        <select id="priorityFilter"><option value="">Todas prioridades</option></select>
+        <input id="ownerFilter" placeholder="Filtrar por responsável" />
+      </section>
+
+      <main id="board"></main>
+    </main>
+  </div>
 
   <dialog id="projectDialog">
     <form method="dialog" id="projectForm">
       <h3>Novo projeto</h3>
-      <label>Nome</label>
-      <input id="pName" required />
-      <label>Descrição</label>
-      <textarea id="pDescription" rows="3"></textarea>
-      <label>Status</label>
-      <select id="pStatus"></select>
-      <label>Prioridade</label>
-      <select id="pPriority"></select>
-      <label>Responsável</label>
-      <input id="pOwner" />
-      <label>Prazo</label>
-      <input id="pDueDate" type="date" />
+      <label>Nome</label><input id="pName" required />
+      <label>Descrição</label><textarea id="pDescription" rows="3"></textarea>
+      <label>Status</label><select id="pStatus"></select>
+      <label>Prioridade</label><select id="pPriority"></select>
+      <label>Responsável</label><input id="pOwner" />
+      <label>Prazo</label><input id="pDueDate" type="date" />
       <div class="dialog-actions">
         <button type="button" class="secondary" id="cancelDialogBtn">Cancelar</button>
         <button type="submit">Salvar</button>

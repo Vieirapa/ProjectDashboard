@@ -4,11 +4,16 @@ Dashboard web para visualizar e gerenciar projetos em paralelo.
 
 ## Novidades (Onda 1+)
 
+- Layout com **barra lateral** e categorias (Workspace/Administração)
 - Login por usuário
 - Edição em **página dedicada** (`/edit.html?slug=...`) com todos os campos
 - Criação de projeto pela UI
 - Filtros (busca, status, prioridade, responsável)
 - Ordenação por prioridade
+- Administração de usuários e convites (`/admin-users.html`)
+- RBAC inicial:
+  - `admin`: gerencia usuários/convites e pode apagar projetos
+  - `member`: cria/edita projetos, mas **não apaga**
 
 ## Banco de dados (preparado para evolução)
 
