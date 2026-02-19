@@ -1,7 +1,10 @@
 const usersList = document.getElementById('usersList');
+const auditList = document.getElementById('auditList');
 const whoami = document.getElementById('whoami');
 const logoutBtn = document.getElementById('logoutBtn');
 const inviteOut = document.getElementById('inviteOut');
+
+let me = null;
 
 async function api(url, opts={}) {
   const r = await fetch(url, opts);
@@ -13,12 +16,92 @@ async function api(url, opts={}) {
 async function ensureAdmin() {
   const d = await api('/api/me');
   if (!d.user || d.user.role !== 'admin') throw new Error('Acesso restrito a admin');
+  me = d.user;
   whoami.textContent = `${d.user.username} (${d.user.role})`;
+}
+
+async function updateRole(username, role) {
+  await api(`/api/admin/users/${encodeURIComponent(username)}`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ role })
+  });
+}
+
+async function changePassword(username) {
+  const pwd = prompt(`Nova senha para ${username}:`);
+  if (!pwd) return;
+  await api(`/api/admin/users/${encodeURIComponent(username)}`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ password: pwd })
+  });
+  alert('Senha alterada com sucesso');
+}
+
+async function deleteUser(username) {
+  if (!confirm(`Tem certeza que deseja excluir o usuário ${username}?`)) return;
+  await api(`/api/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
 }
 
 async function loadUsers() {
   const d = await api('/api/admin/users');
-  usersList.innerHTML = `<table><tr><th>Usuário</th><th>Role</th><th>Criado em</th></tr>${d.users.map(u=>`<tr><td>${u.username}</td><td>${u.role}</td><td>${u.created_at}</td></tr>`).join('')}</table>`;
+  usersList.innerHTML = `
+    <table>
+      <tr><th>Usuário</th><th>Role</th><th>Criado em</th><th>Ações</th></tr>
+      ${d.users.map(u => `
+        <tr>
+          <td>${u.username}</td>
+          <td>
+            <select data-role-user="${u.username}" ${u.username === 'admin' ? 'disabled' : ''}>
+              <option value="member" ${u.role === 'member' ? 'selected' : ''}>member</option>
+              <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
+            </select>
+          </td>
+          <td>${u.created_at}</td>
+          <td>
+            <button class="secondary" data-pass-user="${u.username}">Trocar senha</button>
+            <button class="danger" data-del-user="${u.username}" ${u.username === me.username ? 'disabled' : ''}>Excluir</button>
+          </td>
+        </tr>
+      `).join('')}
+    </table>
+  `;
+
+  usersList.querySelectorAll('[data-role-user]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      try { await updateRole(sel.dataset.roleUser, sel.value); await loadUsers(); await loadAudit(); }
+      catch (e) { alert(e.message); }
+    });
+  });
+
+  usersList.querySelectorAll('[data-pass-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try { await changePassword(btn.dataset.passUser); await loadAudit(); }
+      catch (e) { alert(e.message); }
+    });
+  });
+
+  usersList.querySelectorAll('[data-del-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try { await deleteUser(btn.dataset.delUser); await loadUsers(); await loadAudit(); }
+      catch (e) { alert(e.message); }
+    });
+  });
+}
+
+async function loadAudit() {
+  const d = await api('/api/admin/audit');
+  auditList.innerHTML = `
+    <table>
+      <tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Alvo</th><th>Detalhes</th></tr>
+      ${d.logs.map(l => `
+        <tr>
+          <td>${l.created_at}</td>
+          <td>${l.actor}</td>
+          <td>${l.action}</td>
+          <td>${l.target}</td>
+          <td>${l.details || '-'}</td>
+        </tr>
+      `).join('')}
+    </table>
+  `;
 }
 
 document.getElementById('createUserForm').onsubmit = async (e) => {
@@ -31,7 +114,8 @@ document.getElementById('createUserForm').onsubmit = async (e) => {
     })});
     alert('Usuário criado');
     e.target.reset();
-    loadUsers();
+    await loadUsers();
+    await loadAudit();
   } catch (e) { alert(e.message); }
 };
 
@@ -44,9 +128,18 @@ document.getElementById('inviteForm').onsubmit = async (e) => {
     const full = `${location.origin}${d.inviteUrl}`;
     inviteOut.textContent = `Convite (expira ${d.expiresAt}): ${full}`;
     await navigator.clipboard.writeText(full);
+    await loadAudit();
   } catch (e) { alert(e.message); }
 };
 
 logoutBtn.onclick = async () => { await api('/api/logout',{method:'POST'}); location.href='/login.html'; };
 
-(async()=>{ try { await ensureAdmin(); await loadUsers(); } catch { location.href='/'; } })();
+(async()=>{
+  try {
+    await ensureAdmin();
+    await loadUsers();
+    await loadAudit();
+  } catch {
+    location.href='/';
+  }
+})();

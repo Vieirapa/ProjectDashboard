@@ -115,6 +115,16 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target TEXT NOT NULL,
+                details TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+        """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
 
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
@@ -127,6 +137,14 @@ def init_db():
 
         # Garantir que o usuário admin seja realmente admin após upgrades/migrações
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
+
+
+def audit(actor: str, action: str, target: str, details: str = ""):
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO audit_logs (actor, action, target, details, created_at) VALUES (?, ?, ?, ?, ?)",
+            (actor, action, target, details, now_iso()),
+        )
 
 
 def migrate_existing_projects():
@@ -185,6 +203,16 @@ def get_project(slug: str) -> dict | None:
         "owner": r["owner"], "dueDate": r["due_date"], "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"]
     }
+
+
+def list_audit_logs(limit: int = 200) -> list[dict]:
+    limit = max(1, min(limit, 1000))
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT actor, action, target, details, created_at FROM audit_logs ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def sync_project_meta(project: dict):
@@ -360,6 +388,10 @@ class Handler(BaseHTTPRequestHandler):
                 users = [dict(r) for r in conn.execute("SELECT username, role, created_at FROM users ORDER BY username").fetchall()]
             return self._json(200, {"ok": True, "users": users, "roles": ROLES})
 
+        if p == "/api/admin/audit":
+            if not self._require_admin(): return
+            return self._json(200, {"ok": True, "logs": list_audit_logs(300)})
+
         self.send_error(404)
 
     def do_POST(self):
@@ -384,10 +416,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True}, set_cookie=f"{SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
 
         if p == "/api/projects":
-            if not self._require_auth(): return
+            user = self._require_auth()
+            if not user: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = create_project(body)
+            if done:
+                audit(user["username"], "project.create", body.get("name", ""), f"status={body.get('status','Backlog')}")
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/users":
@@ -406,6 +441,7 @@ class Handler(BaseHTTPRequestHandler):
                                  (username, hash_password(password), role, now_iso()))
             except sqlite3.IntegrityError:
                 return self._json(400, {"ok": False, "error": "usuário já existe"})
+            audit(admin["username"], "user.create", username, f"role={role}")
             return self._json(200, {"ok": True})
 
         if p == "/api/admin/invites":
@@ -419,6 +455,7 @@ class Handler(BaseHTTPRequestHandler):
             with db() as conn:
                 conn.execute("INSERT INTO invites (token,role,created_by,expires_at,created_at) VALUES (?,?,?,?,?)",
                              (token, role, admin["username"], exp, now_iso()))
+            audit(admin["username"], "invite.create", token, f"role={role} expires={exp}")
             return self._json(200, {"ok": True, "inviteUrl": f"/signup.html?token={token}", "token": token, "expiresAt": exp})
 
         if p == "/api/signup":
@@ -441,6 +478,7 @@ class Handler(BaseHTTPRequestHandler):
                     conn.execute("UPDATE invites SET used_by=? WHERE token=?", (username, token))
                 except sqlite3.IntegrityError:
                     return self._json(400, {"ok": False, "error": "usuário já existe"})
+            audit(username, "user.signup", username, f"role={inv['role']}")
             return self._json(200, {"ok": True})
 
         self.send_error(404)
@@ -448,21 +486,83 @@ class Handler(BaseHTTPRequestHandler):
     def do_PATCH(self):
         p = urlparse(self.path).path
         if p.startswith("/api/projects/"):
-            if not self._require_auth(): return
+            user = self._require_auth()
+            if not user: return
             slug = p.split("/")[3]
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = patch_project(slug, body)
+            if done:
+                audit(user["username"], "project.update", slug, json.dumps(body, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/admin/users/"):
+            admin = self._require_admin()
+            if not admin: return
+            username = p.split("/")[4]
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+
+            updates = []
+            params = []
+            if "role" in body:
+                role = body.get("role")
+                if role not in ROLES:
+                    return self._json(400, {"ok": False, "error": "role inválida"})
+                updates.append("role=?")
+                params.append(role)
+            if "password" in body:
+                pwd = body.get("password") or ""
+                if len(pwd) < 4:
+                    return self._json(400, {"ok": False, "error": "senha muito curta"})
+                updates.append("password_hash=?")
+                params.append(hash_password(pwd))
+
+            if not updates:
+                return self._json(400, {"ok": False, "error": "nada para atualizar"})
+
+            params.append(username)
+            with db() as conn:
+                exists = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
+                if not exists:
+                    return self._json(404, {"ok": False, "error": "usuário não encontrado"})
+                conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE username=?", tuple(params))
+
+            safe_details = {}
+            if "role" in body:
+                safe_details["role"] = body.get("role")
+            if "password" in body:
+                safe_details["password"] = "***changed***"
+            audit(admin["username"], "user.update", username, json.dumps(safe_details, ensure_ascii=False))
+            return self._json(200, {"ok": True})
+
         self.send_error(404)
 
     def do_DELETE(self):
         p = urlparse(self.path).path
         if p.startswith("/api/projects/"):
-            if not self._require_admin(): return
+            admin = self._require_admin()
+            if not admin: return
             slug = p.split("/")[3]
             done, msg = delete_project(slug)
+            if done:
+                audit(admin["username"], "project.delete", slug)
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/admin/users/"):
+            admin = self._require_admin()
+            if not admin: return
+            username = p.split("/")[4]
+            if username == admin["username"]:
+                return self._json(400, {"ok": False, "error": "não é permitido apagar seu próprio usuário"})
+            with db() as conn:
+                exists = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
+                if not exists:
+                    return self._json(404, {"ok": False, "error": "usuário não encontrado"})
+                conn.execute("DELETE FROM users WHERE username=?", (username,))
+            audit(admin["username"], "user.delete", username)
+            return self._json(200, {"ok": True})
+
         self.send_error(404)
 
 

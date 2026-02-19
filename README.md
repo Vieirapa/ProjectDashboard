@@ -11,9 +11,13 @@ Dashboard web para visualizar e gerenciar projetos em paralelo.
 - Filtros (busca, status, prioridade, responsável)
 - Ordenação por prioridade
 - Administração de usuários e convites (`/admin-users.html`)
+- Troca de senha pelo painel admin
+- Edição de role (admin/member) pelo painel admin
+- Exclusão de usuários (somente admin)
+- Log de auditoria (quem fez o quê e quando)
 - RBAC inicial:
-  - `admin`: gerencia usuários/convites e pode apagar projetos
-  - `member`: cria/edita projetos, mas **não apaga**
+  - `admin`: gerencia usuários/convites, troca role/senha, exclui usuários e pode apagar projetos
+  - `member`: cria/edita projetos, mas **não apaga** projetos nem acessa admin
 
 ## Banco de dados (preparado para evolução)
 
