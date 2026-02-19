@@ -13,7 +13,9 @@ Dashboard web para visualizar e gerenciar projetos em paralelo.
 - Administração de usuários e convites (`/admin-users.html`)
 - Troca de senha pelo painel admin
 - Edição de role (admin/member) pelo painel admin
-- Exclusão de usuários (somente admin)
+- Exclusão de usuários (somente admin), com dupla confirmação
+- Exibição de tarefas associadas ao usuário no momento da exclusão
+- Botão de exclusão desabilitado para contas admin
 - Log de auditoria (quem fez o quê e quando)
 - RBAC inicial:
   - `admin`: gerencia usuários/convites, troca role/senha, exclui usuários e pode apagar projetos

@@ -35,8 +35,19 @@ async function changePassword(username) {
   alert('Senha alterada com sucesso');
 }
 
-async function deleteUser(username) {
-  if (!confirm(`Tem certeza que deseja excluir o usuário ${username}?`)) return;
+async function deleteUser(username, associatedTasks) {
+  const taskInfo = associatedTasks > 0
+    ? `\n\n⚠️ Este usuário possui ${associatedTasks} tarefa(s) associada(s).`
+    : '';
+
+  if (!confirm(`Confirma exclusão do usuário ${username}?${taskInfo}`)) return;
+
+  const typed = prompt(`Para confirmar, digite EXCLUIR (${username}):`);
+  if (typed !== 'EXCLUIR') {
+    alert('Exclusão cancelada.');
+    return;
+  }
+
   await api(`/api/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
 }
 
@@ -44,7 +55,7 @@ async function loadUsers() {
   const d = await api('/api/admin/users');
   usersList.innerHTML = `
     <table>
-      <tr><th>Usuário</th><th>Role</th><th>Criado em</th><th>Ações</th></tr>
+      <tr><th>Usuário</th><th>Role</th><th>Tarefas associadas</th><th>Criado em</th><th>Ações</th></tr>
       ${d.users.map(u => `
         <tr>
           <td>${u.username}</td>
@@ -54,10 +65,11 @@ async function loadUsers() {
               <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
             </select>
           </td>
+          <td>${u.associated_tasks ?? 0}</td>
           <td>${u.created_at}</td>
           <td>
             <button class="secondary" data-pass-user="${u.username}">Trocar senha</button>
-            <button class="danger" data-del-user="${u.username}" ${u.username === me.username ? 'disabled' : ''}>Excluir</button>
+            <button class="danger" data-del-user="${u.username}" data-task-count="${u.associated_tasks ?? 0}" ${u.username === me.username || u.role === 'admin' ? 'disabled' : ''}>Excluir</button>
           </td>
         </tr>
       `).join('')}
@@ -80,8 +92,11 @@ async function loadUsers() {
 
   usersList.querySelectorAll('[data-del-user]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      try { await deleteUser(btn.dataset.delUser); await loadUsers(); await loadAudit(); }
-      catch (e) { alert(e.message); }
+      try {
+        await deleteUser(btn.dataset.delUser, Number(btn.dataset.taskCount || 0));
+        await loadUsers();
+        await loadAudit();
+      } catch (e) { alert(e.message); }
     });
   });
 }

@@ -385,7 +385,19 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/admin/users":
             if not self._require_admin(): return
             with db() as conn:
-                users = [dict(r) for r in conn.execute("SELECT username, role, created_at FROM users ORDER BY username").fetchall()]
+                user_rows = conn.execute("SELECT username, role, created_at FROM users ORDER BY username").fetchall()
+                users = []
+                for r in user_rows:
+                    task_count = conn.execute(
+                        "SELECT COUNT(*) AS c FROM projects WHERE owner = ?",
+                        (r["username"],),
+                    ).fetchone()["c"]
+                    users.append({
+                        "username": r["username"],
+                        "role": r["role"],
+                        "created_at": r["created_at"],
+                        "associated_tasks": task_count,
+                    })
             return self._json(200, {"ok": True, "users": users, "roles": ROLES})
 
         if p == "/api/admin/audit":
@@ -556,9 +568,11 @@ class Handler(BaseHTTPRequestHandler):
             if username == admin["username"]:
                 return self._json(400, {"ok": False, "error": "não é permitido apagar seu próprio usuário"})
             with db() as conn:
-                exists = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
+                exists = conn.execute("SELECT username, role FROM users WHERE username=?", (username,)).fetchone()
                 if not exists:
                     return self._json(404, {"ok": False, "error": "usuário não encontrado"})
+                if exists["role"] == "admin":
+                    return self._json(400, {"ok": False, "error": "não é permitido apagar usuários admin"})
                 conn.execute("DELETE FROM users WHERE username=?", (username,))
             audit(admin["username"], "user.delete", username)
             return self._json(200, {"ok": True})
