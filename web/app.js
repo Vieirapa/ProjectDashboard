@@ -1,6 +1,7 @@
 const board = document.getElementById('board');
 const refreshBtn = document.getElementById('refreshBtn');
 const newBtn = document.getElementById('newBtn');
+const logoutBtn = document.getElementById('logoutBtn');
 
 const searchInput = document.getElementById('searchInput');
 const statusFilter = document.getElementById('statusFilter');
@@ -20,6 +21,15 @@ const pDueDate = document.getElementById('pDueDate');
 
 let state = { projects: [], statuses: [], priorities: [] };
 
+async function requireAuth() {
+  const res = await fetch('/api/me');
+  if (!res.ok) {
+    window.location.href = '/login.html';
+    return false;
+  }
+  return true;
+}
+
 async function fetchData() {
   const res = await fetch('/api/projects');
   if (!res.ok) throw new Error('Falha ao carregar projetos');
@@ -36,8 +46,8 @@ async function createProject(payload) {
   if (!res.ok || !data.ok) throw new Error(data.error || 'Erro ao criar projeto');
 }
 
-async function patchProject(projectName, payload) {
-  const res = await fetch(`/api/projects/${encodeURIComponent(projectName)}`, {
+async function patchProject(slug, payload) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -114,7 +124,7 @@ function makeCard(project, statuses, priorities) {
   statusSelect.addEventListener('change', async () => {
     const oldValue = project.status;
     try {
-      await patchProject(project.name, { status: statusSelect.value });
+      await patchProject(project.slug, { status: statusSelect.value });
       project.status = statusSelect.value;
       await render();
     } catch (err) {
@@ -135,7 +145,7 @@ function makeCard(project, statuses, priorities) {
   prioritySelect.addEventListener('change', async () => {
     const oldValue = project.priority;
     try {
-      await patchProject(project.name, { priority: prioritySelect.value });
+      await patchProject(project.slug, { priority: prioritySelect.value });
       project.priority = prioritySelect.value;
       await render();
     } catch (err) {
@@ -150,20 +160,12 @@ function makeCard(project, statuses, priorities) {
   const editBtn = document.createElement('button');
   editBtn.className = 'secondary';
   editBtn.textContent = 'Editar';
-  editBtn.addEventListener('click', async () => {
-    const description = prompt('Descrição:', project.description || '') ?? project.description;
-    const owner = prompt('Responsável:', project.owner || '') ?? project.owner;
-    const dueDate = prompt('Prazo (YYYY-MM-DD):', project.dueDate || '') ?? project.dueDate;
-    try {
-      await patchProject(project.name, { description, owner, dueDate });
-      await render();
-    } catch (err) {
-      alert(err.message);
-    }
+  editBtn.addEventListener('click', () => {
+    window.location.href = `/edit.html?slug=${encodeURIComponent(project.slug)}`;
   });
 
   const openBtn = document.createElement('button');
-  openBtn.textContent = 'Abrir pasta';
+  openBtn.textContent = 'Copiar pasta';
   openBtn.addEventListener('click', () => {
     navigator.clipboard?.writeText(project.path);
     alert(`Caminho copiado:\n${project.path}`);
@@ -282,6 +284,15 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-render().catch((e) => {
-  board.innerHTML = `<p style="color:red">Erro: ${e.message}</p>`;
+logoutBtn.addEventListener('click', async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/login.html';
 });
+
+(async function init() {
+  const ok = await requireAuth();
+  if (!ok) return;
+  render().catch((e) => {
+    board.innerHTML = `<p style="color:red">Erro: ${e.message}</p>`;
+  });
+})();
