@@ -93,21 +93,35 @@ function makeCard(p, statuses, priorities) {
   priorities.forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = `Prioridade: ${x}`; if (x === p.priority) o.selected = true; pr.appendChild(o); });
   pr.onchange = async () => { await api(`/api/projects/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
 
-  const actions = document.createElement('div');
-  actions.className = 'card-actions';
-  actions.innerHTML = `<button class="secondary">Editar</button><button>Copiar pasta</button><button class="doc-btn ${docMeta.cls}" title="${docMeta.label}">${docMeta.icon}</button>`;
-  actions.children[0].onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}`;
-  actions.children[1].onclick = async () => { await navigator.clipboard.writeText(p.path); alert('Caminho copiado!'); };
-  actions.children[2].onclick = () => {
+  const controls = document.createElement('div');
+  controls.className = 'card-controls';
+
+  const selectsWrap = document.createElement('div');
+  selectsWrap.className = 'card-selects';
+  selectsWrap.append(st, pr);
+
+  const docBtn = document.createElement('button');
+  docBtn.className = `doc-btn ${docMeta.cls}`;
+  docBtn.title = `${docMeta.label}${p.documentName ? ` · ${p.documentName}` : ''}`;
+  docBtn.innerHTML = `<span class="doc-main">📄</span><span class="doc-state">${docMeta.icon}</span>`;
+  docBtn.onclick = () => {
     if (!p.hasDocument) return alert('Este card ainda não tem documento anexado.');
     window.open(`/api/projects/${encodeURIComponent(p.slug)}/document`, '_blank');
   };
   if (!p.hasDocument) {
-    actions.children[2].disabled = true;
-    actions.children[2].title = `${docMeta.label} · sem documento anexado`;
+    docBtn.disabled = true;
+    docBtn.title = `${docMeta.label} · sem documento anexado`;
   }
 
-  card.append(st, pr, actions);
+  controls.append(selectsWrap, docBtn);
+
+  const actions = document.createElement('div');
+  actions.className = 'card-actions';
+  actions.innerHTML = `<button class="secondary">Editar</button><button>Copiar pasta</button>`;
+  actions.children[0].onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}`;
+  actions.children[1].onclick = async () => { await navigator.clipboard.writeText(p.path); alert('Caminho copiado!'); };
+
+  card.append(controls, actions);
   return card;
 }
 
