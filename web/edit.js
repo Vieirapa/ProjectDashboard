@@ -18,7 +18,6 @@ const f = {
   owner: document.getElementById('owner'),
   dueDate: document.getElementById('dueDate'),
   path: document.getElementById('path'),
-  documentStatus: document.getElementById('documentStatus'),
   documentFile: document.getElementById('documentFile'),
   documentName: document.getElementById('documentName'),
   documentVersions: document.getElementById('documentVersions'),
@@ -74,7 +73,7 @@ async function initMe() {
 }
 
 function canEditReviewNotes() {
-  return canAddReviewNotes() && (f.documentStatus.value || '').trim().toLowerCase() === 'em revisão';
+  return canAddReviewNotes() && (f.status.value || '').trim().toLowerCase() === 'em revisão';
 }
 
 function updateReviewNotesAvailability() {
@@ -126,12 +125,9 @@ async function loadProject() {
   f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
   d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
-  const documentStatuses = d.documentStatuses || ['aguardando edição', 'editando', 'em revisão', 'release'];
-  documentStatuses.forEach(x => f.documentStatus.append(new Option(x,x)));
-  f.documentStatus.value = p.documentStatus || 'aguardando edição';
 
   const editable = canEditCard();
-  [f.name, f.description, f.status, f.priority, f.owner, f.dueDate, f.documentStatus].forEach((el) => el.disabled = !editable);
+  [f.name, f.description, f.status, f.priority, f.owner, f.dueDate].forEach((el) => el.disabled = !editable);
   f.documentFile.disabled = !canUploadDocument();
   deleteBtn.style.display = canDeleteCard() ? 'inline-block' : 'none';
 
@@ -153,12 +149,12 @@ function fileToBase64(file) {
   });
 }
 
-[f.name, f.description, f.status, f.priority, f.owner, f.dueDate, f.documentStatus].forEach((el) => {
+[f.name, f.description, f.status, f.priority, f.owner, f.dueDate].forEach((el) => {
   el.addEventListener('input', () => setDirty(true));
   el.addEventListener('change', () => setDirty(true));
 });
 f.documentFile.addEventListener('change', () => setDirty(true));
-f.documentStatus.addEventListener('change', () => updateReviewNotesAvailability());
+f.status.addEventListener('change', () => updateReviewNotesAvailability());
 
 window.addEventListener('beforeunload', (e) => {
   if (!isDirty || isSaving) return;
@@ -216,7 +212,6 @@ document.getElementById('editForm').onsubmit = async (e) => {
   try {
     await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner:f.owner.value, dueDate:f.dueDate.value,
-      documentStatus: f.documentStatus.value,
     })});
 
     const file = f.documentFile.files?.[0];
@@ -229,7 +224,6 @@ document.getElementById('editForm').onsubmit = async (e) => {
           fileName: file.name,
           mimeType: file.type || 'application/octet-stream',
           contentBase64: b64,
-          documentStatus: f.documentStatus.value,
         })
       });
       f.documentName.value = file.name;

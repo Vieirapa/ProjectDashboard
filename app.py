@@ -23,7 +23,6 @@ DB_PATH = DATA_DIR / "projectdashboard.db"
 HOST = "0.0.0.0"
 PORT = 8765
 STATUSES = ["Backlog", "Em andamento", "Em revisão", "Concluído"]
-DOC_STATUSES = ["aguardando edição", "editando", "em revisão", "release"]
 PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"]
 ROLES = ["admin", "member", "desenhista", "revisor", "cliente"]
 SKIP_DIRS = {"ProjectDashboard", "__pycache__"}
@@ -197,6 +196,7 @@ def init_db():
         # Garantir que o usuário admin seja realmente admin após upgrades/migrações
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE projects SET status='Em revisão' WHERE status='Bloqueado'")
+        conn.execute("UPDATE projects SET document_status=status")
         conn.execute("UPDATE projects SET created_by=owner WHERE created_by='' AND owner<>''")
 
 
@@ -240,7 +240,7 @@ def migrate_existing_projects():
                     data.get("description") or infer_description(p),
                     str(p),
                     data.get("updatedAt") or now_iso(),
-                    data.get("documentStatus") if data.get("documentStatus") in DOC_STATUSES else "aguardando edição",
+                    ("Backlog" if data.get("documentStatus") == "aguardando edição" else "Em andamento" if data.get("documentStatus") == "editando" else "Em revisão" if data.get("documentStatus") == "em revisão" else "Concluído" if data.get("documentStatus") == "release" else (("Em revisão" if data.get("status") == "Bloqueado" else data.get("status")) if ("Em revisão" if data.get("status") == "Bloqueado" else data.get("status")) in STATUSES else "Backlog")),
                     data.get("documentName") or "",
                     data.get("documentMime") or "",
                     data.get("documentPath") or "",
@@ -256,7 +256,7 @@ def list_projects() -> list[dict]:
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": r["due_date"], "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"],
-        "documentStatus": r["document_status"], "documentName": r["document_name"],
+        "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
         "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
         "createdBy": r["created_by"]
     } for r in rows]
@@ -271,7 +271,7 @@ def get_project(slug: str) -> dict | None:
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": r["due_date"], "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"],
-        "documentStatus": r["document_status"], "documentName": r["document_name"],
+        "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
         "documentMime": r["document_mime"], "documentPath": r["document_path"],
         "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"]
     }
@@ -311,7 +311,6 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
         "description": (payload.get("description") or "Sem descrição").strip(),
         "path": str(proj_dir),
         "updatedAt": now_iso(),
-        "documentStatus": "aguardando edição",
         "documentName": "",
         "documentMime": "",
         "documentPath": "",
@@ -325,7 +324,7 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
     with db() as conn:
         conn.execute(
             "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"], project["documentStatus"], project["documentName"], project["documentMime"], project["documentPath"], project["createdBy"]),
+            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"], project["status"], project["documentName"], project["documentMime"], project["documentPath"], project["createdBy"]),
         )
     sync_project_meta(project)
     return True, "ok"
@@ -347,13 +346,11 @@ def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
         p["dueDate"] = str(payload["dueDate"]).strip()
     if "description" in payload:
         p["description"] = str(payload["description"]).strip() or "Sem descrição"
-    if "documentStatus" in payload and payload["documentStatus"] in DOC_STATUSES:
-        p["documentStatus"] = payload["documentStatus"]
     p["updatedAt"] = now_iso()
 
     with db() as conn:
         conn.execute("UPDATE projects SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=? WHERE slug=?",
-                     (p["name"], p["status"], p["priority"], p["owner"], p["dueDate"], p["description"], p["documentStatus"], p["updatedAt"], slug))
+                     (p["name"], p["status"], p["priority"], p["owner"], p["dueDate"], p["description"], p["status"], p["updatedAt"], slug))
     sync_project_meta(p)
     return True, "ok"
 
@@ -409,7 +406,7 @@ def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
     proj = get_project(slug)
     if not proj:
         return False, "Projeto não encontrado"
-    if (proj.get("documentStatus") or "").strip().lower() != "em revisão":
+    if (proj.get("status") or "").strip().lower() != "em revisão":
         return False, "Notas de revisão só podem ser adicionadas quando o documento estiver em 'em revisão'"
     clean_note = (note or "").strip()
     if not clean_note:
@@ -439,10 +436,7 @@ def get_document_version(slug: str, version: int | None = None) -> dict | None:
     return dict(row) if row else None
 
 
-def save_project_document(slug: str, filename: str, mime_type: str, b64_content: str, doc_status: str, actor: str) -> tuple[bool, str]:
-    if doc_status not in DOC_STATUSES:
-        return False, "Status de documento inválido"
-
+def save_project_document(slug: str, filename: str, mime_type: str, b64_content: str, actor: str) -> tuple[bool, str]:
     p = get_project(slug)
     if not p:
         return False, "Projeto não encontrado"
@@ -475,7 +469,7 @@ def save_project_document(slug: str, filename: str, mime_type: str, b64_content:
     if not ok_add:
         return False, f"Falha git add: {msg_add}"
 
-    commit_msg = f"docs({slug}): v{next_version} - {doc_status} - {safe_name}"
+    commit_msg = f"docs({slug}): v{next_version} - {p['status']} - {safe_name}"
     ok_commit, msg_commit = run_git([
         "-c", "user.name=ProjectDashboard",
         "-c", "user.email=projectdashboard@local",
@@ -494,11 +488,11 @@ def save_project_document(slug: str, filename: str, mime_type: str, b64_content:
             INSERT INTO document_versions (project_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (slug, next_version, safe_name, mime_type or "application/octet-stream", doc_status, str(rel_path), commit_hash, checksum, actor, now_iso()),
+            (slug, next_version, safe_name, mime_type or "application/octet-stream", p["status"], str(rel_path), commit_hash, checksum, actor, now_iso()),
         )
         conn.execute(
             "UPDATE projects SET document_status=?, document_name=?, document_mime=?, document_path=?, updated_at=? WHERE slug=?",
-            (doc_status, safe_name, mime_type or "application/octet-stream", str(abs_path), now_iso(), slug),
+            (p["status"], safe_name, mime_type or "application/octet-stream", str(abs_path), now_iso(), slug),
         )
 
     return True, "ok"
@@ -600,7 +594,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/projects":
             if not self._require_auth(): return
-            return self._json(200, {"projects": list_projects(), "statuses": STATUSES, "priorities": PRIORITIES, "documentStatuses": DOC_STATUSES})
+            return self._json(200, {"projects": list_projects(), "statuses": STATUSES, "priorities": PRIORITIES})
 
         if p.startswith("/api/projects/") and p.endswith("/document/versions"):
             if not self._require_auth(): return
@@ -655,7 +649,7 @@ class Handler(BaseHTTPRequestHandler):
             slug = p.split("/")[3]
             proj = get_project(slug)
             if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
-            return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES, "documentStatuses": DOC_STATUSES})
+            return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES})
 
         if p == "/api/admin/users":
             if not self._require_admin(): return
@@ -730,11 +724,10 @@ class Handler(BaseHTTPRequestHandler):
                 body.get("fileName") or "documento.bin",
                 body.get("mimeType") or "application/octet-stream",
                 body.get("contentBase64") or "",
-                body.get("documentStatus") or "aguardando edição",
                 user["username"],
             )
             if done:
-                audit(user["username"], "project.document.upload", slug, json.dumps({"file": body.get("fileName", ""), "status": body.get("documentStatus", "")}, ensure_ascii=False))
+                audit(user["username"], "project.document.upload", slug, json.dumps({"file": body.get("fileName", "")}, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/projects/") and p.endswith("/review-notes"):
