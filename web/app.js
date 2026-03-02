@@ -64,13 +64,25 @@ function makeColumn(status) {
   return col;
 }
 
+function docStatusMeta(status) {
+  const s = (status || 'aguardando edição').toLowerCase();
+  const map = {
+    'aguardando edição': { icon: '🕓', cls: 'doc-waiting', label: 'Aguardando edição' },
+    'editando': { icon: '✏️', cls: 'doc-editing', label: 'Editando' },
+    'em revisão': { icon: '🔎', cls: 'doc-review', label: 'Em revisão' },
+    'release': { icon: '🚀', cls: 'doc-release', label: 'Release' },
+  };
+  return map[s] || map['aguardando edição'];
+}
+
 function makeCard(p, statuses, priorities) {
   const card = document.createElement('div');
   card.className = 'card';
+  const docMeta = docStatusMeta(p.documentStatus);
   card.innerHTML = `
     <h3>${p.name}</h3>
     <p>${p.description || 'Sem descrição'}</p>
-    <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b></div>
+    <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
   `;
 
   const st = document.createElement('select');
@@ -83,9 +95,17 @@ function makeCard(p, statuses, priorities) {
 
   const actions = document.createElement('div');
   actions.className = 'card-actions';
-  actions.innerHTML = `<button class="secondary">Editar</button><button>Copiar pasta</button>`;
+  actions.innerHTML = `<button class="secondary">Editar</button><button>Copiar pasta</button><button class="doc-btn ${docMeta.cls}" title="${docMeta.label}">${docMeta.icon}</button>`;
   actions.children[0].onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}`;
   actions.children[1].onclick = async () => { await navigator.clipboard.writeText(p.path); alert('Caminho copiado!'); };
+  actions.children[2].onclick = () => {
+    if (!p.hasDocument) return alert('Este card ainda não tem documento anexado.');
+    window.open(`/api/projects/${encodeURIComponent(p.slug)}/document`, '_blank');
+  };
+  if (!p.hasDocument) {
+    actions.children[2].disabled = true;
+    actions.children[2].title = `${docMeta.label} · sem documento anexado`;
+  }
 
   card.append(st, pr, actions);
   return card;

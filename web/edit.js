@@ -14,6 +14,9 @@ const f = {
   owner: document.getElementById('owner'),
   dueDate: document.getElementById('dueDate'),
   path: document.getElementById('path'),
+  documentStatus: document.getElementById('documentStatus'),
+  documentFile: document.getElementById('documentFile'),
+  documentName: document.getElementById('documentName'),
 };
 
 let me = null;
@@ -37,16 +40,50 @@ async function loadProject() {
   const d = await api(`/api/projects/${encodeURIComponent(slug)}`);
   const p = d.project;
   f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate; f.path.value = p.path;
+  f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
   d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
+  d.documentStatuses.forEach(x => f.documentStatus.append(new Option(x,x)));
+  f.documentStatus.value = p.documentStatus || 'aguardando edição';
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const out = String(reader.result || '');
+      resolve(out.includes(',') ? out.split(',')[1] : out);
+    };
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
+    reader.readAsDataURL(file);
+  });
 }
 
 document.getElementById('editForm').onsubmit = async (e) => {
   e.preventDefault();
   try {
     await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner:f.owner.value, dueDate:f.dueDate.value
+      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner:f.owner.value, dueDate:f.dueDate.value,
+      documentStatus: f.documentStatus.value,
     })});
+
+    const file = f.documentFile.files?.[0];
+    if (file) {
+      const b64 = await fileToBase64(file);
+      await api(`/api/projects/${encodeURIComponent(slug)}/document`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          contentBase64: b64,
+          documentStatus: f.documentStatus.value,
+        })
+      });
+      f.documentName.value = file.name;
+      f.documentFile.value = '';
+    }
+
     feedback.textContent = 'Salvo com sucesso ✅';
   } catch (e) { feedback.textContent = e.message; }
 };

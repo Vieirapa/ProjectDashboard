@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import hashlib
 import hmac
 import json
@@ -15,10 +16,12 @@ from urllib.parse import urlparse
 BASE_DIR = Path("/home/panosso/.openclaw/workspace/projects")
 WEB_DIR = Path(__file__).parent / "web"
 DATA_DIR = Path(__file__).parent / "data"
+UPLOADS_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "projectdashboard.db"
 HOST = "0.0.0.0"
 PORT = 8765
 STATUSES = ["Backlog", "Em andamento", "Bloqueado", "Concluído"]
+DOC_STATUSES = ["aguardando edição", "editando", "em revisão", "release"]
 PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"]
 ROLES = ["admin", "member"]
 SKIP_DIRS = {"ProjectDashboard", "__pycache__"}
@@ -126,6 +129,10 @@ def init_db():
             )
         """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
+        ensure_column(conn, "projects", "document_status", "document_status TEXT NOT NULL DEFAULT 'aguardando edição'")
+        ensure_column(conn, "projects", "document_name", "document_name TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "projects", "document_mime", "document_mime TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "projects", "document_path", "document_path TEXT NOT NULL DEFAULT ''")
 
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
             pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin123")
@@ -166,8 +173,8 @@ def migrate_existing_projects():
 
             conn.execute(
                 """
-                INSERT INTO projects (slug, name, status, priority, owner, due_date, description, path, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO projects (slug, name, status, priority, owner, due_date, description, path, updated_at, document_status, document_name, document_mime, document_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     slug,
@@ -179,29 +186,38 @@ def migrate_existing_projects():
                     data.get("description") or infer_description(p),
                     str(p),
                     data.get("updatedAt") or now_iso(),
+                    data.get("documentStatus") if data.get("documentStatus") in DOC_STATUSES else "aguardando edição",
+                    data.get("documentName") or "",
+                    data.get("documentMime") or "",
+                    data.get("documentPath") or "",
                 ),
             )
 
 
 def list_projects() -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at FROM projects ORDER BY name").fetchall()
+        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path FROM projects ORDER BY name").fetchall()
     return [{
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": r["due_date"], "description": r["description"],
-        "path": r["path"], "updatedAt": r["updated_at"]
+        "path": r["path"], "updatedAt": r["updated_at"],
+        "documentStatus": r["document_status"], "documentName": r["document_name"],
+        "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"])
     } for r in rows]
 
 
 def get_project(slug: str) -> dict | None:
     with db() as conn:
-        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at FROM projects WHERE slug=?", (slug,)).fetchone()
+        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path FROM projects WHERE slug=?", (slug,)).fetchone()
     if not r:
         return None
     return {
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": r["due_date"], "description": r["description"],
-        "path": r["path"], "updatedAt": r["updated_at"]
+        "path": r["path"], "updatedAt": r["updated_at"],
+        "documentStatus": r["document_status"], "documentName": r["document_name"],
+        "documentMime": r["document_mime"], "documentPath": r["document_path"],
+        "hasDocument": bool(r["document_path"])
     }
 
 
@@ -239,6 +255,10 @@ def create_project(payload: dict) -> tuple[bool, str]:
         "description": (payload.get("description") or "Sem descrição").strip(),
         "path": str(proj_dir),
         "updatedAt": now_iso(),
+        "documentStatus": "aguardando edição",
+        "documentName": "",
+        "documentMime": "",
+        "documentPath": "",
     }
 
     proj_dir.mkdir(parents=True, exist_ok=False)
@@ -247,8 +267,8 @@ def create_project(payload: dict) -> tuple[bool, str]:
 
     with db() as conn:
         conn.execute(
-            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"]),
+            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"], project["documentStatus"], project["documentName"], project["documentMime"], project["documentPath"]),
         )
     sync_project_meta(project)
     return True, "ok"
@@ -270,12 +290,45 @@ def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
         p["dueDate"] = str(payload["dueDate"]).strip()
     if "description" in payload:
         p["description"] = str(payload["description"]).strip() or "Sem descrição"
+    if "documentStatus" in payload and payload["documentStatus"] in DOC_STATUSES:
+        p["documentStatus"] = payload["documentStatus"]
     p["updatedAt"] = now_iso()
 
     with db() as conn:
-        conn.execute("UPDATE projects SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,updated_at=? WHERE slug=?",
-                     (p["name"], p["status"], p["priority"], p["owner"], p["dueDate"], p["description"], p["updatedAt"], slug))
+        conn.execute("UPDATE projects SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=? WHERE slug=?",
+                     (p["name"], p["status"], p["priority"], p["owner"], p["dueDate"], p["description"], p["documentStatus"], p["updatedAt"], slug))
     sync_project_meta(p)
+    return True, "ok"
+
+
+def save_project_document(slug: str, filename: str, mime_type: str, b64_content: str, doc_status: str) -> tuple[bool, str]:
+    if doc_status not in DOC_STATUSES:
+        return False, "Status de documento inválido"
+
+    p = get_project(slug)
+    if not p:
+        return False, "Projeto não encontrado"
+
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", (filename or "documento.bin")).strip("._") or "documento.bin"
+    try:
+        raw = base64.b64decode(b64_content, validate=True)
+    except Exception:
+        return False, "Arquivo inválido (base64)"
+
+    if len(raw) > 12 * 1024 * 1024:
+        return False, "Arquivo excede 12MB"
+
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    proj_dir = UPLOADS_DIR / slug
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    out_path = proj_dir / safe_name
+    out_path.write_bytes(raw)
+
+    with db() as conn:
+        conn.execute(
+            "UPDATE projects SET document_status=?, document_name=?, document_mime=?, document_path=?, updated_at=? WHERE slug=?",
+            (doc_status, safe_name, mime_type or "application/octet-stream", str(out_path), now_iso(), slug),
+        )
     return True, "ok"
 
 
@@ -373,14 +426,32 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/projects":
             if not self._require_auth(): return
-            return self._json(200, {"projects": list_projects(), "statuses": STATUSES, "priorities": PRIORITIES})
+            return self._json(200, {"projects": list_projects(), "statuses": STATUSES, "priorities": PRIORITIES, "documentStatuses": DOC_STATUSES})
+
+        if p.startswith("/api/projects/") and p.endswith("/document"):
+            if not self._require_auth(): return
+            slug = p.split("/")[3]
+            proj = get_project(slug)
+            if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            doc_path = Path(proj.get("documentPath") or "")
+            if not proj.get("hasDocument") or not doc_path.exists():
+                return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+
+            content = doc_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", proj.get("documentMime") or "application/octet-stream")
+            self.send_header("Content-Disposition", f"inline; filename=\"{proj.get('documentName') or doc_path.name}\"")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
 
         if p.startswith("/api/projects/"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
             proj = get_project(slug)
             if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
-            return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES})
+            return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES, "documentStatuses": DOC_STATUSES})
 
         if p == "/api/admin/users":
             if not self._require_admin(): return
@@ -435,6 +506,23 @@ class Handler(BaseHTTPRequestHandler):
             done, msg = create_project(body)
             if done:
                 audit(user["username"], "project.create", body.get("name", ""), f"status={body.get('status','Backlog')}")
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/projects/") and p.endswith("/document"):
+            user = self._require_auth()
+            if not user: return
+            slug = p.split("/")[3]
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = save_project_document(
+                slug,
+                body.get("fileName") or "documento.bin",
+                body.get("mimeType") or "application/octet-stream",
+                body.get("contentBase64") or "",
+                body.get("documentStatus") or "aguardando edição",
+            )
+            if done:
+                audit(user["username"], "project.document.upload", slug, json.dumps({"file": body.get("fileName", ""), "status": body.get("documentStatus", "")}, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/users":
