@@ -42,13 +42,21 @@ async function initMe() {
 }
 
 async function loadVersions() {
-  const d = await api(`/api/projects/${encodeURIComponent(slug)}/document/versions`);
-  if (!d.versions?.length) {
-    f.documentVersions.textContent = 'Sem versões ainda.';
-    return;
+  try {
+    const d = await api(`/api/projects/${encodeURIComponent(slug)}/document/versions`);
+    if (!d.versions?.length) {
+      f.documentVersions.textContent = 'Sem versões ainda.';
+      return;
+    }
+    const items = d.versions.map(v => `<li><a href="/api/projects/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">v${v.version}</a> · ${v.document_status} · ${v.document_name} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
+    f.documentVersions.innerHTML = `<ul>${items}</ul>`;
+  } catch (e) {
+    if (e?.status === 404) {
+      f.documentVersions.textContent = 'Histórico indisponível (reinicie o backend para ativar versionamento híbrido).';
+      return;
+    }
+    throw e;
   }
-  const items = d.versions.map(v => `<li><a href="/api/projects/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">v${v.version}</a> · ${v.document_status} · ${v.document_name} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
-  f.documentVersions.innerHTML = `<ul>${items}</ul>`;
 }
 
 async function loadProject() {
