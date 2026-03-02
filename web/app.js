@@ -22,7 +22,7 @@ const pOwner = document.getElementById('pOwner');
 const pDueDate = document.getElementById('pDueDate');
 
 let me = null;
-let state = { projects: [], statuses: [], priorities: [] };
+let state = { projects: [], statuses: [], priorities: [], documentStatuses: [] };
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -75,7 +75,13 @@ function docStatusMeta(status) {
   return map[s] || map['aguardando edição'];
 }
 
-function makeCard(p, statuses, priorities) {
+function canEditDocumentStatus(project) {
+  if (!me) return false;
+  if (me.role === 'admin') return true;
+  return (project.owner || '').trim().toLowerCase() === (me.username || '').trim().toLowerCase();
+}
+
+function makeCard(p, statuses, priorities, documentStatuses) {
   const card = document.createElement('div');
   card.className = 'card';
   const docMeta = docStatusMeta(p.documentStatus);
@@ -93,12 +99,32 @@ function makeCard(p, statuses, priorities) {
   priorities.forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = `Prioridade: ${x}`; if (x === p.priority) o.selected = true; pr.appendChild(o); });
   pr.onchange = async () => { await api(`/api/projects/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
 
+  const ds = document.createElement('select');
+  const canChangeDocStatus = canEditDocumentStatus(p);
+  documentStatuses.forEach(x => {
+    const o = document.createElement('option');
+    o.value = x;
+    o.textContent = x.charAt(0).toUpperCase() + x.slice(1);
+    if (x === p.documentStatus) o.selected = true;
+    ds.appendChild(o);
+  });
+  ds.disabled = !canChangeDocStatus;
+  ds.title = canChangeDocStatus ? 'Status do documento' : 'Sem permissão para alterar status do documento';
+  ds.onchange = async () => {
+    await api(`/api/projects/${encodeURIComponent(p.slug)}`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({documentStatus: ds.value})
+    });
+    render();
+  };
+
   const controls = document.createElement('div');
   controls.className = 'card-controls';
 
   const selectsWrap = document.createElement('div');
   selectsWrap.className = 'card-selects';
-  selectsWrap.append(st, pr);
+  selectsWrap.append(ds, st, pr);
 
   const docBtn = document.createElement('button');
   docBtn.className = `doc-btn ${docMeta.cls}`;
@@ -136,6 +162,9 @@ function fillFilters(statuses, priorities) {
 
 async function render() {
   state = await api('/api/projects');
+  if (!state.documentStatuses || !state.documentStatuses.length) {
+    state.documentStatuses = ['aguardando edição', 'editando', 'em revisão', 'release'];
+  }
   fillFilters(state.statuses, state.priorities);
   const filtered = state.projects.filter(p => passesFilters(p, currentFilters()));
   board.innerHTML = '';
@@ -143,7 +172,7 @@ async function render() {
   cols.forEach(c => board.appendChild(c));
 
   filtered.sort((a,b) => ({Urgente:0,Alta:1,'Média':2,Baixa:3}[a.priority] - ({Urgente:0,Alta:1,'Média':2,Baixa:3}[b.priority])));
-  filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
+  filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities, state.documentStatuses || [])));
   cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} projeto(s)`);
 }
 

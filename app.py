@@ -591,6 +591,15 @@ class Handler(BaseHTTPRequestHandler):
             slug = p.split("/")[3]
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+
+            if "documentStatus" in body:
+                proj = get_project(slug)
+                if not proj:
+                    return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+                is_owner = (proj.get("owner") or "").strip().lower() == user["username"].strip().lower()
+                if user["role"] != "admin" and not is_owner:
+                    return self._json(403, {"ok": False, "error": "Sem permissão para alterar status do documento"})
+
             done, msg = patch_project(slug, body)
             if done:
                 audit(user["username"], "project.update", slug, json.dumps(body, ensure_ascii=False))
