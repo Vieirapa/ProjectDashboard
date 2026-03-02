@@ -24,7 +24,11 @@ let me = null;
 async function api(url, opts={}) {
   const r = await fetch(url, opts);
   const d = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error(d.error || 'Erro');
+  if (!r.ok) {
+    const err = new Error(d.error || 'Erro');
+    err.status = r.status;
+    throw err;
+  }
   return d;
 }
 
@@ -43,7 +47,8 @@ async function loadProject() {
   f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
   d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
-  d.documentStatuses.forEach(x => f.documentStatus.append(new Option(x,x)));
+  const documentStatuses = d.documentStatuses || ['aguardando edição', 'editando', 'em revisão', 'release'];
+  documentStatuses.forEach(x => f.documentStatus.append(new Option(x,x)));
   f.documentStatus.value = p.documentStatus || 'aguardando edição';
 }
 
@@ -100,5 +105,14 @@ backBtn.onclick = () => location.href = '/';
 logoutBtn.onclick = async () => { await api('/api/logout',{method:'POST'}); location.href='/login.html'; };
 
 (async () => {
-  try { await initMe(); await loadProject(); } catch { location.href='/login.html'; }
+  try {
+    await initMe();
+    await loadProject();
+  } catch (e) {
+    if (e?.status === 401) {
+      location.href = '/login.html';
+      return;
+    }
+    feedback.textContent = `Falha ao abrir edição: ${e.message || 'erro inesperado'}`;
+  }
 })();
