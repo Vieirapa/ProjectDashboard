@@ -5,6 +5,7 @@ const logoutBtn = document.getElementById('logoutBtn');
 const inviteOut = document.getElementById('inviteOut');
 
 let me = null;
+let roles = ['member', 'admin'];
 
 async function api(url, opts={}) {
   const r = await fetch(url, opts);
@@ -51,8 +52,22 @@ async function deleteUser(username, associatedTasks) {
   await api(`/api/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
 }
 
+function roleOptions(currentRole) {
+  return roles.map(r => `<option value="${r}" ${currentRole === r ? 'selected' : ''}>${r}</option>`).join('');
+}
+
+function refreshRoleSelectors() {
+  const newRole = document.getElementById('newRole');
+  const inviteRole = document.getElementById('inviteRole');
+  newRole.innerHTML = roleOptions('member');
+  inviteRole.innerHTML = roleOptions('member');
+}
+
 async function loadUsers() {
   const d = await api('/api/admin/users');
+  roles = d.roles?.length ? d.roles : roles;
+  refreshRoleSelectors();
+
   usersList.innerHTML = `
     <table>
       <tr><th>Usuário</th><th>Role</th><th>Tarefas associadas</th><th>Criado em</th><th>Ações</th></tr>
@@ -61,8 +76,7 @@ async function loadUsers() {
           <td>${u.username}</td>
           <td>
             <select data-role-user="${u.username}" ${u.username === 'admin' ? 'disabled' : ''}>
-              <option value="member" ${u.role === 'member' ? 'selected' : ''}>member</option>
-              <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
+              ${roleOptions(u.role)}
             </select>
           </td>
           <td>${u.associated_tasks ?? 0}</td>
