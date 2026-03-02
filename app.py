@@ -25,7 +25,7 @@ PORT = 8765
 STATUSES = ["Backlog", "Em andamento", "Em revisão", "Concluído"]
 DOC_STATUSES = ["aguardando edição", "editando", "em revisão", "release"]
 PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"]
-ROLES = ["admin", "member"]
+ROLES = ["admin", "member", "desenhista", "revisor", "cliente"]
 SKIP_DIRS = {"ProjectDashboard", "__pycache__"}
 SESSION_COOKIE = "pdash_session"
 SESSION_TTL_SECONDS = 60 * 60 * 24
@@ -82,6 +82,30 @@ def ensure_column(conn: sqlite3.Connection, table: str, col: str, ddl: str):
     cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     if col not in cols:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
+def can_create_project(role: str) -> bool:
+    return role in {"admin", "member"}
+
+
+def can_edit_project(role: str) -> bool:
+    return role in {"admin", "member", "desenhista"}
+
+
+def can_upload_document(role: str) -> bool:
+    return role in {"admin", "member", "desenhista"}
+
+
+def can_add_review_note(role: str) -> bool:
+    return role in {"admin", "member", "desenhista", "revisor"}
+
+
+def can_delete_project(role: str, user: str, project: dict) -> bool:
+    if role == "admin":
+        return True
+    if role == "member":
+        return (project.get("createdBy") or "").strip().lower() == user.strip().lower()
+    return False
 
 
 def init_db():
@@ -160,6 +184,7 @@ def init_db():
         ensure_column(conn, "projects", "document_name", "document_name TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "projects", "document_mime", "document_mime TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "projects", "document_path", "document_path TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "projects", "created_by", "created_by TEXT NOT NULL DEFAULT ''")
 
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
             pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin123")
@@ -172,6 +197,7 @@ def init_db():
         # Garantir que o usuário admin seja realmente admin após upgrades/migrações
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE projects SET status='Em revisão' WHERE status='Bloqueado'")
+        conn.execute("UPDATE projects SET created_by=owner WHERE created_by='' AND owner<>'")
 
 
 def audit(actor: str, action: str, target: str, details: str = ""):
@@ -201,8 +227,8 @@ def migrate_existing_projects():
 
             conn.execute(
                 """
-                INSERT INTO projects (slug, name, status, priority, owner, due_date, description, path, updated_at, document_status, document_name, document_mime, document_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO projects (slug, name, status, priority, owner, due_date, description, path, updated_at, document_status, document_name, document_mime, document_path, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     slug,
@@ -218,25 +244,27 @@ def migrate_existing_projects():
                     data.get("documentName") or "",
                     data.get("documentMime") or "",
                     data.get("documentPath") or "",
+                    data.get("createdBy") or data.get("owner") or "",
                 ),
             )
 
 
 def list_projects() -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path FROM projects ORDER BY name").fetchall()
+        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by FROM projects ORDER BY name").fetchall()
     return [{
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": r["due_date"], "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"],
         "documentStatus": r["document_status"], "documentName": r["document_name"],
-        "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"])
+        "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
+        "createdBy": r["created_by"]
     } for r in rows]
 
 
 def get_project(slug: str) -> dict | None:
     with db() as conn:
-        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path FROM projects WHERE slug=?", (slug,)).fetchone()
+        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by FROM projects WHERE slug=?", (slug,)).fetchone()
     if not r:
         return None
     return {
@@ -245,7 +273,7 @@ def get_project(slug: str) -> dict | None:
         "path": r["path"], "updatedAt": r["updated_at"],
         "documentStatus": r["document_status"], "documentName": r["document_name"],
         "documentMime": r["document_mime"], "documentPath": r["document_path"],
-        "hasDocument": bool(r["document_path"])
+        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"]
     }
 
 
@@ -264,7 +292,7 @@ def sync_project_meta(project: dict):
     (p / "project.json").write_text(json.dumps(project, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def create_project(payload: dict) -> tuple[bool, str]:
+def create_project(payload: dict, actor: str) -> tuple[bool, str]:
     name = (payload.get("name") or "").strip()
     if not name:
         return False, "Nome é obrigatório"
@@ -287,6 +315,7 @@ def create_project(payload: dict) -> tuple[bool, str]:
         "documentName": "",
         "documentMime": "",
         "documentPath": "",
+        "createdBy": actor,
     }
 
     proj_dir.mkdir(parents=True, exist_ok=False)
@@ -295,8 +324,8 @@ def create_project(payload: dict) -> tuple[bool, str]:
 
     with db() as conn:
         conn.execute(
-            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"], project["documentStatus"], project["documentName"], project["documentMime"], project["documentPath"]),
+            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"], project["documentStatus"], project["documentName"], project["documentMime"], project["documentPath"], project["createdBy"]),
         )
     sync_project_meta(project)
     return True, "ok"
@@ -676,9 +705,11 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/projects":
             user = self._require_auth()
             if not user: return
+            if not can_create_project(user["role"]):
+                return self._json(403, {"ok": False, "error": "Sem permissão para criar card"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            done, msg = create_project(body)
+            done, msg = create_project(body, user["username"])
             if done:
                 audit(user["username"], "project.create", body.get("name", ""), f"status={body.get('status','Backlog')}")
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
@@ -690,8 +721,7 @@ class Handler(BaseHTTPRequestHandler):
             proj = get_project(slug)
             if not proj:
                 return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
-            is_owner = (proj.get("owner") or "").strip().lower() == user["username"].strip().lower()
-            if user["role"] != "admin" and not is_owner:
+            if not can_upload_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para anexar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -714,8 +744,7 @@ class Handler(BaseHTTPRequestHandler):
             proj = get_project(slug)
             if not proj:
                 return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
-            is_owner = (proj.get("owner") or "").strip().lower() == user["username"].strip().lower()
-            if user["role"] != "admin" and not is_owner:
+            if not can_add_review_note(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para adicionar nota de revisão"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -787,17 +816,11 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/projects/"):
             user = self._require_auth()
             if not user: return
+            if not can_edit_project(user["role"]):
+                return self._json(403, {"ok": False, "error": "Sem permissão para editar card"})
             slug = p.split("/")[3]
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-
-            if "documentStatus" in body:
-                proj = get_project(slug)
-                if not proj:
-                    return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
-                is_owner = (proj.get("owner") or "").strip().lower() == user["username"].strip().lower()
-                if user["role"] != "admin" and not is_owner:
-                    return self._json(403, {"ok": False, "error": "Sem permissão para alterar status do documento"})
 
             done, msg = patch_project(slug, body)
             if done:
@@ -849,12 +872,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         p = urlparse(self.path).path
         if p.startswith("/api/projects/"):
-            admin = self._require_admin()
-            if not admin: return
+            user = self._require_auth()
+            if not user: return
             slug = p.split("/")[3]
+            proj = get_project(slug)
+            if not proj:
+                return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            if not can_delete_project(user["role"], user["username"], proj):
+                return self._json(403, {"ok": False, "error": "Sem permissão para apagar card"})
             done, msg = delete_project(slug)
             if done:
-                audit(admin["username"], "project.delete", slug)
+                audit(user["username"], "project.delete", slug)
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):

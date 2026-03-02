@@ -25,6 +25,7 @@ const f = {
 };
 
 let me = null;
+let project = null;
 let isDirty = false;
 let isSaving = false;
 saveBtn.disabled = true;
@@ -40,9 +41,28 @@ async function api(url, opts={}) {
   return d;
 }
 
+function canEditCard() {
+  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+}
+
+function canUploadDocument() {
+  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+}
+
+function canAddReviewNotes() {
+  return ['admin', 'member', 'desenhista', 'revisor'].includes(me?.role || '');
+}
+
+function canDeleteCard() {
+  if (!project || !me) return false;
+  if (me.role === 'admin') return true;
+  if (me.role === 'member') return (project.createdBy || '').toLowerCase() === (me.username || '').toLowerCase();
+  return false;
+}
+
 function setDirty(v) {
   isDirty = !!v;
-  saveBtn.disabled = !isDirty || isSaving;
+  saveBtn.disabled = !isDirty || isSaving || !canEditCard();
 }
 
 async function initMe() {
@@ -50,11 +70,11 @@ async function initMe() {
   me = d.user;
   whoami.textContent = `${me.username} (${me.role})`;
   usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
-  deleteBtn.style.display = me.role === 'admin' ? 'inline-block' : 'none';
+  deleteBtn.style.display = 'none';
 }
 
 function canEditReviewNotes() {
-  return (f.documentStatus.value || '').trim().toLowerCase() === 'em revisão';
+  return canAddReviewNotes() && (f.documentStatus.value || '').trim().toLowerCase() === 'em revisão';
 }
 
 function updateReviewNotesAvailability() {
@@ -101,6 +121,7 @@ async function loadVersions() {
 async function loadProject() {
   const d = await api(`/api/projects/${encodeURIComponent(slug)}`);
   const p = d.project;
+  project = p;
   f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate; f.path.value = p.path;
   f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
@@ -108,6 +129,12 @@ async function loadProject() {
   const documentStatuses = d.documentStatuses || ['aguardando edição', 'editando', 'em revisão', 'release'];
   documentStatuses.forEach(x => f.documentStatus.append(new Option(x,x)));
   f.documentStatus.value = p.documentStatus || 'aguardando edição';
+
+  const editable = canEditCard();
+  [f.name, f.description, f.status, f.priority, f.owner, f.dueDate, f.documentStatus].forEach((el) => el.disabled = !editable);
+  f.documentFile.disabled = !canUploadDocument();
+  deleteBtn.style.display = canDeleteCard() ? 'inline-block' : 'none';
+
   updateReviewNotesAvailability();
   await loadVersions();
   await loadReviewNotes();
@@ -182,6 +209,7 @@ addReviewNoteBtn.onclick = async () => {
 
 document.getElementById('editForm').onsubmit = async (e) => {
   e.preventDefault();
+  if (!canEditCard()) return;
   if (!isDirty) return;
   isSaving = true;
   saveBtn.disabled = true;

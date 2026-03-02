@@ -36,6 +36,7 @@ async function loadMe() {
   me = data.user;
   whoami.textContent = `${me.username} (${me.role})`;
   usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
+  newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
 }
 
 function currentFilters() {
@@ -75,10 +76,16 @@ function docStatusMeta(status) {
   return map[s] || map['aguardando edição'];
 }
 
-function canEditDocumentStatus(project) {
-  if (!me) return false;
-  if (me.role === 'admin') return true;
-  return (project.owner || '').trim().toLowerCase() === (me.username || '').trim().toLowerCase();
+function canCreateCard() {
+  return ['admin', 'member'].includes(me?.role || '');
+}
+
+function canEditCard() {
+  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+}
+
+function canEditDocumentStatus() {
+  return canEditCard();
 }
 
 function makeCard(p, statuses, priorities, documentStatuses) {
@@ -93,14 +100,16 @@ function makeCard(p, statuses, priorities, documentStatuses) {
 
   const st = document.createElement('select');
   statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; if (s === p.status) o.selected = true; st.appendChild(o); });
+  st.disabled = !canEditCard();
   st.onchange = async () => { await api(`/api/projects/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})}); render(); };
 
   const pr = document.createElement('select');
   priorities.forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = `Prioridade: ${x}`; if (x === p.priority) o.selected = true; pr.appendChild(o); });
+  pr.disabled = !canEditCard();
   pr.onchange = async () => { await api(`/api/projects/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
 
   const ds = document.createElement('select');
-  const canChangeDocStatus = canEditDocumentStatus(p);
+  const canChangeDocStatus = canEditDocumentStatus();
   documentStatuses.forEach(x => {
     const o = document.createElement('option');
     o.value = x;
