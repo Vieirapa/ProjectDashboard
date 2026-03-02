@@ -5,6 +5,7 @@ const backBtn = document.getElementById('backBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const deleteBtn = document.getElementById('deleteBtn');
 const feedback = document.getElementById('feedback');
+const saveBtn = document.getElementById('saveBtn');
 
 const f = {
   name: document.getElementById('name'),
@@ -21,6 +22,9 @@ const f = {
 };
 
 let me = null;
+let isDirty = false;
+let isSaving = false;
+saveBtn.disabled = true;
 
 async function api(url, opts={}) {
   const r = await fetch(url, opts);
@@ -31,6 +35,11 @@ async function api(url, opts={}) {
     throw err;
   }
   return d;
+}
+
+function setDirty(v) {
+  isDirty = !!v;
+  saveBtn.disabled = !isDirty || isSaving;
 }
 
 async function initMe() {
@@ -70,6 +79,7 @@ async function loadProject() {
   documentStatuses.forEach(x => f.documentStatus.append(new Option(x,x)));
   f.documentStatus.value = p.documentStatus || 'aguardando edição';
   await loadVersions();
+  setDirty(false);
 }
 
 function fileToBase64(file) {
@@ -84,8 +94,40 @@ function fileToBase64(file) {
   });
 }
 
+[f.name, f.description, f.status, f.priority, f.owner, f.dueDate, f.documentStatus].forEach((el) => {
+  el.addEventListener('input', () => setDirty(true));
+  el.addEventListener('change', () => setDirty(true));
+});
+f.documentFile.addEventListener('change', () => setDirty(true));
+
+window.addEventListener('beforeunload', (e) => {
+  if (!isDirty || isSaving) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+backBtn.onclick = () => {
+  if (isDirty && !isSaving) {
+    const leave = confirm('Você fez alterações que ainda não foram salvas. Se sair agora, elas serão perdidas. Deseja continuar?');
+    if (!leave) return;
+  }
+  location.href = '/';
+};
+
+logoutBtn.onclick = async () => {
+  if (isDirty && !isSaving) {
+    const leave = confirm('Você fez alterações que ainda não foram salvas. Se sair agora, elas serão perdidas. Deseja continuar?');
+    if (!leave) return;
+  }
+  await api('/api/logout',{method:'POST'});
+  location.href='/login.html';
+};
+
 document.getElementById('editForm').onsubmit = async (e) => {
   e.preventDefault();
+  if (!isDirty) return;
+  isSaving = true;
+  saveBtn.disabled = true;
   try {
     await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner:f.owner.value, dueDate:f.dueDate.value,
@@ -110,8 +152,14 @@ document.getElementById('editForm').onsubmit = async (e) => {
     }
 
     await loadVersions();
+    setDirty(false);
     feedback.textContent = 'Salvo com sucesso ✅';
-  } catch (e) { feedback.textContent = e.message; }
+    location.href = '/';
+  } catch (e) {
+    feedback.textContent = e.message;
+    isSaving = false;
+    saveBtn.disabled = !isDirty;
+  }
 };
 
 deleteBtn.onclick = async () => {
@@ -121,9 +169,6 @@ deleteBtn.onclick = async () => {
     location.href = '/';
   } catch (e) { feedback.textContent = e.message; }
 };
-
-backBtn.onclick = () => location.href = '/';
-logoutBtn.onclick = async () => { await api('/api/logout',{method:'POST'}); location.href='/login.html'; };
 
 (async () => {
   try {
