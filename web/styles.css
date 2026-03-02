@@ -82,8 +82,15 @@ dialog form { padding: 16px; display: grid; gap: 8px; }
 .center-wrap { min-height: 100vh; display: grid; place-items: center; }
 .auth-card { background: #fff; width: min(420px, 92vw); padding: 18px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.1); }
 .auth-card form { display: grid; gap: 8px; }
-.edit-wrap { padding: 16px; display: grid; place-items: center; }
-.edit-form { width: min(720px, 96vw); background: #fff; border-radius: 12px; padding: 16px; display: grid; gap: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+.edit-wrap { padding: 16px; }
+.edit-two-cols { max-width: 1320px; margin: 0 auto; display: grid; grid-template-columns: minmax(420px, 1fr) minmax(320px, 1fr); gap: 14px; align-items: start; }
+.edit-form { width: 100%; background: #fff; border-radius: 12px; padding: 16px; display: grid; gap: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+.review-panel { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.08); display: grid; gap: 8px; }
+.review-panel h3 { margin: 0 0 6px; font-size: 16px; }
+#reviewNoteInput { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+#reviewNotesHistory { border: 1px solid #e5e7eb; border-radius: 8px; min-height: 220px; padding: 10px; background: #fafafa; }
+#reviewNotesHistory .note-item { border-bottom: 1px solid #e5e7eb; padding: 8px 0; }
+#reviewNotesHistory .note-item:last-child { border-bottom: 0; }
 
 .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; }
 .panel { margin: 14px; padding: 14px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
@@ -97,4 +104,5 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e5e7eb; font-
   #board { grid-template-columns: 1fr 1fr; }
   #filters { grid-template-columns: 1fr 1fr; }
   .panel-grid { grid-template-columns: 1fr; }
+  .edit-two-cols { grid-template-columns: 1fr; }
 }

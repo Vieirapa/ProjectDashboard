@@ -6,6 +6,9 @@ const logoutBtn = document.getElementById('logoutBtn');
 const deleteBtn = document.getElementById('deleteBtn');
 const feedback = document.getElementById('feedback');
 const saveBtn = document.getElementById('saveBtn');
+const reviewNoteInput = document.getElementById('reviewNoteInput');
+const addReviewNoteBtn = document.getElementById('addReviewNoteBtn');
+const reviewNotesHistory = document.getElementById('reviewNotesHistory');
 
 const f = {
   name: document.getElementById('name'),
@@ -50,6 +53,33 @@ async function initMe() {
   deleteBtn.style.display = me.role === 'admin' ? 'inline-block' : 'none';
 }
 
+function canEditReviewNotes() {
+  return (f.documentStatus.value || '').trim().toLowerCase() === 'em revisão';
+}
+
+function updateReviewNotesAvailability() {
+  const enabled = canEditReviewNotes();
+  reviewNoteInput.disabled = !enabled;
+  addReviewNoteBtn.disabled = !enabled;
+  reviewNoteInput.placeholder = enabled
+    ? 'Descreva o ajuste solicitado na revisão...'
+    : 'Notas liberadas apenas quando o documento estiver em "em revisão"';
+}
+
+async function loadReviewNotes() {
+  const d = await api(`/api/projects/${encodeURIComponent(slug)}/review-notes`);
+  if (!d.notes?.length) {
+    reviewNotesHistory.textContent = 'Sem notas registradas.';
+    return;
+  }
+  reviewNotesHistory.innerHTML = d.notes.map((n) => `
+    <div class="note-item">
+      <div><b>usuário:</b> ${n.created_by} <span style="float:right"><b>data:</b> ${new Date(n.created_at).toLocaleString('pt-BR')}</span></div>
+      <div style="white-space:pre-wrap">${n.note}</div>
+    </div>
+  `).join('');
+}
+
 async function loadVersions() {
   try {
     const d = await api(`/api/projects/${encodeURIComponent(slug)}/document/versions`);
@@ -78,7 +108,9 @@ async function loadProject() {
   const documentStatuses = d.documentStatuses || ['aguardando edição', 'editando', 'em revisão', 'release'];
   documentStatuses.forEach(x => f.documentStatus.append(new Option(x,x)));
   f.documentStatus.value = p.documentStatus || 'aguardando edição';
+  updateReviewNotesAvailability();
   await loadVersions();
+  await loadReviewNotes();
   setDirty(false);
 }
 
@@ -99,6 +131,7 @@ function fileToBase64(file) {
   el.addEventListener('change', () => setDirty(true));
 });
 f.documentFile.addEventListener('change', () => setDirty(true));
+f.documentStatus.addEventListener('change', () => updateReviewNotesAvailability());
 
 window.addEventListener('beforeunload', (e) => {
   if (!isDirty || isSaving) return;
@@ -121,6 +154,30 @@ logoutBtn.onclick = async () => {
   }
   await api('/api/logout',{method:'POST'});
   location.href='/login.html';
+};
+
+addReviewNoteBtn.onclick = async () => {
+  try {
+    if (!canEditReviewNotes()) {
+      feedback.textContent = 'Notas de revisão só ficam habilitadas quando o documento está em "em revisão".';
+      return;
+    }
+    const note = (reviewNoteInput.value || '').trim();
+    if (!note) {
+      feedback.textContent = 'Digite uma nota antes de adicionar.';
+      return;
+    }
+    await api(`/api/projects/${encodeURIComponent(slug)}/review-notes`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ note })
+    });
+    reviewNoteInput.value = '';
+    await loadReviewNotes();
+    feedback.textContent = 'Nota adicionada ✅';
+  } catch (e) {
+    feedback.textContent = e.message;
+  }
 };
 
 document.getElementById('editForm').onsubmit = async (e) => {

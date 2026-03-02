@@ -22,7 +22,7 @@ DOCS_REPO_DIR = DATA_DIR / "docs_repo"
 DB_PATH = DATA_DIR / "projectdashboard.db"
 HOST = "0.0.0.0"
 PORT = 8765
-STATUSES = ["Backlog", "Em andamento", "Bloqueado", "Concluído"]
+STATUSES = ["Backlog", "Em andamento", "Em revisão", "Concluído"]
 DOC_STATUSES = ["aguardando edição", "editando", "em revisão", "release"]
 PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"]
 ROLES = ["admin", "member"]
@@ -146,6 +146,15 @@ def init_db():
                 UNIQUE(project_slug, version)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS review_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_slug TEXT NOT NULL,
+                note TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
         ensure_column(conn, "projects", "document_status", "document_status TEXT NOT NULL DEFAULT 'aguardando edição'")
         ensure_column(conn, "projects", "document_name", "document_name TEXT NOT NULL DEFAULT ''")
@@ -162,6 +171,7 @@ def init_db():
 
         # Garantir que o usuário admin seja realmente admin após upgrades/migrações
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
+        conn.execute("UPDATE projects SET status='Em revisão' WHERE status='Bloqueado'")
 
 
 def audit(actor: str, action: str, target: str, details: str = ""):
@@ -197,7 +207,7 @@ def migrate_existing_projects():
                 (
                     slug,
                     data.get("name") or p.name,
-                    data.get("status") if data.get("status") in STATUSES else "Backlog",
+                    ("Em revisão" if data.get("status") == "Bloqueado" else data.get("status")) if ("Em revisão" if data.get("status") == "Bloqueado" else data.get("status")) in STATUSES else "Backlog",
                     data.get("priority") if data.get("priority") in PRIORITIES else "Média",
                     data.get("owner") or "",
                     data.get("dueDate") or "",
@@ -350,6 +360,39 @@ def list_document_versions(slug: str) -> list[dict]:
             (slug,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def list_review_notes(slug: str) -> list[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, note, created_by, created_at
+            FROM review_notes
+            WHERE project_slug=?
+            ORDER BY id DESC
+            """,
+            (slug,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
+    proj = get_project(slug)
+    if not proj:
+        return False, "Projeto não encontrado"
+    if (proj.get("documentStatus") or "").strip().lower() != "em revisão":
+        return False, "Notas de revisão só podem ser adicionadas quando o documento estiver em 'em revisão'"
+    clean_note = (note or "").strip()
+    if not clean_note:
+        return False, "Nota não pode estar vazia"
+    if len(clean_note) > 4000:
+        return False, "Nota muito longa (máximo 4000 caracteres)"
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO review_notes (project_slug, note, created_by, created_at) VALUES (?, ?, ?, ?)",
+            (slug, clean_note, actor, now_iso()),
+        )
+    return True, "ok"
 
 
 def get_document_version(slug: str, version: int | None = None) -> dict | None:
@@ -537,6 +580,13 @@ class Handler(BaseHTTPRequestHandler):
             if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
             return self._json(200, {"ok": True, "versions": list_document_versions(slug)})
 
+        if p.startswith("/api/projects/") and p.endswith("/review-notes"):
+            if not self._require_auth(): return
+            slug = p.split("/")[3]
+            proj = get_project(slug)
+            if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            return self._json(200, {"ok": True, "notes": list_review_notes(slug)})
+
         if p.startswith("/api/projects/") and p.endswith("/document"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
@@ -655,6 +705,23 @@ class Handler(BaseHTTPRequestHandler):
             )
             if done:
                 audit(user["username"], "project.document.upload", slug, json.dumps({"file": body.get("fileName", ""), "status": body.get("documentStatus", "")}, ensure_ascii=False))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/projects/") and p.endswith("/review-notes"):
+            user = self._require_auth()
+            if not user: return
+            slug = p.split("/")[3]
+            proj = get_project(slug)
+            if not proj:
+                return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            is_owner = (proj.get("owner") or "").strip().lower() == user["username"].strip().lower()
+            if user["role"] != "admin" and not is_owner:
+                return self._json(403, {"ok": False, "error": "Sem permissão para adicionar nota de revisão"})
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = add_review_note(slug, body.get("note") or "", user["username"])
+            if done:
+                audit(user["username"], "project.review_note.create", slug, "note_added")
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/users":
