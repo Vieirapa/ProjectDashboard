@@ -17,6 +17,7 @@ const f = {
   documentStatus: document.getElementById('documentStatus'),
   documentFile: document.getElementById('documentFile'),
   documentName: document.getElementById('documentName'),
+  documentVersions: document.getElementById('documentVersions'),
 };
 
 let me = null;
@@ -40,6 +41,16 @@ async function initMe() {
   deleteBtn.style.display = me.role === 'admin' ? 'inline-block' : 'none';
 }
 
+async function loadVersions() {
+  const d = await api(`/api/projects/${encodeURIComponent(slug)}/document/versions`);
+  if (!d.versions?.length) {
+    f.documentVersions.textContent = 'Sem versões ainda.';
+    return;
+  }
+  const items = d.versions.map(v => `<li><a href="/api/projects/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">v${v.version}</a> · ${v.document_status} · ${v.document_name} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
+  f.documentVersions.innerHTML = `<ul>${items}</ul>`;
+}
+
 async function loadProject() {
   const d = await api(`/api/projects/${encodeURIComponent(slug)}`);
   const p = d.project;
@@ -50,6 +61,7 @@ async function loadProject() {
   const documentStatuses = d.documentStatuses || ['aguardando edição', 'editando', 'em revisão', 'release'];
   documentStatuses.forEach(x => f.documentStatus.append(new Option(x,x)));
   f.documentStatus.value = p.documentStatus || 'aguardando edição';
+  await loadVersions();
 }
 
 function fileToBase64(file) {
@@ -89,6 +101,7 @@ document.getElementById('editForm').onsubmit = async (e) => {
       f.documentFile.value = '';
     }
 
+    await loadVersions();
     feedback.textContent = 'Salvo com sucesso ✅';
   } catch (e) { feedback.textContent = e.message; }
 };

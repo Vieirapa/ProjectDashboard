@@ -7,16 +7,18 @@ import os
 import re
 import secrets
 import sqlite3
+import subprocess
 from datetime import datetime, timedelta
 from http import cookies
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path("/home/panosso/.openclaw/workspace/projects")
 WEB_DIR = Path(__file__).parent / "web"
 DATA_DIR = Path(__file__).parent / "data"
 UPLOADS_DIR = DATA_DIR / "uploads"
+DOCS_REPO_DIR = DATA_DIR / "docs_repo"
 DB_PATH = DATA_DIR / "projectdashboard.db"
 HOST = "0.0.0.0"
 PORT = 8765
@@ -126,6 +128,22 @@ def init_db():
                 target TEXT NOT NULL,
                 details TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS document_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_slug TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                document_name TEXT NOT NULL,
+                document_mime TEXT NOT NULL,
+                document_status TEXT NOT NULL,
+                file_rel_path TEXT NOT NULL,
+                git_commit TEXT NOT NULL,
+                checksum TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(project_slug, version)
             )
         """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
@@ -301,13 +319,65 @@ def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
-def save_project_document(slug: str, filename: str, mime_type: str, b64_content: str, doc_status: str) -> tuple[bool, str]:
+def run_git(args: list[str]) -> tuple[bool, str]:
+    try:
+        res = subprocess.run(["git", *args], cwd=str(DOCS_REPO_DIR), capture_output=True, text=True, check=False)
+        if res.returncode != 0:
+            return False, (res.stderr or res.stdout or "git error").strip()
+        return True, (res.stdout or "").strip()
+    except Exception as e:
+        return False, str(e)
+
+
+def ensure_docs_repo() -> tuple[bool, str]:
+    DOCS_REPO_DIR.mkdir(parents=True, exist_ok=True)
+    if not (DOCS_REPO_DIR / ".git").exists():
+        ok, out = run_git(["init", "-b", "main"])
+        if not ok:
+            return False, out
+    return True, "ok"
+
+
+def list_document_versions(slug: str) -> list[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT version, document_name, document_mime, document_status, git_commit, checksum, created_by, created_at
+            FROM document_versions
+            WHERE project_slug=?
+            ORDER BY version DESC
+            """,
+            (slug,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_document_version(slug: str, version: int | None = None) -> dict | None:
+    with db() as conn:
+        if version is None:
+            row = conn.execute(
+                "SELECT * FROM document_versions WHERE project_slug=? ORDER BY version DESC LIMIT 1",
+                (slug,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM document_versions WHERE project_slug=? AND version=?",
+                (slug, version),
+            ).fetchone()
+    return dict(row) if row else None
+
+
+def save_project_document(slug: str, filename: str, mime_type: str, b64_content: str, doc_status: str, actor: str) -> tuple[bool, str]:
     if doc_status not in DOC_STATUSES:
         return False, "Status de documento inválido"
 
     p = get_project(slug)
     if not p:
         return False, "Projeto não encontrado"
+
+    ok_repo, repo_msg = ensure_docs_repo()
+    if not ok_repo:
+        return False, f"Falha ao preparar repositório Git: {repo_msg}"
 
     safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", (filename or "documento.bin")).strip("._") or "documento.bin"
     try:
@@ -318,17 +388,47 @@ def save_project_document(slug: str, filename: str, mime_type: str, b64_content:
     if len(raw) > 12 * 1024 * 1024:
         return False, "Arquivo excede 12MB"
 
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    proj_dir = UPLOADS_DIR / slug
-    proj_dir.mkdir(parents=True, exist_ok=True)
-    out_path = proj_dir / safe_name
-    out_path.write_bytes(raw)
+    with db() as conn:
+        row = conn.execute("SELECT COALESCE(MAX(version), 0) AS last FROM document_versions WHERE project_slug=?", (slug,)).fetchone()
+        next_version = int(row["last"]) + 1
+
+    rel_path = Path("cards") / slug / f"v{next_version:04d}_{safe_name}"
+    abs_path = DOCS_REPO_DIR / rel_path
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
+    abs_path.write_bytes(raw)
+
+    checksum = hashlib.sha256(raw).hexdigest()
+
+    ok_add, msg_add = run_git(["add", str(rel_path)])
+    if not ok_add:
+        return False, f"Falha git add: {msg_add}"
+
+    commit_msg = f"docs({slug}): v{next_version} - {doc_status} - {safe_name}"
+    ok_commit, msg_commit = run_git([
+        "-c", "user.name=ProjectDashboard",
+        "-c", "user.email=projectdashboard@local",
+        "commit", "-m", commit_msg,
+    ])
+    if not ok_commit:
+        return False, f"Falha git commit: {msg_commit}"
+
+    ok_hash, commit_hash = run_git(["rev-parse", "HEAD"])
+    if not ok_hash:
+        return False, f"Falha ao obter hash do commit: {commit_hash}"
 
     with db() as conn:
         conn.execute(
-            "UPDATE projects SET document_status=?, document_name=?, document_mime=?, document_path=?, updated_at=? WHERE slug=?",
-            (doc_status, safe_name, mime_type or "application/octet-stream", str(out_path), now_iso(), slug),
+            """
+            INSERT INTO document_versions (project_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (slug, next_version, safe_name, mime_type or "application/octet-stream", doc_status, str(rel_path), commit_hash, checksum, actor, now_iso()),
         )
+        conn.execute(
+            "UPDATE projects SET document_status=?, document_name=?, document_mime=?, document_path=?, updated_at=? WHERE slug=?",
+            (doc_status, safe_name, mime_type or "application/octet-stream", str(abs_path), now_iso(), slug),
+        )
+
     return True, "ok"
 
 
@@ -410,7 +510,9 @@ class Handler(BaseHTTPRequestHandler):
         return u
 
     def do_GET(self):
-        p = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        p = parsed.path
+        qs = parse_qs(parsed.query)
         if p in ["/", "/index.html"]: return self._serve(WEB_DIR / "index.html", "text/html; charset=utf-8")
         if p == "/login.html": return self._serve(WEB_DIR / "login.html", "text/html; charset=utf-8")
         if p == "/signup.html": return self._serve(WEB_DIR / "signup.html", "text/html; charset=utf-8")
@@ -428,19 +530,42 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_auth(): return
             return self._json(200, {"projects": list_projects(), "statuses": STATUSES, "priorities": PRIORITIES, "documentStatuses": DOC_STATUSES})
 
+        if p.startswith("/api/projects/") and p.endswith("/document/versions"):
+            if not self._require_auth(): return
+            slug = p.split("/")[3]
+            proj = get_project(slug)
+            if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            return self._json(200, {"ok": True, "versions": list_document_versions(slug)})
+
         if p.startswith("/api/projects/") and p.endswith("/document"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
             proj = get_project(slug)
             if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
-            doc_path = Path(proj.get("documentPath") or "")
-            if not proj.get("hasDocument") or not doc_path.exists():
-                return self._json(404, {"ok": False, "error": "Documento não encontrado"})
 
+            version = None
+            if "version" in qs and qs["version"]:
+                try:
+                    version = int(qs["version"][0])
+                except Exception:
+                    return self._json(400, {"ok": False, "error": "Parâmetro version inválido"})
+
+            ver = get_document_version(slug, version)
+            if not ver:
+                return self._json(404, {"ok": False, "error": "Versão de documento não encontrada"})
+
+            if version is None:
+                doc_path = Path(proj.get("documentPath") or "")
+            else:
+                doc_path = DOCS_REPO_DIR / ver["file_rel_path"]
+
+            if not doc_path.exists():
+                return self._json(404, {"ok": False, "error": "Arquivo da versão não encontrado"})
             content = doc_path.read_bytes()
+
             self.send_response(200)
-            self.send_header("Content-Type", proj.get("documentMime") or "application/octet-stream")
-            self.send_header("Content-Disposition", f"inline; filename=\"{proj.get('documentName') or doc_path.name}\"")
+            self.send_header("Content-Type", ver.get("document_mime") or "application/octet-stream")
+            self.send_header("Content-Disposition", f"inline; filename=\"{ver.get('document_name') or 'documento.bin'}\"")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
@@ -512,6 +637,12 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
+            proj = get_project(slug)
+            if not proj:
+                return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            is_owner = (proj.get("owner") or "").strip().lower() == user["username"].strip().lower()
+            if user["role"] != "admin" and not is_owner:
+                return self._json(403, {"ok": False, "error": "Sem permissão para anexar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = save_project_document(
@@ -520,6 +651,7 @@ class Handler(BaseHTTPRequestHandler):
                 body.get("mimeType") or "application/octet-stream",
                 body.get("contentBase64") or "",
                 body.get("documentStatus") or "aguardando edição",
+                user["username"],
             )
             if done:
                 audit(user["username"], "project.document.upload", slug, json.dumps({"file": body.get("fileName", ""), "status": body.get("documentStatus", "")}, ensure_ascii=False))
@@ -680,6 +812,9 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     init_db()
     migrate_existing_projects()
+    ok_repo, repo_msg = ensure_docs_repo()
+    if not ok_repo:
+        print("[ProjectDashboard] Aviso: falha ao inicializar docs_repo:", repo_msg)
     server = HTTPServer((HOST, PORT), Handler)
     print(f"ProjectDashboard online em http://{HOST}:{PORT}")
     try:
