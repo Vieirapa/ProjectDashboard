@@ -197,7 +197,7 @@ def init_db():
         # Garantir que o usuário admin seja realmente admin após upgrades/migrações
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE projects SET status='Em revisão' WHERE status='Bloqueado'")
-        conn.execute("UPDATE projects SET created_by=owner WHERE created_by='' AND owner<>'")
+        conn.execute("UPDATE projects SET created_by=owner WHERE created_by='' AND owner<>''")
 
 
 def audit(actor: str, action: str, target: str, details: str = ""):
