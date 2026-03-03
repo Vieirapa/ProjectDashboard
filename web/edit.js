@@ -105,7 +105,7 @@ async function loadVersions() {
       f.documentVersions.textContent = 'Sem versões ainda.';
       return;
     }
-    const items = d.versions.map(v => `<li><a href="/api/projects/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">v${v.version}</a> · ${v.document_status} · ${v.document_name} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
+    const items = d.versions.map(v => `<li><a href="/api/projects/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">v${v.version}</a> · ${v.document_status} · ${v.document_name} · usuário: ${v.created_by || '-'} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
     f.documentVersions.innerHTML = `<ul>${items}</ul>`;
   } catch (e) {
     if (e?.status === 404) {
