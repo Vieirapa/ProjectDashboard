@@ -61,7 +61,7 @@ Installer v2 includes:
 
 - system user/service setup (`projectdashboard`)
 - deployment to `/opt/projectdashboard`
-- systemd service enable/start
+- systemd service enable/start (auto-start on machine boot)
 - optional Nginx reverse proxy
 - optional Let's Encrypt HTTPS
 - daily backup timer

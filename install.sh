@@ -155,10 +155,25 @@ EOF
 systemctl daemon-reload
 systemctl enable --now projectdashboard.service
 
+# Ensure service is enabled for boot and active now
+if ! systemctl is-enabled projectdashboard.service >/dev/null 2>&1; then
+  echo "ERROR: projectdashboard.service is not enabled for boot."
+  echo "Run: sudo systemctl enable projectdashboard.service"
+  exit 1
+fi
+
+if ! systemctl is-active projectdashboard.service >/dev/null 2>&1; then
+  echo "ERROR: projectdashboard.service is not active after install."
+  echo "Run: sudo systemctl status projectdashboard --no-pager"
+  echo "Logs: sudo journalctl -u projectdashboard -n 120 --no-pager"
+  exit 1
+fi
+
 # Basic health check
 sleep 1
 if ! curl -fsS "http://127.0.0.1:${PORT}/api/me" >/dev/null 2>&1; then
-  echo "Warning: app health check failed on 127.0.0.1:${PORT}. Check: systemctl status projectdashboard"
+  echo "Warning: app health check failed on 127.0.0.1:${PORT}."
+  echo "Check: sudo systemctl status projectdashboard --no-pager"
 fi
 
 if [[ "$ENABLE_NGINX" == "yes" ]]; then
