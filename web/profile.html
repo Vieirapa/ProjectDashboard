@@ -39,17 +39,6 @@
           <label>Ramal</label>
           <input id="extension" placeholder="1234" />
 
-          <label style="margin-top:6px; font-weight:600;">Troca de senha</label>
-          <label>Senha atual</label>
-          <input id="currentPassword" type="password" placeholder="********" />
-          <label>Nova senha</label>
-          <input id="newPassword" type="password" placeholder="********" />
-          <label>Repita senha</label>
-          <input id="confirmPassword" type="password" placeholder="********" />
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button id="changePasswordBtn" type="button">Trocar senha</button>
-          </div>
-
           <label>Área de trabalho</label>
           <input id="work_area" placeholder="Ex.: Engenharia, Projetos, Qualidade" />
 
@@ -59,6 +48,20 @@
           <div class="dialog-actions" style="justify-content:flex-start;">
             <button id="saveBtn" type="submit">Salvar perfil</button>
           </div>
+
+          <div style="margin-top:16px; padding-top:12px; border-top:1px solid #e5e7eb;">
+            <h4 style="margin:0 0 8px;">Trocar senha</h4>
+            <label>Senha atual</label>
+            <input id="currentPassword" type="password" placeholder="********" />
+            <label>Nova senha</label>
+            <input id="newPassword" type="password" placeholder="********" />
+            <label>Repita senha</label>
+            <input id="confirmPassword" type="password" placeholder="********" />
+            <div class="dialog-actions" style="justify-content:flex-start;">
+              <button id="changePasswordBtn" type="button">Trocar senha</button>
+            </div>
+          </div>
+
           <p id="feedback" class="small"></p>
         </form>
       </section>
