@@ -117,20 +117,19 @@ async function loadReviewNotes() {
   reviewNotesHistory.querySelectorAll('.review-note-resolve').forEach((checkbox) => {
     checkbox.addEventListener('change', async (e) => {
       const input = e.currentTarget;
-      if (!input.checked) {
-        input.checked = true;
-        return;
-      }
+      const nextResolved = !!input.checked;
       try {
         await api(`/api/projects/${encodeURIComponent(slug)}/review-notes/${encodeURIComponent(input.dataset.noteId)}`, {
           method: 'PATCH',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ resolved: true })
+          body: JSON.stringify({ resolved: nextResolved })
         });
-        feedback.textContent = 'Item de revisão marcado como resolvido ✅';
+        feedback.textContent = nextResolved
+          ? 'Item de revisão marcado como resolvido ✅'
+          : 'Item de revisão retornou para pendente ↩️';
         await loadReviewNotes();
       } catch (err) {
-        input.checked = false;
+        input.checked = !nextResolved;
         feedback.textContent = err.message;
       }
     });

@@ -431,26 +431,31 @@ def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
     return True, "ok"
 
 
-def resolve_review_note(slug: str, note_id: int, actor: str) -> tuple[bool, str]:
+def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bool) -> tuple[bool, str]:
     proj = get_project(slug)
     if not proj:
         return False, "Projeto não encontrado"
     if (proj.get("status") or "").strip().lower() != "em revisão":
-        return False, "Notas só podem ser resolvidas quando o card estiver em 'em revisão'"
+        return False, "Notas só podem ser alteradas quando o card estiver em 'em revisão'"
 
     with db() as conn:
         row = conn.execute(
-            "SELECT id, is_resolved FROM review_notes WHERE id=? AND project_slug=?",
+            "SELECT id FROM review_notes WHERE id=? AND project_slug=?",
             (note_id, slug),
         ).fetchone()
         if not row:
             return False, "Nota não encontrada"
-        if int(row["is_resolved"] or 0) == 1:
-            return True, "ok"
-        conn.execute(
-            "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=? WHERE id=? AND project_slug=?",
-            (actor, now_iso(), note_id, slug),
-        )
+
+        if resolved:
+            conn.execute(
+                "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=? WHERE id=? AND project_slug=?",
+                (actor, now_iso(), note_id, slug),
+            )
+        else:
+            conn.execute(
+                "UPDATE review_notes SET is_resolved=0, resolved_by='', resolved_at='' WHERE id=? AND project_slug=?",
+                (note_id, slug),
+            )
     return True, "ok"
 
 
@@ -854,17 +859,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "invalid note id"})
 
             if not can_resolve_review_note(user["role"]):
-                return self._json(403, {"ok": False, "error": "Apenas desenhista ou admin pode marcar revisão como resolvida"})
+                return self._json(403, {"ok": False, "error": "Apenas desenhista ou admin pode alterar status da revisão"})
 
             ok, body = self._read_json()
             if not ok:
                 return self._json(400, {"ok": False, "error": body["error"]})
-            if body.get("resolved") is not True:
-                return self._json(400, {"ok": False, "error": "resolved=true is required"})
+            if "resolved" not in body or not isinstance(body.get("resolved"), bool):
+                return self._json(400, {"ok": False, "error": "resolved (boolean) is required"})
 
-            done, msg = resolve_review_note(slug, note_id, user["username"])
+            done, msg = set_review_note_resolution(slug, note_id, user["username"], bool(body.get("resolved")))
             if done:
-                audit(user["username"], "project.review_note.resolve", slug, json.dumps({"note_id": note_id}, ensure_ascii=False))
+                audit(user["username"], "project.review_note.status", slug, json.dumps({"note_id": note_id, "resolved": bool(body.get("resolved"))}, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/projects/"):
