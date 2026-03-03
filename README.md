@@ -82,6 +82,72 @@ sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 - `BACKUP_DIR` (default: `/var/backups/projectdashboard`)
 - `BACKUP_RETENTION_DAYS` (default: `14`)
 
+## Simple Ubuntu installation (step-by-step)
+
+Use this when you want the fastest setup on a fresh Ubuntu server.
+
+### 1) Connect to the server
+
+```bash
+ssh <your-user>@<your-server-ip>
+```
+
+### 2) Install Git (if needed)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git
+```
+
+### 3) Clone the repository
+
+```bash
+git clone https://github.com/Vieirapa/ProjectDashboard.git
+cd ProjectDashboard
+```
+
+### 4) Run the installer
+
+Basic install (no domain/HTTPS yet):
+
+```bash
+sudo ./install.sh
+```
+
+Install with domain + automatic HTTPS:
+
+```bash
+sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
+```
+
+### 5) Check that services are running
+
+```bash
+sudo systemctl status projectdashboard --no-pager
+sudo systemctl status nginx --no-pager
+sudo systemctl status projectdashboard-backup.timer --no-pager
+```
+
+### 6) Open firewall (if UFW is enabled)
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
+```
+
+### 7) Access the app
+
+- With domain: `https://dashboard.example.com/login.html`
+- Without domain: `http://<server-ip>/login.html` (or `http://<server-ip>:8765/login.html` if Nginx is disabled)
+
+### 8) First login
+
+- username: `admin`
+- password: `admin`
+
+Then immediately change the admin password.
+
 ## Full documentation
 
 See:
