@@ -148,6 +148,20 @@ sudo ufw enable
 
 Then immediately change the admin password.
 
+### 9) Configure email + periodic reports
+
+After login as admin, open:
+
+- `/settings.html`
+
+From there you can configure:
+
+- SMTP parameters (host, port, user, password, sender, TLS)
+- Invite default message template
+- SMTP test send
+- Default due-days behavior
+- Periodic report schedules
+
 ## SMTP setup for invite emails
 
 Detailed guide:

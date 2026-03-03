@@ -33,6 +33,17 @@ prompt_default() {
   fi
 }
 
+set_or_replace_env() {
+  local file="$1"; shift
+  local key="$1"; shift
+  local value="$1"; shift
+  if grep -qE "^${key}=" "$file" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+  else
+    echo "${key}=${value}" >> "$file"
+  fi
+}
+
 if [[ -t 0 ]]; then
   echo "=== Instalador ProjectDashboard v2 ==="
   prompt_default PORT "Application internal port" "$PORT"
@@ -88,13 +99,22 @@ if [[ "$ENABLE_NGINX" == "yes" ]]; then
   APP_HOST="127.0.0.1"
 fi
 
-cat > /etc/projectdashboard.env <<EOF
-PDASH_HOST=${APP_HOST}
-PDASH_PORT=${PORT}
-PDASH_INITIAL_PASSWORD=${ADMIN_PASSWORD}
-EOF
-chmod 640 /etc/projectdashboard.env
-chown root:"${APP_GROUP}" /etc/projectdashboard.env
+ENV_FILE="/etc/projectdashboard.env"
+touch "$ENV_FILE"
+set_or_replace_env "$ENV_FILE" "PDASH_HOST" "${APP_HOST}"
+set_or_replace_env "$ENV_FILE" "PDASH_PORT" "${PORT}"
+set_or_replace_env "$ENV_FILE" "PDASH_INITIAL_PASSWORD" "${ADMIN_PASSWORD}"
+
+# Preserve existing SMTP settings if already configured; seed empty keys when missing.
+set_or_replace_env "$ENV_FILE" "PDASH_SMTP_HOST" "$(grep -E '^PDASH_SMTP_HOST=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+set_or_replace_env "$ENV_FILE" "PDASH_SMTP_PORT" "$(grep -E '^PDASH_SMTP_PORT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo 587)"
+set_or_replace_env "$ENV_FILE" "PDASH_SMTP_USER" "$(grep -E '^PDASH_SMTP_USER=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+set_or_replace_env "$ENV_FILE" "PDASH_SMTP_PASS" "$(grep -E '^PDASH_SMTP_PASS=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+set_or_replace_env "$ENV_FILE" "PDASH_SMTP_FROM" "$(grep -E '^PDASH_SMTP_FROM=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+set_or_replace_env "$ENV_FILE" "PDASH_SMTP_TLS" "$(grep -E '^PDASH_SMTP_TLS=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo true)"
+
+chmod 640 "$ENV_FILE"
+chown root:"${APP_GROUP}" "$ENV_FILE"
 
 echo "[5/9] Inicializando banco e garantindo admin/admin..."
 sudo -u "${APP_USER}" bash -lc "cd '${INSTALL_DIR}' && '${INSTALL_DIR}/.venv/bin/python' - <<'PY'
@@ -130,6 +150,12 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now projectdashboard.service
+
+# Basic health check
+sleep 1
+if ! curl -fsS "http://127.0.0.1:${PORT}/api/me" >/dev/null 2>&1; then
+  echo "Warning: app health check failed on 127.0.0.1:${PORT}. Check: systemctl status projectdashboard"
+fi
 
 if [[ "$ENABLE_NGINX" == "yes" ]]; then
   echo "[7/9] Configurando Nginx reverse proxy..."
@@ -244,3 +270,4 @@ fi
 echo "Initial user: ${ADMIN_USER}"
 echo "Initial password: ${ADMIN_PASSWORD}"
 echo "Change the admin password on first login."
+echo "After login as admin, use /settings.html to configure SMTP and periodic reports."

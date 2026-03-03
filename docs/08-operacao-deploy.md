@@ -22,11 +22,13 @@ Installer output includes:
 
 - deployment to `/opt/projectdashboard`
 - `projectdashboard.service` enabled at boot
-- environment file at `/etc/projectdashboard.env`
+- environment file at `/etc/projectdashboard.env` (preserves SMTP keys on reinstall)
 - optional Nginx reverse proxy
 - optional Let's Encrypt HTTPS
 - daily backup timer (`projectdashboard-backup.timer`)
 - bootstrap admin account: `admin` / `admin`
+
+After first login as admin, configure operational settings in `/settings.html` (SMTP, defaults, periodic reports).
 
 ## Manual execution
 
