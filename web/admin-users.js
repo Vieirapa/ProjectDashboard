@@ -21,6 +21,13 @@ async function ensureAdmin() {
   whoami.textContent = `${d.user.username} (${d.user.role})`;
 }
 
+async function loadSettingsDefaults() {
+  const d = await api('/api/admin/settings');
+  const msg = d.settings?.['invite.default_message']?.value || '';
+  const inviteMessage = document.getElementById('inviteMessage');
+  if (inviteMessage && msg) inviteMessage.value = msg;
+}
+
 async function updateRole(username, role) {
   await api(`/api/admin/users/${encodeURIComponent(username)}`, {
     method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ role })
@@ -172,6 +179,7 @@ logoutBtn.onclick = async () => { await api('/api/logout',{method:'POST'}); loca
 (async()=>{
   try {
     await ensureAdmin();
+    await loadSettingsDefaults();
     await loadUsers();
     await loadAudit();
   } catch {

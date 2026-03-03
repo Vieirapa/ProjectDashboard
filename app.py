@@ -232,6 +232,8 @@ def init_db():
             ("smtp.pass", ""),
             ("smtp.from", ""),
             ("smtp.tls", "true"),
+            ("invite.default_message", "Olá!\n\nVocê foi convidado(a) para acessar o ProjectDashboard.\n\nUse este link para concluir seu cadastro:\n{invite_link}\n\nEste convite expira em: {expires_at}\n\nBem-vindo(a) ao sistema!"),
+            ("workflow.default_due_days", "7"),
         ]:
             conn.execute(
                 "INSERT OR IGNORE INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, '', '')",
@@ -346,7 +348,7 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
         "status": payload.get("status") if payload.get("status") in STATUSES else "Backlog",
         "priority": payload.get("priority") if payload.get("priority") in PRIORITIES else "Média",
         "owner": (payload.get("owner") or "").strip(),
-        "dueDate": (payload.get("dueDate") or "").strip(),
+        "dueDate": (payload.get("dueDate") or "").strip() or default_due_date_iso(),
         "description": (payload.get("description") or "Sem descrição").strip(),
         "path": str(proj_dir),
         "updatedAt": now_iso(),
@@ -373,6 +375,7 @@ def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
     p = get_project(slug)
     if not p:
         return False, "Projeto não encontrado"
+    old_status = p.get("status")
     if "name" in payload and str(payload["name"]).strip():
         p["name"] = str(payload["name"]).strip()
     if "status" in payload and payload["status"] in STATUSES:
@@ -383,6 +386,9 @@ def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
         p["owner"] = str(payload["owner"]).strip()
     if "dueDate" in payload:
         p["dueDate"] = str(payload["dueDate"]).strip()
+
+    if p.get("status") != old_status and "dueDate" not in payload:
+        p["dueDate"] = default_due_date_iso()
     if "description" in payload:
         p["description"] = str(payload["description"]).strip() or "Sem descrição"
     p["updatedAt"] = now_iso()
@@ -421,7 +427,8 @@ def get_admin_settings() -> dict:
 
 def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
     allowed = {
-        "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls"
+        "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls",
+        "invite.default_message", "workflow.default_due_days"
     }
     incoming = {k: str(v) for k, v in (payload or {}).items() if k in allowed}
     if not incoming:
@@ -438,6 +445,14 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
     if "smtp.tls" in incoming:
         incoming["smtp.tls"] = "true" if incoming["smtp.tls"].strip().lower() in {"1", "true", "yes", "on"} else "false"
 
+    if "workflow.default_due_days" in incoming:
+        try:
+            days = int(incoming["workflow.default_due_days"])
+            if days < 0 or days > 3650:
+                return False, "workflow.default_due_days inválido"
+        except Exception:
+            return False, "workflow.default_due_days inválido"
+
     with db() as conn:
         for key, value in incoming.items():
             conn.execute(
@@ -452,6 +467,17 @@ def _setting(settings: dict, key: str, env_name: str, default: str = "") -> str:
     row = settings.get(key) if isinstance(settings, dict) else None
     val = (row.get("value") if isinstance(row, dict) else "") if row else ""
     return (val or os.getenv(env_name, default) or default).strip()
+
+
+def default_due_date_iso() -> str:
+    settings = get_admin_settings()
+    raw = _setting(settings, "workflow.default_due_days", "PDASH_DEFAULT_DUE_DAYS", "7")
+    try:
+        days = int(raw)
+    except Exception:
+        days = 7
+    days = max(0, min(days, 3650))
+    return (datetime.utcnow() + timedelta(days=days)).date().isoformat()
 
 
 def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
@@ -938,6 +964,24 @@ class Handler(BaseHTTPRequestHandler):
                 audit(user["username"], "project.review_note.create", slug, "note_added")
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
+        if p == "/api/admin/settings/test-smtp":
+            admin = self._require_admin()
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            to_email = str(body.get("to") or "").strip()
+            if not to_email:
+                return self._json(400, {"ok": False, "error": "E-mail de destino é obrigatório"})
+            done, msg = send_invite_email(
+                to_email,
+                "ProjectDashboard SMTP test",
+                "Olá!\n\nEste é um teste de SMTP enviado pela área de Configurações do ProjectDashboard.\n",
+            )
+            if done:
+                audit(admin["username"], "admin.settings.smtp_test", to_email)
+                return self._json(200, {"ok": True})
+            return self._json(400, {"ok": False, "error": msg})
+
         if p == "/api/admin/users":
             admin = self._require_admin()
             if not admin: return
@@ -972,9 +1016,11 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("INSERT INTO invites (token,role,created_by,expires_at,created_at) VALUES (?,?,?,?,?)",
                              (token, role, admin["username"], exp, now_iso()))
 
+            settings = get_admin_settings()
             email_to = str(body.get("email") or "").strip()
             send_email = bool(body.get("sendEmail"))
-            message_text = str(body.get("message") or "").strip()
+            default_message = _setting(settings, "invite.default_message", "PDASH_INVITE_DEFAULT_MESSAGE", "")
+            message_text = str(body.get("message") or "").strip() or default_message
             email_status = "not_requested"
 
             if send_email:

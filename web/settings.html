@@ -37,10 +37,30 @@
           <label>From (remetente)</label><input id="smtp_from" placeholder="noreply@empresa.com" />
           <label class="inline-check"><input id="smtp_tls" type="checkbox" /><span>Usar TLS</span></label>
 
+          <label>Mensagem padrão de convite</label>
+          <textarea id="invite_default_message" rows="7" placeholder="Use {invite_link} e {expires_at} para placeholders"></textarea>
+
+          <label>E-mail para teste SMTP</label>
+          <input id="smtp_test_to" type="email" placeholder="voce@empresa.com" />
+
           <div class="dialog-actions" style="justify-content:flex-start;">
             <button type="submit">Salvar configurações</button>
+            <button type="button" id="testSmtpBtn" class="secondary">Testar SMTP</button>
           </div>
           <p id="feedback" class="small"></p>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h3>Comportamento do sistema</h3>
+        <form id="workflowForm" class="form-grid" style="max-width:760px;">
+          <label>Prazo padrão (dias)</label>
+          <input id="default_due_days" type="number" min="0" max="3650" placeholder="7" />
+          <p class="small">Regra: ao criar um card (ou alterar status sem informar prazo manual), o prazo será recalculado para hoje + X dias.</p>
+          <div class="dialog-actions" style="justify-content:flex-start;">
+            <button type="submit">Salvar comportamento</button>
+          </div>
+          <p id="workflowFeedback" class="small"></p>
         </form>
       </section>
     </main>
