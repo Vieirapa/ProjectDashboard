@@ -7,6 +7,7 @@ const feedback = document.getElementById('feedback');
 const workflowFeedback = document.getElementById('workflowFeedback');
 const reportFeedback = document.getElementById('reportFeedback');
 const reportsList = document.getElementById('reportsList');
+const reportPreview = document.getElementById('reportPreview');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
 
 const f = {
@@ -35,7 +36,11 @@ let meta = { statuses: [], roles: [] };
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || 'Erro');
+  if (!r.ok) {
+    const err = new Error(d.error || 'Erro');
+    err.data = d;
+    throw err;
+  }
   return d;
 }
 
@@ -99,10 +104,13 @@ async function loadReports() {
   reportsList.querySelectorAll('[data-run]').forEach((btn) => {
     btn.onclick = async () => {
       try {
-        await api(`/api/admin/reports/${btn.dataset.run}/run`, { method: 'POST' });
-        reportFeedback.textContent = 'Relatório executado manualmente ✅';
+        const d = await api(`/api/admin/reports/${btn.dataset.run}/run`, { method: 'POST' });
+        reportPreview.value = d.previewText || '';
+        reportFeedback.textContent = `Relatório executado manualmente ✅ (destinatários: ${d.recipients ?? 0})`;
       } catch (e) {
-        reportFeedback.textContent = e.message;
+        const msg = String(e.message || 'Erro');
+        if (e?.data?.previewText) reportPreview.value = e.data.previewText;
+        reportFeedback.textContent = msg;
       }
     };
   });

@@ -652,22 +652,31 @@ def _render_report_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
-def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]:
+def compose_periodic_report_email(report: dict) -> tuple[str, str, list[sqlite3.Row]]:
     roles = report.get("roles") or []
-    if not roles:
-        return False, "sem perfis de destino"
-    with db() as conn:
-        users = conn.execute(
-            "SELECT username, role, email FROM users WHERE role IN ({}) AND email<>''".format(",".join(["?"] * len(roles))),
-            tuple(roles),
-        ).fetchall()
-    if not users:
-        return False, "nenhum usuário com email encontrado para os perfis selecionados"
+    users = []
+    if roles:
+        with db() as conn:
+            users = conn.execute(
+                "SELECT username, role, email FROM users WHERE role IN ({}) AND email<>''".format(",".join(["?"] * len(roles))),
+                tuple(roles),
+            ).fetchall()
 
     md = _render_report_markdown(report)
     msg = (report.get("message") or "").strip()
     email_body = f"{msg}\n\n---\n\n{md}" if msg else md
     subject = f"[ProjectDashboard] {report.get('name','Periodic Report')}"
+    return subject, email_body, users
+
+
+def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]:
+    roles = report.get("roles") or []
+    if not roles:
+        return False, "sem perfis de destino"
+
+    subject, email_body, users = compose_periodic_report_email(report)
+    if not users:
+        return False, "nenhum usuário com email encontrado para os perfis selecionados"
 
     sent = 0
     for u in users:
@@ -1199,10 +1208,13 @@ class Handler(BaseHTTPRequestHandler):
             reports = [r for r in list_periodic_reports() if int(r.get("id") or 0) == rid]
             if not reports:
                 return self._json(404, {"ok": False, "error": "Relatório não encontrado"})
-            done, msg = run_periodic_report(reports[0], admin["username"])
+            report = reports[0]
+            subject, preview_text, recipients = compose_periodic_report_email(report)
+            done, msg = run_periodic_report(report, admin["username"])
             if done:
                 audit(admin["username"], "report.periodic.run.manual", str(rid), msg)
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+                return self._json(200, {"ok": True, "subject": subject, "previewText": preview_text, "recipients": len(recipients), "message": msg})
+            return self._json(400, {"ok": False, "error": msg, "subject": subject, "previewText": preview_text, "recipients": len(recipients)})
 
         if p == "/api/admin/users":
             admin = self._require_admin()
