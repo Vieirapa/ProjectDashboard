@@ -76,6 +76,10 @@ function canEditReviewNotes() {
   return canAddReviewNotes() && (f.status.value || '').trim().toLowerCase() === 'em revisão';
 }
 
+function canResolveReviewNotes() {
+  return (me?.role || '') === 'desenhista' && (f.status.value || '').trim().toLowerCase() === 'em revisão';
+}
+
 function updateReviewNotesAvailability() {
   const enabled = canEditReviewNotes();
   reviewNoteInput.disabled = !enabled;
@@ -91,12 +95,46 @@ async function loadReviewNotes() {
     reviewNotesHistory.textContent = 'Sem notas registradas.';
     return;
   }
-  reviewNotesHistory.innerHTML = d.notes.map((n) => `
-    <div class="note-item">
-      <div><b>usuário:</b> ${n.created_by} <span style="float:right"><b>data:</b> ${new Date(n.created_at).toLocaleString('pt-BR')}</span></div>
-      <div style="white-space:pre-wrap">${n.note}</div>
-    </div>
-  `).join('');
+
+  const canResolve = canResolveReviewNotes();
+  reviewNotesHistory.innerHTML = d.notes.map((n) => {
+    const resolved = Number(n.is_resolved || 0) === 1;
+    const createdAt = n.created_at ? new Date(n.created_at).toLocaleString('pt-BR') : '-';
+    const resolvedAt = n.resolved_at ? new Date(n.resolved_at).toLocaleString('pt-BR') : '-';
+    return `
+      <div class="note-item" style="margin-bottom:8px; padding:8px; border:1px solid #ddd; border-radius:8px;">
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <input type="checkbox" class="review-note-resolve" data-note-id="${n.id}" ${resolved ? 'checked' : ''} ${(!canResolve || resolved) ? 'disabled' : ''} />
+          <b>${resolved ? 'RESOLVIDO' : 'PENDENTE'}</b>
+        </label>
+        <div><b>usuário:</b> ${n.created_by} <span style="float:right"><b>criado em:</b> ${createdAt}</span></div>
+        <div style="white-space:pre-wrap; margin-top:4px;">${n.note}</div>
+        <div style="margin-top:6px;"><b>resolvido por:</b> ${n.resolved_by || '-'} <span style="float:right"><b>resolvido em:</b> ${resolvedAt}</span></div>
+      </div>
+    `;
+  }).join('');
+
+  reviewNotesHistory.querySelectorAll('.review-note-resolve').forEach((checkbox) => {
+    checkbox.addEventListener('change', async (e) => {
+      const input = e.currentTarget;
+      if (!input.checked) {
+        input.checked = true;
+        return;
+      }
+      try {
+        await api(`/api/projects/${encodeURIComponent(slug)}/review-notes/${encodeURIComponent(input.dataset.noteId)}`, {
+          method: 'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ resolved: true })
+        });
+        feedback.textContent = 'Item de revisão marcado como resolvido ✅';
+        await loadReviewNotes();
+      } catch (err) {
+        input.checked = false;
+        feedback.textContent = err.message;
+      }
+    });
+  });
 }
 
 async function loadVersions() {

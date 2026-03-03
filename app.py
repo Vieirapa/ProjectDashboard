@@ -99,6 +99,10 @@ def can_add_review_note(role: str) -> bool:
     return role in {"admin", "member", "desenhista", "revisor"}
 
 
+def can_resolve_review_note(role: str) -> bool:
+    return role == "desenhista"
+
+
 def can_delete_project(role: str, user: str, project: dict) -> bool:
     if role == "admin":
         return True
@@ -175,7 +179,10 @@ def init_db():
                 project_slug TEXT NOT NULL,
                 note TEXT NOT NULL,
                 created_by TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                resolved_by TEXT NOT NULL DEFAULT '',
+                resolved_at TEXT NOT NULL DEFAULT '',
+                is_resolved INTEGER NOT NULL DEFAULT 0
             )
         """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
@@ -184,6 +191,9 @@ def init_db():
         ensure_column(conn, "projects", "document_mime", "document_mime TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "projects", "document_path", "document_path TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "projects", "created_by", "created_by TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
 
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
             pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin123")
@@ -392,7 +402,7 @@ def list_review_notes(slug: str) -> list[dict]:
     with db() as conn:
         rows = conn.execute(
             """
-            SELECT id, note, created_by, created_at
+            SELECT id, note, created_by, created_at, resolved_by, resolved_at, is_resolved
             FROM review_notes
             WHERE project_slug=?
             ORDER BY id DESC
@@ -417,6 +427,29 @@ def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
         conn.execute(
             "INSERT INTO review_notes (project_slug, note, created_by, created_at) VALUES (?, ?, ?, ?)",
             (slug, clean_note, actor, now_iso()),
+        )
+    return True, "ok"
+
+
+def resolve_review_note(slug: str, note_id: int, actor: str) -> tuple[bool, str]:
+    proj = get_project(slug)
+    if not proj:
+        return False, "Projeto não encontrado"
+    if (proj.get("status") or "").strip().lower() != "em revisão":
+        return False, "Notas só podem ser resolvidas quando o card estiver em 'em revisão'"
+
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id, is_resolved FROM review_notes WHERE id=? AND project_slug=?",
+            (note_id, slug),
+        ).fetchone()
+        if not row:
+            return False, "Nota não encontrada"
+        if int(row["is_resolved"] or 0) == 1:
+            return True, "ok"
+        conn.execute(
+            "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=? WHERE id=? AND project_slug=?",
+            (actor, now_iso(), note_id, slug),
         )
     return True, "ok"
 
@@ -806,6 +839,34 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PATCH(self):
         p = urlparse(self.path).path
+
+        if p.startswith("/api/projects/") and "/review-notes/" in p:
+            user = self._require_auth()
+            if not user: return
+            parts = p.strip("/").split("/")
+            # /api/projects/{slug}/review-notes/{id}
+            if len(parts) != 5 or parts[0] != "api" or parts[1] != "projects" or parts[3] != "review-notes":
+                return self._json(404, {"ok": False, "error": "not found"})
+            slug = parts[2]
+            try:
+                note_id = int(parts[4])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "invalid note id"})
+
+            if not can_resolve_review_note(user["role"]):
+                return self._json(403, {"ok": False, "error": "Apenas desenhista pode marcar revisão como resolvida"})
+
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body["error"]})
+            if body.get("resolved") is not True:
+                return self._json(400, {"ok": False, "error": "resolved=true is required"})
+
+            done, msg = resolve_review_note(slug, note_id, user["username"])
+            if done:
+                audit(user["username"], "project.review_note.resolve", slug, json.dumps({"note_id": note_id}, ensure_ascii=False))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
         if p.startswith("/api/projects/"):
             user = self._require_auth()
             if not user: return
