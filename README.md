@@ -56,6 +56,25 @@ Depois abra no navegador:
 
 - `http://127.0.0.1:8765/login.html`
 
+## Instalador para servidor (multiusuário)
+
+Para instalar em servidor Linux (Ubuntu/Debian) com serviço systemd:
+
+```bash
+cd /caminho/ProjectDashboard
+sudo ./install.sh
+```
+
+O instalador:
+- cria usuário de serviço `projectdashboard`
+- instala app em `/opt/projectdashboard`
+- cria/ativa serviço `projectdashboard.service`
+- garante usuário inicial:
+  - login: `admin`
+  - senha: `admin`
+
+> Após o primeiro login, troque a senha do admin.
+
 ## Estrutura esperada dos projetos
 
 Os projetos continuam na pasta:

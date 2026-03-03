@@ -1,5 +1,23 @@
 # 08 — Operação e Deploy
 
+## Instalação automatizada (servidor)
+
+Script:
+- `install.sh`
+
+Exemplo:
+
+```bash
+cd /caminho/ProjectDashboard
+sudo ./install.sh
+```
+
+Resultado da instalação:
+- app copiado para `/opt/projectdashboard`
+- serviço `projectdashboard.service` habilitado no boot
+- arquivo de ambiente em `/etc/projectdashboard.env`
+- usuário inicial garantido: `admin` / `admin`
+
 ## Execução manual
 
 ```bash
