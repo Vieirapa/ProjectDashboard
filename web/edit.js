@@ -103,14 +103,14 @@ async function loadVersions() {
   try {
     const d = await api(`/api/projects/${encodeURIComponent(slug)}/document/versions`);
     if (!d.versions?.length) {
-      f.documentVersions.textContent = 'Sem versões ainda.';
+      f.documentVersions.textContent = 'Sem revisões ainda.';
       return;
     }
-    const items = d.versions.map(v => `<li><a href="/api/projects/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">v${v.version}</a> · ${v.document_status} · ${v.document_name} · usuário: ${v.created_by || '-'} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
+    const items = d.versions.map(v => `<li><a href="/api/projects/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">r${v.version}</a> · ${v.document_status} · ${v.document_name} · usuário: ${v.created_by || '-'} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
     f.documentVersions.innerHTML = `<ul>${items}</ul>`;
   } catch (e) {
     if (e?.status === 404) {
-      f.documentVersions.textContent = 'Histórico indisponível (reinicie o backend para ativar versionamento híbrido).';
+      f.documentVersions.textContent = 'Histórico indisponível (reinicie o backend para ativar controle de revisões).';
       return;
     }
     throw e;
