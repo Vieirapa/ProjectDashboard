@@ -163,6 +163,68 @@ From there you can configure:
 - Default due-days behavior
 - Periodic report schedules
 
+## Post-install access checklist (VM + host machine)
+
+Use this checklist to validate that installation and networking are working.
+
+### A) Validate services inside the Ubuntu VM
+
+```bash
+sudo systemctl status projectdashboard --no-pager
+sudo systemctl status nginx --no-pager
+sudo ss -ltnp | grep -E ':80|:8765' || true
+curl -i http://127.0.0.1/
+```
+
+Expected:
+
+- `projectdashboard`: active (running)
+- `nginx`: active (running)
+- port `80` listening (nginx)
+- `curl http://127.0.0.1/` returns HTTP 200 (not 502)
+
+If `projectdashboard` fails:
+
+```bash
+sudo journalctl -u projectdashboard -n 120 --no-pager
+```
+
+### B) Validate host -> VM access (VirtualBox)
+
+#### Option 1: NAT mode (requires port forwarding)
+
+Create a NAT rule in VirtualBox:
+
+- Host Port: `8080`
+- Guest Port: `80`
+- Protocol: `TCP`
+
+Then access from host machine:
+
+- `http://127.0.0.1:8080/`
+
+#### Option 2: Bridged Adapter mode
+
+Get VM IP:
+
+```bash
+ip a
+```
+
+Then access from host machine:
+
+- `http://<VM_IP>/`
+
+### C) Firewall check (inside VM)
+
+If UFW is enabled:
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'
+sudo ufw status
+```
+
 ## SMTP setup for invite emails
 
 Detailed guide:
