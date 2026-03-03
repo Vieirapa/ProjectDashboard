@@ -104,7 +104,7 @@ async function loadReviewNotes() {
     return `
       <div class="note-item" style="margin-bottom:8px; padding:8px; border:1px solid #ddd; border-radius:8px;">
         <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-          <input type="checkbox" class="review-note-resolve" data-note-id="${n.id}" ${resolved ? 'checked' : ''} ${(!canResolve || resolved) ? 'disabled' : ''} />
+          <input type="checkbox" class="review-note-resolve" data-note-id="${n.id}" ${resolved ? 'checked' : ''} ${!canResolve ? 'disabled' : ''} />
           <b>${resolved ? 'RESOLVIDO' : 'PENDENTE'}</b>
         </label>
         <div><b>usuário:</b> ${n.created_by} <span style="float:right"><b>criado em:</b> ${createdAt}</span></div>
