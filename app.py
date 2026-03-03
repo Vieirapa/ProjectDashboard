@@ -187,6 +187,14 @@ def init_db():
                 is_resolved INTEGER NOT NULL DEFAULT 0
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT '',
+                updated_by TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT ''
+            )
+        """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
         ensure_column(conn, "projects", "document_status", "document_status TEXT NOT NULL DEFAULT 'aguardando edição'")
         ensure_column(conn, "projects", "document_name", "document_name TEXT NOT NULL DEFAULT ''")
@@ -216,6 +224,19 @@ def init_db():
         conn.execute("UPDATE projects SET status='Em revisão' WHERE status='Bloqueado'")
         conn.execute("UPDATE projects SET document_status=status")
         conn.execute("UPDATE projects SET created_by=owner WHERE created_by='' AND owner<>''")
+
+        for k, v in [
+            ("smtp.host", ""),
+            ("smtp.port", "587"),
+            ("smtp.user", ""),
+            ("smtp.pass", ""),
+            ("smtp.from", ""),
+            ("smtp.tls", "true"),
+        ]:
+            conn.execute(
+                "INSERT OR IGNORE INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, '', '')",
+                (k, v),
+            )
 
 
 def audit(actor: str, action: str, target: str, details: str = ""):
@@ -392,16 +413,58 @@ def ensure_docs_repo() -> tuple[bool, str]:
     return True, "ok"
 
 
+def get_admin_settings() -> dict:
+    with db() as conn:
+        rows = conn.execute("SELECT key, value, updated_by, updated_at FROM app_settings ORDER BY key").fetchall()
+    return {r["key"]: {"value": r["value"], "updated_by": r["updated_by"], "updated_at": r["updated_at"]} for r in rows}
+
+
+def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
+    allowed = {
+        "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls"
+    }
+    incoming = {k: str(v) for k, v in (payload or {}).items() if k in allowed}
+    if not incoming:
+        return False, "Nenhuma configuração válida enviada"
+
+    if "smtp.port" in incoming:
+        try:
+            p = int(incoming["smtp.port"])
+            if p <= 0 or p > 65535:
+                return False, "smtp.port inválida"
+        except Exception:
+            return False, "smtp.port inválida"
+
+    if "smtp.tls" in incoming:
+        incoming["smtp.tls"] = "true" if incoming["smtp.tls"].strip().lower() in {"1", "true", "yes", "on"} else "false"
+
+    with db() as conn:
+        for key, value in incoming.items():
+            conn.execute(
+                "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+                (key, value, actor, now_iso()),
+            )
+    return True, "ok"
+
+
+def _setting(settings: dict, key: str, env_name: str, default: str = "") -> str:
+    row = settings.get(key) if isinstance(settings, dict) else None
+    val = (row.get("value") if isinstance(row, dict) else "") if row else ""
+    return (val or os.getenv(env_name, default) or default).strip()
+
+
 def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
-    host = os.getenv("PDASH_SMTP_HOST", "").strip()
-    port = int(os.getenv("PDASH_SMTP_PORT", "587"))
-    user = os.getenv("PDASH_SMTP_USER", "").strip()
-    password = os.getenv("PDASH_SMTP_PASS", "").strip()
-    sender = os.getenv("PDASH_SMTP_FROM", user or "")
-    use_tls = os.getenv("PDASH_SMTP_TLS", "true").strip().lower() not in {"0", "false", "no"}
+    settings = get_admin_settings()
+    host = _setting(settings, "smtp.host", "PDASH_SMTP_HOST", "")
+    port = int(_setting(settings, "smtp.port", "PDASH_SMTP_PORT", "587") or "587")
+    user = _setting(settings, "smtp.user", "PDASH_SMTP_USER", "")
+    password = _setting(settings, "smtp.pass", "PDASH_SMTP_PASS", "")
+    sender = _setting(settings, "smtp.from", "PDASH_SMTP_FROM", user or "")
+    use_tls = _setting(settings, "smtp.tls", "PDASH_SMTP_TLS", "true").lower() not in {"0", "false", "no"}
 
     if not host or not sender:
-        return False, "SMTP não configurado (defina PDASH_SMTP_HOST e PDASH_SMTP_FROM)"
+        return False, "SMTP não configurado (defina host e remetente em Configurações)"
 
     msg = EmailMessage()
     msg["From"] = sender
@@ -693,7 +756,15 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/edit.html": return self._serve(WEB_DIR / "edit.html", "text/html; charset=utf-8")
         if p == "/admin-users.html": return self._serve(WEB_DIR / "admin-users.html", "text/html; charset=utf-8")
         if p == "/profile.html": return self._serve(WEB_DIR / "profile.html", "text/html; charset=utf-8")
-        if p in ["/app.js", "/edit.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/styles.css"]:
+        if p == "/settings.html":
+            u = self._user()
+            if not u or u.get("role") != "admin":
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            return self._serve(WEB_DIR / "settings.html", "text/html; charset=utf-8")
+        if p in ["/app.js", "/edit.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
             ctype = "application/javascript; charset=utf-8" if p.endswith(".js") else "text/css; charset=utf-8"
             return self._serve(WEB_DIR / p.lstrip("/"), ctype)
 
@@ -785,6 +856,10 @@ class Handler(BaseHTTPRequestHandler):
                         "associated_tasks": task_count,
                     })
             return self._json(200, {"ok": True, "users": users, "roles": ROLES})
+
+        if p == "/api/admin/settings":
+            if not self._require_admin(): return
+            return self._json(200, {"ok": True, "settings": get_admin_settings()})
 
         if p == "/api/admin/audit":
             if not self._require_admin(): return
@@ -968,6 +1043,16 @@ class Handler(BaseHTTPRequestHandler):
             done, msg = update_user_profile(user["username"], body)
             if done:
                 audit(user["username"], "user.profile.update", user["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p == "/api/admin/settings":
+            admin = self._require_admin()
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = update_admin_settings(body, admin["username"])
+            if done:
+                audit(admin["username"], "admin.settings.update", "app_settings", json.dumps({k: ("***" if "pass" in k else v) for k, v in body.items()}, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/projects/") and "/review-notes/" in p:

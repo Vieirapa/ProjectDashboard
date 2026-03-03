@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Configurações</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>ProjectDashboard</h2>
+      <div class="side-group">Workspace</div>
+      <a class="side-link" href="/">Kanban</a>
+      <a class="side-link" href="/profile.html">Meu perfil</a>
+      <div class="side-group">Administração</div>
+      <a class="side-link" href="/admin-users.html">Usuários & Convites</a>
+      <a class="side-link active" href="/settings.html">Configurações</a>
+      <div class="side-foot" id="whoami"></div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <h1>⚙️ Configurações do Sistema</h1>
+        <div class="header-actions">
+          <button id="logoutBtn" class="secondary">Logout</button>
+        </div>
+      </header>
+
+      <section class="panel">
+        <h3>Envio de e-mails (SMTP)</h3>
+        <form id="smtpForm" class="form-grid" style="max-width:760px;">
+          <label>SMTP Host</label><input id="smtp_host" placeholder="smtp.seuprovedor.com" />
+          <label>SMTP Port</label><input id="smtp_port" placeholder="587" />
+          <label>SMTP User</label><input id="smtp_user" placeholder="noreply@empresa.com" />
+          <label>SMTP Password</label><input id="smtp_pass" type="password" placeholder="senha/app password" />
+          <label>From (remetente)</label><input id="smtp_from" placeholder="noreply@empresa.com" />
+          <label class="inline-check"><input id="smtp_tls" type="checkbox" /><span>Usar TLS</span></label>
+
+          <div class="dialog-actions" style="justify-content:flex-start;">
+            <button type="submit">Salvar configurações</button>
+          </div>
+          <p id="feedback" class="small"></p>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="/settings.js"></script>
+</body>
+</html>

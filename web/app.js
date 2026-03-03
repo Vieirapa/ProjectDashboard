@@ -3,6 +3,7 @@ const refreshBtn = document.getElementById('refreshBtn');
 const newBtn = document.getElementById('newBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const usersLink = document.getElementById('usersLink');
+const settingsLink = document.getElementById('settingsLink');
 const whoami = document.getElementById('whoami');
 
 const searchInput = document.getElementById('searchInput');
@@ -36,6 +37,7 @@ async function loadMe() {
   me = data.user;
   whoami.textContent = `${me.username} (${me.role})`;
   usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
+  settingsLink.style.display = me.role === 'admin' ? 'block' : 'none';
   newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
 }
 

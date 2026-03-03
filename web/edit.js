@@ -1,5 +1,6 @@
 const slug = new URLSearchParams(location.search).get('slug');
 const usersLink = document.getElementById('usersLink');
+const settingsLink = document.getElementById('settingsLink');
 const whoami = document.getElementById('whoami');
 const backBtn = document.getElementById('backBtn');
 const logoutBtn = document.getElementById('logoutBtn');
@@ -69,6 +70,7 @@ async function initMe() {
   me = d.user;
   whoami.textContent = `${me.username} (${me.role})`;
   usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
+  settingsLink.style.display = me.role === 'admin' ? 'block' : 'none';
   deleteBtn.style.display = 'none';
 }
 

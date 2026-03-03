@@ -1,4 +1,5 @@
 const usersLink = document.getElementById('usersLink');
+const settingsLink = document.getElementById('settingsLink');
 const whoami = document.getElementById('whoami');
 const logoutBtn = document.getElementById('logoutBtn');
 const form = document.getElementById('profileForm');
@@ -31,6 +32,7 @@ async function loadMe() {
   me = d.user;
   whoami.textContent = `${me.username} (${me.role})`;
   usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
+  settingsLink.style.display = me.role === 'admin' ? 'block' : 'none';
 }
 
 async function loadProfile() {
