@@ -27,7 +27,7 @@ button:disabled {
 #filters { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 10px; padding: 12px 14px; background: #fff; border-bottom: 1px solid #e5e7eb; }
 #filters input, #filters select, dialog input, dialog select, dialog textarea,
 .auth-card input, .auth-card textarea, .edit-form input, .edit-form select, .edit-form textarea,
-.form-grid input, .form-grid select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.form-grid input, .form-grid select, .form-grid textarea { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
 
 #board { padding: 14px; display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; }
 .column { background: #e5e7eb; border-radius: 10px; padding: 10px; min-height: 360px; }
