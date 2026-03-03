@@ -41,6 +41,28 @@ def now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
+def _parse_iso_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    v = str(value).strip()
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(v.replace("Z", ""))
+    except Exception:
+        return None
+
+
+def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[str, int]:
+    opened = _parse_iso_date(opened_at) or datetime.utcnow()
+    if status == "Concluído" and released_at:
+        released = _parse_iso_date(released_at) or datetime.utcnow()
+        days = max(0, (released.date() - opened.date()).days)
+        return "DIAS PARA SOLUÇÃO", days
+    days = max(0, (datetime.utcnow().date() - opened.date()).days)
+    return "DIAS DESDE ABERTURA", days
+
+
 def slugify(name: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name.strip())
     slug = re.sub(r"-+", "-", slug).strip("-")
@@ -222,6 +244,8 @@ def init_db():
         ensure_column(conn, "projects", "document_mime", "document_mime TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "projects", "document_path", "document_path TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "projects", "created_by", "created_by TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "projects", "opened_at", "opened_at TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "projects", "released_at", "released_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
@@ -245,6 +269,10 @@ def init_db():
         conn.execute("UPDATE projects SET status='Em revisão' WHERE status='Bloqueado'")
         conn.execute("UPDATE projects SET document_status=status")
         conn.execute("UPDATE projects SET created_by=owner WHERE created_by='' AND owner<>''")
+        conn.execute("UPDATE projects SET opened_at=updated_at WHERE opened_at='' AND updated_at<>''")
+        conn.execute("UPDATE projects SET opened_at=? WHERE opened_at=''",(now_iso(),))
+        conn.execute("UPDATE projects SET due_date='-' WHERE status='Concluído'")
+        conn.execute("UPDATE projects SET released_at=updated_at WHERE status='Concluído' AND released_at='' AND updated_at<>''")
 
         for k, v in [
             ("smtp.host", ""),
@@ -288,55 +316,75 @@ def migrate_existing_projects():
                 except Exception:
                     data = {}
 
+            migrated_status = ("Em revisão" if data.get("status") == "Bloqueado" else data.get("status"))
+            migrated_status = migrated_status if migrated_status in STATUSES else "Backlog"
+            migrated_updated = data.get("updatedAt") or now_iso()
+            migrated_due = "-" if migrated_status == "Concluído" else (data.get("dueDate") or "")
+            migrated_doc_status = (
+                "Backlog" if data.get("documentStatus") == "aguardando edição"
+                else "Em andamento" if data.get("documentStatus") == "editando"
+                else "Em revisão" if data.get("documentStatus") == "em revisão"
+                else "Concluído" if data.get("documentStatus") == "release"
+                else migrated_status
+            )
+
             conn.execute(
                 """
-                INSERT INTO projects (slug, name, status, priority, owner, due_date, description, path, updated_at, document_status, document_name, document_mime, document_path, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO projects (slug, name, status, priority, owner, due_date, description, path, updated_at, document_status, document_name, document_mime, document_path, created_by, opened_at, released_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     slug,
                     data.get("name") or p.name,
-                    ("Em revisão" if data.get("status") == "Bloqueado" else data.get("status")) if ("Em revisão" if data.get("status") == "Bloqueado" else data.get("status")) in STATUSES else "Backlog",
+                    migrated_status,
                     data.get("priority") if data.get("priority") in PRIORITIES else "Média",
                     data.get("owner") or "",
-                    data.get("dueDate") or "",
+                    migrated_due,
                     data.get("description") or infer_description(p),
                     str(p),
-                    data.get("updatedAt") or now_iso(),
-                    ("Backlog" if data.get("documentStatus") == "aguardando edição" else "Em andamento" if data.get("documentStatus") == "editando" else "Em revisão" if data.get("documentStatus") == "em revisão" else "Concluído" if data.get("documentStatus") == "release" else (("Em revisão" if data.get("status") == "Bloqueado" else data.get("status")) if ("Em revisão" if data.get("status") == "Bloqueado" else data.get("status")) in STATUSES else "Backlog")),
+                    migrated_updated,
+                    migrated_doc_status,
                     data.get("documentName") or "",
                     data.get("documentMime") or "",
                     data.get("documentPath") or "",
                     data.get("createdBy") or data.get("owner") or "",
+                    data.get("openedAt") or migrated_updated,
+                    data.get("releasedAt") or (migrated_updated if migrated_status == "Concluído" else ""),
                 ),
             )
 
 
 def list_projects() -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by FROM projects ORDER BY name").fetchall()
+        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM projects ORDER BY name").fetchall()
     return [{
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
-        "owner": r["owner"], "dueDate": r["due_date"], "description": r["description"],
+        "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"],
         "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
         "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
-        "createdBy": r["created_by"]
+        "createdBy": r["created_by"],
+        "openedAt": r["opened_at"], "releasedAt": r["released_at"],
+        "ageLabel": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[0],
+        "ageDays": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[1],
     } for r in rows]
 
 
 def get_project(slug: str) -> dict | None:
     with db() as conn:
-        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by FROM projects WHERE slug=?", (slug,)).fetchone()
+        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM projects WHERE slug=?", (slug,)).fetchone()
     if not r:
         return None
+    age_label, age_days = _project_age_fields(r["opened_at"], r["status"], r["released_at"])
     return {
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
-        "owner": r["owner"], "dueDate": r["due_date"], "description": r["description"],
+        "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"],
         "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
         "documentMime": r["document_mime"], "documentPath": r["document_path"],
-        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"]
+        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"],
+        "openedAt": r["opened_at"], "releasedAt": r["released_at"],
+        "ageLabel": age_label, "ageDays": age_days,
     }
 
 
@@ -364,13 +412,15 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
     if proj_dir.exists():
         return False, "Projeto já existe"
 
+    status = payload.get("status") if payload.get("status") in STATUSES else "Backlog"
+    opened_at = now_iso()
     project = {
         "slug": slug,
         "name": name,
-        "status": payload.get("status") if payload.get("status") in STATUSES else "Backlog",
+        "status": status,
         "priority": payload.get("priority") if payload.get("priority") in PRIORITIES else "Média",
         "owner": (payload.get("owner") or "").strip(),
-        "dueDate": (payload.get("dueDate") or "").strip() or default_due_date_iso(),
+        "dueDate": ("-" if status == "Concluído" else ((payload.get("dueDate") or "").strip() or default_due_date_iso())),
         "description": (payload.get("description") or "Sem descrição").strip(),
         "path": str(proj_dir),
         "updatedAt": now_iso(),
@@ -378,6 +428,8 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
         "documentMime": "",
         "documentPath": "",
         "createdBy": actor,
+        "openedAt": opened_at,
+        "releasedAt": opened_at if status == "Concluído" else "",
     }
 
     proj_dir.mkdir(parents=True, exist_ok=False)
@@ -386,8 +438,8 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
 
     with db() as conn:
         conn.execute(
-            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"], project["status"], project["documentName"], project["documentMime"], project["documentPath"], project["createdBy"]),
+            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"], project["status"], project["documentName"], project["documentMime"], project["documentPath"], project["createdBy"], project["openedAt"], project["releasedAt"]),
         )
     sync_project_meta(project)
     return True, "ok"
@@ -406,18 +458,26 @@ def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
         p["priority"] = payload["priority"]
     if "owner" in payload:
         p["owner"] = str(payload["owner"]).strip()
+
+    status_changed = p.get("status") != old_status
     if "dueDate" in payload:
         p["dueDate"] = str(payload["dueDate"]).strip()
 
-    if p.get("status") != old_status and "dueDate" not in payload:
-        p["dueDate"] = default_due_date_iso()
+    if p.get("status") == "Concluído":
+        p["dueDate"] = "-"
+        if status_changed:
+            p["releasedAt"] = now_iso()
+    else:
+        if status_changed and "dueDate" not in payload:
+            p["dueDate"] = default_due_date_iso()
+
     if "description" in payload:
         p["description"] = str(payload["description"]).strip() or "Sem descrição"
     p["updatedAt"] = now_iso()
 
     with db() as conn:
-        conn.execute("UPDATE projects SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=? WHERE slug=?",
-                     (p["name"], p["status"], p["priority"], p["owner"], p["dueDate"], p["description"], p["status"], p["updatedAt"], slug))
+        conn.execute("UPDATE projects SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=?,released_at=? WHERE slug=?",
+                     (p["name"], p["status"], p["priority"], p["owner"], p["dueDate"], p["description"], p["status"], p["updatedAt"], p.get("releasedAt") or "", slug))
     sync_project_meta(p)
     return True, "ok"
 

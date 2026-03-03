@@ -92,7 +92,7 @@ function makeCard(p, statuses, priorities) {
   card.innerHTML = `
     <h3>${p.name}</h3>
     <p>${p.description || 'Sem descrição'}</p>
-    <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
+    <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>${p.ageLabel || 'DIAS DESDE ABERTURA'}: <b>${p.ageDays ?? '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
   `;
 
   const st = document.createElement('select');
