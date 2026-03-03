@@ -4,6 +4,7 @@ const whoami = document.getElementById('whoami');
 const logoutBtn = document.getElementById('logoutBtn');
 const form = document.getElementById('profileForm');
 const saveBtn = document.getElementById('saveBtn');
+const changePasswordBtn = document.getElementById('changePasswordBtn');
 const feedback = document.getElementById('feedback');
 
 const fields = {
@@ -12,6 +13,9 @@ const fields = {
   extension: document.getElementById('extension'),
   work_area: document.getElementById('work_area'),
   notes: document.getElementById('notes'),
+  currentPassword: document.getElementById('currentPassword'),
+  newPassword: document.getElementById('newPassword'),
+  confirmPassword: document.getElementById('confirmPassword'),
 };
 
 let me = null;
@@ -37,9 +41,12 @@ async function loadMe() {
 
 async function loadProfile() {
   const d = await api('/api/me/profile');
-  Object.keys(fields).forEach((k) => {
+  ['email', 'phone', 'extension', 'work_area', 'notes'].forEach((k) => {
     fields[k].value = d.profile?.[k] || '';
   });
+  fields.currentPassword.value = '';
+  fields.newPassword.value = '';
+  fields.confirmPassword.value = '';
 }
 
 form.onsubmit = async (e) => {
@@ -63,6 +70,39 @@ form.onsubmit = async (e) => {
     feedback.textContent = err.message;
   } finally {
     saveBtn.disabled = false;
+  }
+};
+
+changePasswordBtn.onclick = async () => {
+  feedback.textContent = '';
+  try {
+    const currentPassword = fields.currentPassword.value || '';
+    const newPassword = fields.newPassword.value || '';
+    const confirmPassword = fields.confirmPassword.value || '';
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      feedback.textContent = 'Preencha senha atual, nova senha e confirmação.';
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      feedback.textContent = 'Nova senha e confirmação não conferem.';
+      return;
+    }
+
+    changePasswordBtn.disabled = true;
+    await api('/api/me/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    fields.currentPassword.value = '';
+    fields.newPassword.value = '';
+    fields.confirmPassword.value = '';
+    feedback.textContent = 'Senha alterada com sucesso ✅';
+  } catch (err) {
+    feedback.textContent = err.message;
+  } finally {
+    changePasswordBtn.disabled = false;
   }
 };
 

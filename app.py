@@ -903,6 +903,23 @@ def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
+def change_own_password(username: str, current_password: str, new_password: str) -> tuple[bool, str]:
+    current_password = current_password or ""
+    new_password = new_password or ""
+    if len(new_password) < 4:
+        return False, "Nova senha muito curta"
+
+    with db() as conn:
+        row = conn.execute("SELECT password_hash FROM users WHERE username=?", (username,)).fetchone()
+        if not row:
+            return False, "Usuário não encontrado"
+        if not verify_password(current_password, row["password_hash"]):
+            return False, "Senha atual inválida"
+        conn.execute("UPDATE users SET password_hash=? WHERE username=?", (hash_password(new_password), username))
+
+    return True, "ok"
+
+
 def create_session(username: str, role: str) -> str:
     token = secrets.token_hex(24)
     SESSIONS[token] = {"username": username, "role": role, "exp": datetime.utcnow().timestamp() + SESSION_TTL_SECONDS}
@@ -1116,6 +1133,16 @@ class Handler(BaseHTTPRequestHandler):
             u = self._user()
             if u: SESSIONS.pop(u["token"], None)
             return self._json(200, {"ok": True}, set_cookie=f"{SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
+
+        if p == "/api/me/change-password":
+            user = self._require_auth()
+            if not user: return
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = change_own_password(user["username"], body.get("currentPassword") or "", body.get("newPassword") or "")
+            if done:
+                audit(user["username"], "user.password.change", user["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/projects":
             user = self._require_auth()
