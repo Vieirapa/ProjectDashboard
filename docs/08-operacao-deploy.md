@@ -3,19 +3,28 @@
 ## Instalação automatizada (servidor)
 
 Script:
-- `install.sh`
+- `install.sh` (v2)
 
-Exemplo:
+Exemplo básico:
 
 ```bash
 cd /caminho/ProjectDashboard
 sudo ./install.sh
 ```
 
+Exemplo com domínio/HTTPS:
+
+```bash
+sudo DOMAIN=dashboard.seudominio.com LE_EMAIL=admin@seudominio.com ./install.sh
+```
+
 Resultado da instalação:
 - app copiado para `/opt/projectdashboard`
 - serviço `projectdashboard.service` habilitado no boot
 - arquivo de ambiente em `/etc/projectdashboard.env`
+- nginx configurado como reverse proxy (quando habilitado)
+- HTTPS com Let's Encrypt (quando domínio+e-mail são informados)
+- backup diário automático via `projectdashboard-backup.timer`
 - usuário inicial garantido: `admin` / `admin`
 
 ## Execução manual

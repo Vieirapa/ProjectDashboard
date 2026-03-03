@@ -56,22 +56,39 @@ Depois abra no navegador:
 
 - `http://127.0.0.1:8765/login.html`
 
-## Instalador para servidor (multiusuário)
+## Instalador para servidor (v2)
 
-Para instalar em servidor Linux (Ubuntu/Debian) com serviço systemd:
+Para instalar em servidor Linux (Ubuntu/Debian) com systemd:
 
 ```bash
 cd /caminho/ProjectDashboard
 sudo ./install.sh
 ```
 
-O instalador:
+Recursos da v2:
 - cria usuário de serviço `projectdashboard`
 - instala app em `/opt/projectdashboard`
 - cria/ativa serviço `projectdashboard.service`
+- configura **Nginx reverse proxy**
+- configura **HTTPS com Let's Encrypt** (quando domínio + e-mail forem informados)
+- configura **backup diário automático** (systemd timer)
 - garante usuário inicial:
   - login: `admin`
   - senha: `admin`
+
+### Variáveis opcionais
+
+```bash
+sudo DOMAIN=dashboard.seudominio.com LE_EMAIL=voce@dominio.com ./install.sh
+```
+
+Outras variáveis úteis:
+- `PORT` (padrão `8765`)
+- `ENABLE_NGINX=yes|no`
+- `ENABLE_HTTPS=yes|no`
+- `ENABLE_BACKUP_TIMER=yes|no`
+- `BACKUP_DIR` (padrão `/var/backups/projectdashboard`)
+- `BACKUP_RETENTION_DAYS` (padrão `14`)
 
 > Após o primeiro login, troque a senha do admin.
 
