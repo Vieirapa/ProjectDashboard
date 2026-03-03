@@ -148,6 +148,25 @@ sudo ufw enable
 
 Then immediately change the admin password.
 
+## SMTP setup for invite emails
+
+Detailed guide:
+
+- `docs/11-email-smtp-setup.md`
+
+Helper scripts:
+
+- `scripts/setup_smtp_env.sh` (interactive SMTP env setup in `/etc/projectdashboard.env`)
+- `scripts/test_smtp.py` (send a test email using current env vars)
+
+Quick usage:
+
+```bash
+sudo ./scripts/setup_smtp_env.sh
+set -a; source /etc/projectdashboard.env; set +a
+./scripts/test_smtp.py your@email.com
+```
+
 ## Full documentation
 
 See:

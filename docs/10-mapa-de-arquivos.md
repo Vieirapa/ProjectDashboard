@@ -6,6 +6,10 @@
   - HTTP server, routing, auth/session, RBAC, persistence logic
 - `install.sh`
   - automated deployment script (systemd/nginx/https/backup)
+- `scripts/setup_smtp_env.sh`
+  - interactive SMTP environment setup helper
+- `scripts/test_smtp.py`
+  - SMTP test message utility
 - `README.md`
   - project overview and quick start
 
