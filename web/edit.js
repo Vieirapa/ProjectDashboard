@@ -5,6 +5,7 @@ const backBtn = document.getElementById('backBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const deleteBtn = document.getElementById('deleteBtn');
 const feedback = document.getElementById('feedback');
+const formEl = document.getElementById('editForm');
 const saveBtn = document.getElementById('saveBtn');
 const reviewNoteInput = document.getElementById('reviewNoteInput');
 const addReviewNoteBtn = document.getElementById('addReviewNoteBtn');
@@ -202,8 +203,7 @@ addReviewNoteBtn.onclick = async () => {
   }
 };
 
-document.getElementById('editForm').onsubmit = async (e) => {
-  e.preventDefault();
+async function handleSave() {
   if (!canEditCard()) return;
   if (!isDirty) return;
   isSaving = true;
@@ -238,7 +238,13 @@ document.getElementById('editForm').onsubmit = async (e) => {
     isSaving = false;
     saveBtn.disabled = !isDirty;
   }
-};
+}
+
+formEl.addEventListener('submit', (e) => {
+  e.preventDefault();
+});
+
+saveBtn.onclick = handleSave;
 
 deleteBtn.onclick = async () => {
   if (!confirm('Apagar este projeto do dashboard? (somente admin)')) return;
