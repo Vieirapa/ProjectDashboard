@@ -195,6 +195,12 @@ def init_db():
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
 
+        ensure_column(conn, "users", "email", "email TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "users", "phone", "phone TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "users", "extension", "extension TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "users", "work_area", "work_area TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "users", "notes", "notes TEXT NOT NULL DEFAULT ''")
+
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
             pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin123")
             conn.execute(
@@ -545,6 +551,39 @@ def delete_project(slug: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+def get_user_profile(username: str) -> dict | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT username, role, email, phone, extension, work_area, notes FROM users WHERE username=?",
+            (username,),
+        ).fetchone()
+    if not row:
+        return None
+    return dict(row)
+
+
+def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
+    email = str(payload.get("email") or "").strip()
+    phone = str(payload.get("phone") or "").strip()
+    extension = str(payload.get("extension") or "").strip()
+    work_area = str(payload.get("work_area") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+
+    if len(email) > 200 or len(phone) > 80 or len(extension) > 40 or len(work_area) > 120 or len(notes) > 4000:
+        return False, "Campos do perfil excedem o limite permitido"
+
+    with db() as conn:
+        row = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
+        if not row:
+            return False, "Usuário não encontrado"
+        conn.execute(
+            "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=? WHERE username=?",
+            (email, phone, extension, work_area, notes, username),
+        )
+
+    return True, "ok"
+
+
 def create_session(username: str, role: str) -> str:
     token = secrets.token_hex(24)
     SESSIONS[token] = {"username": username, "role": role, "exp": datetime.utcnow().timestamp() + SESSION_TTL_SECONDS}
@@ -622,13 +661,22 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/signup.html": return self._serve(WEB_DIR / "signup.html", "text/html; charset=utf-8")
         if p == "/edit.html": return self._serve(WEB_DIR / "edit.html", "text/html; charset=utf-8")
         if p == "/admin-users.html": return self._serve(WEB_DIR / "admin-users.html", "text/html; charset=utf-8")
-        if p in ["/app.js", "/edit.js", "/login.js", "/signup.js", "/admin-users.js", "/styles.css"]:
+        if p == "/profile.html": return self._serve(WEB_DIR / "profile.html", "text/html; charset=utf-8")
+        if p in ["/app.js", "/edit.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/styles.css"]:
             ctype = "application/javascript; charset=utf-8" if p.endswith(".js") else "text/css; charset=utf-8"
             return self._serve(WEB_DIR / p.lstrip("/"), ctype)
 
         if p == "/api/me":
             u = self._user()
             return self._json(200 if u else 401, {"ok": bool(u), "user": {"username": u["username"], "role": u["role"]} if u else None})
+
+        if p == "/api/me/profile":
+            u = self._require_auth()
+            if not u: return
+            profile = get_user_profile(u["username"])
+            if not profile:
+                return self._json(404, {"ok": False, "error": "Usuário não encontrado"})
+            return self._json(200, {"ok": True, "profile": profile})
 
         if p == "/api/projects":
             if not self._require_auth(): return
@@ -844,6 +892,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PATCH(self):
         p = urlparse(self.path).path
+
+        if p == "/api/me/profile":
+            user = self._require_auth()
+            if not user: return
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = update_user_profile(user["username"], body)
+            if done:
+                audit(user["username"], "user.profile.update", user["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/projects/") and "/review-notes/" in p:
             user = self._require_auth()
