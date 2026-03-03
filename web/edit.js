@@ -77,7 +77,7 @@ function canEditReviewNotes() {
 }
 
 function canResolveReviewNotes() {
-  return (me?.role || '') === 'desenhista' && (f.status.value || '').trim().toLowerCase() === 'em revisão';
+  return ['desenhista', 'admin'].includes(me?.role || '') && (f.status.value || '').trim().toLowerCase() === 'em revisão';
 }
 
 function updateReviewNotesAvailability() {

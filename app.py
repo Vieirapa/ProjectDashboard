@@ -100,7 +100,7 @@ def can_add_review_note(role: str) -> bool:
 
 
 def can_resolve_review_note(role: str) -> bool:
-    return role == "desenhista"
+    return role in {"desenhista", "admin"}
 
 
 def can_delete_project(role: str, user: str, project: dict) -> bool:
@@ -854,7 +854,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "invalid note id"})
 
             if not can_resolve_review_note(user["role"]):
-                return self._json(403, {"ok": False, "error": "Apenas desenhista pode marcar revisão como resolvida"})
+                return self._json(403, {"ok": False, "error": "Apenas desenhista ou admin pode marcar revisão como resolvida"})
 
             ok, body = self._read_json()
             if not ok:
