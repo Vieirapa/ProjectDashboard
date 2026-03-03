@@ -1,101 +1,89 @@
-# ProjectDashboard (Kanban simples)
+# ProjectDashboard
 
-Dashboard web para visualizar e gerenciar projetos em paralelo.
+ProjectDashboard is a lightweight Kanban-style web application to track projects, file revisions, and team actions.
 
-## Novidades (Onda 1+)
+## Current highlights
 
-- Layout com **barra lateral** e categorias (Workspace/Administração)
-- Login por usuário
-- Edição em **página dedicada** (`/edit.html?slug=...`) com todos os campos
-- Criação de projeto pela UI
-- Filtros (busca, status, prioridade, responsável)
-- Ordenação por prioridade
-- Administração de usuários e convites (`/admin-users.html`)
-- Troca de senha pelo painel admin
-- Edição de role (admin/member) pelo painel admin
-- Exclusão de usuários (somente admin), com dupla confirmação
-- Exibição de tarefas associadas ao usuário no momento da exclusão
-- Botão de exclusão desabilitado para contas admin
-- Log de auditoria (quem fez o quê e quando)
-- RBAC inicial:
-  - `admin`: gerencia usuários/convites, troca role/senha, exclui usuários e pode apagar projetos
-  - `member`: cria/edita projetos, mas **não apaga** projetos nem acessa admin
+- Sidebar-based UI with workspace/admin sections
+- User login and role-based access control (RBAC)
+- Dedicated details page for full card editing (`/edit.html?slug=...`)
+- Card creation and quick status/priority updates
+- Filters (text, status, priority, owner)
+- Audit logging for critical operations
+- User administration (`/admin-users.html`)
+- Document upload with revision history (`r1`, `r2`, `r3`...)
+- Review notes workflow
 
-## Banco de dados (preparado para evolução)
+## Roles
 
-Agora o dashboard usa **SQLite** (`data/projectdashboard.db`) para persistir:
+- `admin`
+  - Full access, user management, sensitive deletions
+- `member`
+  - Create/edit cards, no admin panel access
+- Additional roles may exist in UI/backend depending on workflow extensions.
 
-- usuários
-- projetos
+## Data layer
 
-Isso prepara o projeto para futura migração para MySQL/PostgreSQL com mudanças concentradas na camada de persistência do backend.
+The application currently uses SQLite:
 
-## Usuário inicial
+- `data/projectdashboard.db`
 
-No primeiro boot, é criado automaticamente:
+This keeps deployment simple while preserving a future migration path to PostgreSQL/MySQL.
 
-- usuário: `admin`
-- senha: `admin123` (ou valor de `PDASH_INITIAL_PASSWORD`)
+## Default user
 
-> Troque essa senha assim que possível.
+On first boot, the app creates an admin account:
 
-## Documentação completa
+- username: `admin`
+- password: `admin123` (or value from `PDASH_INITIAL_PASSWORD`)
 
-A documentação técnica e operacional completa está em:
+> Change this password immediately after first login.
 
-- `docs/README.md`
-
-## Como rodar
+## Run locally
 
 ```bash
-cd /home/panosso/.openclaw/workspace/projects/ProjectDashboard
+cd /path/to/ProjectDashboard
 python3 app.py
 ```
 
-Depois abra no navegador:
+Open:
 
 - `http://127.0.0.1:8765/login.html`
 
-## Instalador para servidor (v2)
-
-Para instalar em servidor Linux (Ubuntu/Debian) com systemd:
+## Server installer (v2)
 
 ```bash
-cd /caminho/ProjectDashboard
+cd /path/to/ProjectDashboard
 sudo ./install.sh
 ```
 
-Recursos da v2:
-- cria usuário de serviço `projectdashboard`
-- instala app em `/opt/projectdashboard`
-- cria/ativa serviço `projectdashboard.service`
-- configura **Nginx reverse proxy**
-- configura **HTTPS com Let's Encrypt** (quando domínio + e-mail forem informados)
-- configura **backup diário automático** (systemd timer)
-- garante usuário inicial:
-  - login: `admin`
-  - senha: `admin`
+Installer v2 includes:
 
-### Variáveis opcionais
+- system user/service setup (`projectdashboard`)
+- deployment to `/opt/projectdashboard`
+- systemd service enable/start
+- optional Nginx reverse proxy
+- optional Let's Encrypt HTTPS
+- daily backup timer
+- enforced bootstrap admin user: `admin` / `admin`
+
+### Example with domain + HTTPS
 
 ```bash
-sudo DOMAIN=dashboard.seudominio.com LE_EMAIL=voce@dominio.com ./install.sh
+sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 ```
 
-Outras variáveis úteis:
-- `PORT` (padrão `8765`)
+### Useful installer variables
+
+- `PORT` (default: `8765`)
 - `ENABLE_NGINX=yes|no`
 - `ENABLE_HTTPS=yes|no`
 - `ENABLE_BACKUP_TIMER=yes|no`
-- `BACKUP_DIR` (padrão `/var/backups/projectdashboard`)
-- `BACKUP_RETENTION_DAYS` (padrão `14`)
+- `BACKUP_DIR` (default: `/var/backups/projectdashboard`)
+- `BACKUP_RETENTION_DAYS` (default: `14`)
 
-> Após o primeiro login, troque a senha do admin.
+## Full documentation
 
-## Estrutura esperada dos projetos
+See:
 
-Os projetos continuam na pasta:
-
-`/home/panosso/.openclaw/workspace/projects`
-
-Cada projeto mantém arquivos (`README.md`, `TASKS.md`) e também `project.json` para compatibilidade local.
+- `docs/README.md`

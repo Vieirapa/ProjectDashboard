@@ -16,7 +16,7 @@ ADMIN_USER="admin"
 ADMIN_PASSWORD="admin"
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Este instalador precisa ser executado como root (sudo)."
+  echo "This installer must be run as root (sudo)."
   exit 1
 fi
 
@@ -35,8 +35,8 @@ prompt_default() {
 
 if [[ -t 0 ]]; then
   echo "=== Instalador ProjectDashboard v2 ==="
-  prompt_default PORT "Porta interna da aplicação" "$PORT"
-  prompt_default DOMAIN "Domínio público (vazio para sem proxy/https)" "$DOMAIN"
+  prompt_default PORT "Application internal port" "$PORT"
+  prompt_default DOMAIN "Public domain (leave empty to skip proxy/https)" "$DOMAIN"
   if [[ -n "$DOMAIN" ]]; then
     prompt_default LE_EMAIL "E-mail para Let's Encrypt" "$LE_EMAIL"
   fi
@@ -46,7 +46,7 @@ if [[ -z "$DOMAIN" ]]; then
   ENABLE_HTTPS="no"
 fi
 
-echo "[1/9] Instalando dependências..."
+echo "[1/9] Installing dependencies..."
 apt-get update -y
 apt-get install -y python3 python3-venv rsync curl
 if [[ "$ENABLE_NGINX" == "yes" ]]; then
@@ -62,11 +62,11 @@ if ! getent group "${APP_GROUP}" >/dev/null; then
 fi
 
 if ! id -u "${APP_USER}" >/dev/null 2>&1; then
-  echo "[2/9] Criando usuário ${APP_USER}..."
+  echo "[2/9] Creating user ${APP_USER}..."
   useradd --system --create-home --home-dir /var/lib/projectdashboard --gid "${APP_GROUP}" --shell /usr/sbin/nologin "${APP_USER}"
 fi
 
-echo "[3/9] Copiando aplicação para ${INSTALL_DIR}..."
+echo "[3/9] Copying application to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}"
 rsync -a --delete \
   --exclude '.git' \
@@ -108,7 +108,7 @@ with app.db() as conn:
         conn.execute(\"INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)\", (\"admin\", app.hash_password(\"admin\"), app.now_iso()))
 PY"
 
-echo "[6/9] Configurando serviço systemd da aplicação..."
+echo "[6/9] Configuring application systemd service..."
 cat > /etc/systemd/system/projectdashboard.service <<EOF
 [Unit]
 Description=ProjectDashboard
@@ -168,18 +168,18 @@ EOF
     echo "[8/9] Emitindo certificado TLS com Let's Encrypt..."
     certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$LE_EMAIL" --redirect || {
       echo "Aviso: falha ao emitir certificado automaticamente."
-      echo "Você pode tentar depois: certbot --nginx -d $DOMAIN"
+      echo "You can try later: certbot --nginx -d $DOMAIN"
     }
   else
-    echo "[8/9] HTTPS automático ignorado (sem domínio/e-mail ou desabilitado)."
+    echo "[8/9] Automatic HTTPS skipped (missing domain/email or disabled)."
   fi
 else
   echo "[7/9] Nginx desabilitado."
-  echo "[8/9] HTTPS automático desabilitado."
+  echo "[8/9] Automatic HTTPS disabled."
 fi
 
 if [[ "$ENABLE_BACKUP_TIMER" == "yes" ]]; then
-  echo "[9/9] Configurando backup automático diário..."
+  echo "[9/9] Configuring daily automatic backup..."
   mkdir -p "$BACKUP_DIR"
   chown root:root "$BACKUP_DIR"
   chmod 750 "$BACKUP_DIR"
@@ -213,7 +213,7 @@ EOF
 
   cat > /etc/systemd/system/projectdashboard-backup.timer <<EOF
 [Unit]
-Description=Timer diário de backup do ProjectDashboard
+Description=ProjectDashboard daily backup timer
 
 [Timer]
 OnCalendar=*-*-* 03:00:00
@@ -226,21 +226,21 @@ EOF
   systemctl daemon-reload
   systemctl enable --now projectdashboard-backup.timer
 else
-  echo "[9/9] Backup automático desabilitado."
+  echo "[9/9] Automatic backup disabled."
 fi
 
 echo
-echo "Instalação concluída ✅"
+echo "Installation completed ✅"
 if [[ "$ENABLE_NGINX" == "yes" && -n "$DOMAIN" ]]; then
   echo "Acesso: http://${DOMAIN}/login.html"
   if [[ "$ENABLE_HTTPS" == "yes" ]]; then
-    echo "(Se o certbot concluiu, o acesso HTTPS já foi ativado com redirecionamento.)"
+    echo "(If certbot completed successfully, HTTPS redirection is already active.)"
   fi
 elif [[ "$ENABLE_NGINX" == "yes" ]]; then
   echo "Acesso: http://<IP_DO_SERVIDOR>/login.html"
 else
   echo "Acesso: http://<IP_DO_SERVIDOR>:${PORT}/login.html"
 fi
-echo "Usuário inicial: ${ADMIN_USER}"
-echo "Senha inicial: ${ADMIN_PASSWORD}"
-echo "Troque a senha do admin no primeiro acesso."
+echo "Initial user: ${ADMIN_USER}"
+echo "Initial password: ${ADMIN_PASSWORD}"
+echo "Change the admin password on first login."

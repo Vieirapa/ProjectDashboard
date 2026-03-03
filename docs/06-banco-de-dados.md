@@ -1,54 +1,48 @@
-# 06 — Banco de Dados (SQLite)
+# 06 — Database
 
-Arquivo:
-- `data/projectdashboard.db`
+## Engine
 
-## Tabelas
+- SQLite (`data/projectdashboard.db`)
+
+## Main tables
 
 ### `users`
-- `id` (PK)
-- `username` (UNIQUE)
-- `password_hash`
-- `role` (`admin` ou `member`)
-- `created_at`
+- id
+- username (unique)
+- password_hash
+- role
+- created_at
 
 ### `projects`
-- `id` (PK)
-- `slug` (UNIQUE)
-- `name`
-- `status`
-- `priority`
-- `owner`
-- `due_date`
-- `description`
-- `path`
-- `updated_at`
+- slug (unique)
+- name
+- description
+- status
+- priority
+- owner
+- due_date
+- document metadata
+- created_by / updated_at
 
-### `invites`
-- `id` (PK)
-- `token` (UNIQUE)
-- `role`
-- `created_by`
-- `used_by`
-- `expires_at`
-- `created_at`
+### `document_versions`
+Stores immutable document revision metadata per project.
+
+### `review_notes`
+Stores review comments tied to project/revision workflow.
 
 ### `audit_logs`
-- `id` (PK)
-- `actor`
-- `action`
-- `target`
-- `details`
-- `created_at`
+Stores sensitive action audit records.
 
-## Migrations atuais
+## Migration approach (current)
 
-Não há framework formal de migração. O sistema usa:
+The app uses lightweight bootstrap/migration logic in code:
+
 - `CREATE TABLE IF NOT EXISTS`
-- `ensure_column(...)` para adições pontuais de colunas
+- targeted `ensure_column(...)` style additions
 
-## Estratégia de migração futura (recomendada)
+## Recommended future direction
 
-Para crescimento, adotar:
-- Alembic (se migrar para SQLAlchemy)
-- ou scripts versionados de migração SQL
+Adopt formal migrations for growth and team collaboration:
+
+- Alembic (if SQLAlchemy is adopted)
+- or versioned SQL migration scripts

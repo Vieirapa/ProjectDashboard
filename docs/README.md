@@ -1,8 +1,8 @@
-# Documentação Técnica — ProjectDashboard
+# Technical Documentation — ProjectDashboard
 
-Esta pasta contém a documentação completa do sistema **ProjectDashboard** no estado atual.
+This directory contains the current technical and operational documentation for ProjectDashboard.
 
-## Índice
+## Index
 
 1. [01-visao-geral.md](./01-visao-geral.md)
 2. [02-arquitetura.md](./02-arquitetura.md)
@@ -13,14 +13,16 @@ Esta pasta contém a documentação completa do sistema **ProjectDashboard** no 
 7. [07-seguranca-acessos.md](./07-seguranca-acessos.md)
 8. [08-operacao-deploy.md](./08-operacao-deploy.md)
 9. [09-manutencao-evolucao.md](./09-manutencao-evolucao.md)
+10. [10-mapa-de-arquivos.md](./10-mapa-de-arquivos.md)
 
-## Escopo
+## Scope
 
-Esta documentação cobre:
-- estrutura de arquivos
-- funções e rotinas principais
-- fluxo de autenticação e autorização (RBAC)
-- endpoints da API
-- modelo de dados (SQLite)
-- operação local e via systemd
-- diretrizes para manutenção e evolução futura
+The documentation covers:
+
+- architecture and file layout
+- backend routines and responsibilities
+- authentication/authorization (RBAC)
+- API endpoints
+- SQLite data model
+- deployment and operations
+- maintenance and evolution guidelines

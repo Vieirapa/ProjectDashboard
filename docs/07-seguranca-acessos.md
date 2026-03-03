@@ -1,44 +1,41 @@
-# 07 — Segurança e Controle de Acesso
+# 07 — Security and Access Control
 
-## Autenticação
+## Authentication
 
-- Login por usuário/senha
-- Cookie de sessão:
-  - `HttpOnly`
-  - `SameSite=Lax`
-  - TTL de 24h
-- Sessões armazenadas em memória no processo Python
+- Username/password login
+- HttpOnly session cookie
+- Server-side session validation
 
-## Senhas
+## Password storage
 
-- Hash com PBKDF2-HMAC-SHA256
-- Salt aleatório por senha
-- Não armazenar senha em texto puro
+- Salted password hashing
+- No plaintext password storage
 
-## Autorização (RBAC)
+## Authorization (RBAC)
 
-- `member`
-  - operações de criação/edição de projeto
-- `admin`
-  - operações administrativas + exclusões sensíveis
+Permissions are enforced in backend routes, including:
 
-## Regras de proteção
+- project create/edit/delete constraints
+- document/review-note actions
+- admin-only user management operations
 
-- Bloqueio backend para exclusão de usuários admin
-- Bloqueio backend para exclusão do próprio usuário
-- Exclusão de usuários com confirmação forte na UI
+## Protection rules
 
-## Auditoria
+- Prevent deleting admin accounts (policy)
+- Prevent self-delete actions
+- Require strong confirmation on destructive UI actions
 
-Ações críticas são auditadas em `audit_logs`, incluindo:
-- create/update/delete de usuário
-- create de convite
-- create/update/delete de projeto
+## Auditing
 
-## Pontos de melhoria recomendados
+Critical actions are recorded in `audit_logs`, including:
 
-1. Persistir sessões no banco/Redis (atual: memória)
-2. CSRF token para operações mutáveis
-3. Políticas de senha (complexidade/expiração)
-4. Rotação e invalidação central de sessões
-5. Suporte a 2FA para admin
+- user create/update/delete
+- project create/update/delete
+- document workflow events
+
+## Hardening roadmap
+
+1. Move sessions to Redis/DB-backed storage
+2. Add CSRF token protections for mutating endpoints
+3. Add password complexity/rotation policies
+4. Centralize session invalidation controls

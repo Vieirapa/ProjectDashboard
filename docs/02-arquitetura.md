@@ -1,57 +1,39 @@
-# 02 — Arquitetura
+# 02 — Architecture
 
-## Stack
+## Runtime model
 
-- **Backend:** Python 3 (`http.server`)
-- **Banco de dados:** SQLite (`data/projectdashboard.db`)
-- **Frontend:** HTML + CSS + JavaScript vanilla
-- **Serviço:** systemd user service (`projectdashboard.service`)
+- Single Python backend (`app.py`) using `http.server`
+- SQLite persistence (`data/projectdashboard.db`)
+- Multi-page frontend in `web/`
+- Optional systemd + Nginx deployment via `install.sh`
 
-## Estrutura de diretórios
+## Directory structure (high level)
 
-```text
-ProjectDashboard/
-├── app.py
-├── data/
-│   └── projectdashboard.db
-├── web/
-│   ├── index.html
-│   ├── app.js
-│   ├── edit.html
-│   ├── edit.js
-│   ├── login.html
-│   ├── login.js
-│   ├── signup.html
-│   ├── signup.js
-│   ├── admin-users.html
-│   ├── admin-users.js
-│   └── styles.css
-├── docs/
-│   └── *.md
-└── README.md
-```
+- `app.py` — backend routes, auth, RBAC, persistence logic
+- `web/` — static pages and JS modules
+- `docs/` — technical documentation
+- `data/` — runtime database/log/storage
+- `install.sh` — server installer (v2)
 
-## Componentes principais
+## Main components
 
-1. **Servidor HTTP (`app.py`)**
-   - serve páginas estáticas em `/web`
-   - expõe API REST simples
-   - gerencia autenticação via cookie de sessão
+1. **HTTP Backend**
+   - serves static frontend assets
+   - exposes REST-style JSON API
+   - validates sessions and permissions
 
-2. **Persistência (`sqlite3`)**
-   - usuários, projetos, convites, auditoria
+2. **Persistence**
+   - stores users, projects, invitations, audit logs, revision records
 
-3. **Frontend por página**
-   - Kanban (`index.html + app.js`)
-   - Edição de projeto (`edit.html + edit.js`)
-   - Login (`login.html + login.js`)
-   - Cadastro via convite (`signup.html + signup.js`)
-   - Administração (`admin-users.html + admin-users.js`)
+3. **Frontend pages**
+   - `index.html` + `app.js`: Kanban board
+   - `edit.html` + `edit.js`: full card details and revision timeline
+   - `login/signup/admin-users` pages for auth/admin operations
 
-## Fluxo alto nível
+## High-level flow
 
-1. Usuário faz login (`/api/login`)
-2. Backend cria sessão em memória + cookie HttpOnly
-3. Frontend chama endpoints autenticados
-4. Backend valida role (`admin`/`member`) por endpoint
-5. Alterações relevantes geram registros em `audit_logs`
+1. User logs in (`/api/login`)
+2. Backend issues session cookie
+3. Frontend consumes API endpoints for CRUD and workflow actions
+4. Backend applies RBAC checks
+5. Sensitive actions are stored in audit logs

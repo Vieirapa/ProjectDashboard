@@ -1,36 +1,31 @@
-# 10 — Mapa de Arquivos e Responsabilidades
+# 10 — File Map
 
-## Backend
+## Root
 
 - `app.py`
-  - servidor HTTP
-  - rotas API
-  - autenticação/sessão
-  - RBAC
-  - persistência SQLite
-  - auditoria
+  - HTTP server, routing, auth/session, RBAC, persistence logic
+- `install.sh`
+  - automated deployment script (systemd/nginx/https/backup)
+- `README.md`
+  - project overview and quick start
 
-## Frontend
+## `web/`
 
-- `web/index.html` + `web/app.js`
-  - tela principal Kanban
-- `web/edit.html` + `web/edit.js`
-  - edição de projeto
-- `web/login.html` + `web/login.js`
-  - autenticação
-- `web/signup.html` + `web/signup.js`
-  - cadastro com convite
-- `web/admin-users.html` + `web/admin-users.js`
-  - administração de usuários e auditoria
-- `web/styles.css`
-  - layout global (sidebar, painéis, tabelas)
+- `index.html`, `app.js` — board UI and card operations
+- `edit.html`, `edit.js` — details page, uploads, revisions, review notes
+- `login.html`, `login.js` — authentication UI
+- `signup.html`, `signup.js` — signup/invite flow
+- `admin-users.html`, `admin-users.js` — admin user management
+- `styles.css` — global styles
 
-## Dados
+## `docs/`
 
-- `data/projectdashboard.db`
-  - estado persistente do sistema
+Technical and operational reference files.
 
-## Documentação
+## `data/`
 
-- `docs/*.md`
-  - documentação técnica e operacional
+Runtime artifacts (generated at runtime):
+
+- SQLite database
+- optional logs
+- optional document storage repository

@@ -1,39 +1,34 @@
 # 05 — Frontend
 
-## Páginas e responsabilidades
+## Pages and responsibilities
 
-- `index.html` / `app.js`
-  - dashboard Kanban
-  - filtros
-  - criação de projeto
-  - edição rápida de status/prioridade
+- `index.html` + `app.js`
+  - main board rendering
+  - card creation
+  - quick status/priority changes
+  - filtering/searching
 
-- `edit.html` / `edit.js`
-  - edição completa de projeto
-  - exclusão de projeto (somente admin)
+- `edit.html` + `edit.js`
+  - full project editing
+  - document upload
+  - revision history (`r1`, `r2`, ...)
+  - review notes panel
 
-- `login.html` / `login.js`
-  - autenticação
+- `login.html` + `login.js`
+  - user authentication
 
-- `signup.html` / `signup.js`
-  - cadastro com token de convite
+- `signup.html` + `signup.js`
+  - invitation/token-based signup flow (if enabled)
 
-- `admin-users.html` / `admin-users.js`
-  - criar usuário
-  - gerar convite
-  - alterar role
-  - trocar senha
-  - excluir usuário
-  - visualizar auditoria
+- `admin-users.html` + `admin-users.js`
+  - user administration (admin-only in backend)
 
-## Sidebar e navegação
+## Navigation and sidebar
 
-A UI segue layout com barra lateral e categorias:
-- Workspace
-- Administração
+The UI is split into workspace and admin sections.
+Admin controls may be hidden in the frontend for non-admin users.
 
-Elementos administrativos são ocultados para usuários não-admin no frontend.
+## Important security note
 
-## Observação importante
-
-As regras críticas de acesso **não dependem do frontend**. O backend também valida role em endpoints sensíveis.
+Frontend visibility is a UX layer only.
+All critical access checks are enforced server-side.

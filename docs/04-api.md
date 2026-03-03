@@ -1,98 +1,62 @@
-# 04 — API (referência)
+# 04 — API Reference
 
-## Auth / Sessão
+## Auth / Session
 
 ### `POST /api/login`
-Login.
-
-Body:
-```json
-{ "username": "admin", "password": "admin123" }
-```
-
-Resposta:
-```json
-{ "ok": true, "user": { "username": "admin", "role": "admin" } }
-```
+Authenticates user credentials and creates a session cookie.
 
 ### `POST /api/logout`
-Encerra sessão.
+Terminates current session.
 
 ### `GET /api/me`
-Retorna usuário atual da sessão.
+Returns current authenticated user context.
 
----
-
-## Projetos
+## Projects
 
 ### `GET /api/projects`
-Lista projetos (auth required).
-
-### `GET /api/projects/:slug`
-Detalhe de projeto + enums (`statuses`, `priorities`).
+Returns board data (projects + enumerations).
 
 ### `POST /api/projects`
-Cria projeto (auth required).
+Creates a new project card.
 
-Campos aceitos:
-- `name`
-- `description`
-- `status`
-- `priority`
-- `owner`
-- `dueDate`
+### `GET /api/projects/:slug`
+Returns one project.
 
 ### `PATCH /api/projects/:slug`
-Atualiza projeto (auth required).
+Updates project fields (name, description, status, priority, owner, due date).
 
 ### `DELETE /api/projects/:slug`
-Exclui projeto (**admin only**).
+Deletes a project (permission-protected).
 
----
+## Documents and revisions
 
-## Administração
+### `POST /api/projects/:slug/document`
+Uploads/replaces project document and creates a new revision record.
+
+### `GET /api/projects/:slug/document`
+Downloads latest or selected revision document.
+
+### `GET /api/projects/:slug/document/versions`
+Returns revision timeline metadata.
+
+## Review notes
+
+### `GET /api/projects/:slug/review-notes`
+Lists notes attached to project review stage.
+
+### `POST /api/projects/:slug/review-notes`
+Creates a review note (permission/stage validation applies).
+
+## Admin
 
 ### `GET /api/admin/users`
-Lista usuários (admin only), incluindo:
-- `username`
-- `role`
-- `created_at`
-- `associated_tasks` (contagem de projetos com `owner=username`)
+List users and role/account metadata (admin-only).
 
 ### `POST /api/admin/users`
-Cria usuário (admin only).
+Create user (admin-only).
 
 ### `PATCH /api/admin/users/:username`
-Atualiza usuário (admin only):
-- `role`
-- `password`
+Update role/password (admin-only).
 
 ### `DELETE /api/admin/users/:username`
-Exclui usuário (admin only), com regras:
-- não pode excluir a si mesmo
-- não pode excluir usuário admin
-
-### `POST /api/admin/invites`
-Gera convite (admin only).
-
-Body:
-```json
-{ "role": "member" }
-```
-
-Resposta inclui `inviteUrl`.
-
-### `GET /api/admin/audit`
-Lista log de auditoria (admin only).
-
----
-
-## Cadastro por convite
-
-### `POST /api/signup`
-Cria conta a partir de token de convite.
-
-Body:
-```json
-{ "token": "...", "username": "novo", "password": "senha" }
-```
+Delete user with safety constraints (admin-only).

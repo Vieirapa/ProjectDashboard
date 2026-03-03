@@ -1,68 +1,57 @@
-# 08 — Operação e Deploy
+# 08 — Operations and Deployment
 
-## Instalação automatizada (servidor)
+## Automated server installation
 
 Script:
 - `install.sh` (v2)
 
-Exemplo básico:
+Basic usage:
 
 ```bash
-cd /caminho/ProjectDashboard
+cd /path/to/ProjectDashboard
 sudo ./install.sh
 ```
 
-Exemplo com domínio/HTTPS:
+Domain + HTTPS example:
 
 ```bash
-sudo DOMAIN=dashboard.seudominio.com LE_EMAIL=admin@seudominio.com ./install.sh
+sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 ```
 
-Resultado da instalação:
-- app copiado para `/opt/projectdashboard`
-- serviço `projectdashboard.service` habilitado no boot
-- arquivo de ambiente em `/etc/projectdashboard.env`
-- nginx configurado como reverse proxy (quando habilitado)
-- HTTPS com Let's Encrypt (quando domínio+e-mail são informados)
-- backup diário automático via `projectdashboard-backup.timer`
-- usuário inicial garantido: `admin` / `admin`
+Installer output includes:
 
-## Execução manual
+- deployment to `/opt/projectdashboard`
+- `projectdashboard.service` enabled at boot
+- environment file at `/etc/projectdashboard.env`
+- optional Nginx reverse proxy
+- optional Let's Encrypt HTTPS
+- daily backup timer (`projectdashboard-backup.timer`)
+- bootstrap admin account: `admin` / `admin`
+
+## Manual execution
 
 ```bash
-cd /home/panosso/.openclaw/workspace/projects/ProjectDashboard
+cd /path/to/ProjectDashboard
 python3 app.py
 ```
 
-Acesso:
+Access:
 - `http://127.0.0.1:8765/login.html`
 
-## Execução automática (systemd user)
-
-Serviço:
-- `~/.config/systemd/user/projectdashboard.service`
-
-Comandos úteis:
-
-```bash
-systemctl --user status projectdashboard.service
-systemctl --user restart projectdashboard.service
-journalctl --user -u projectdashboard.service -f
-```
-
-## Dependências
+## Dependencies
 
 - Python 3.10+
-- SQLite (embutido no Python)
+- SQLite (bundled in Python)
 
 ## Backup
 
-Itens essenciais para backup:
-- `projects/ProjectDashboard/data/projectdashboard.db`
-- pasta `projects/` (conteúdo dos projetos)
+Essential artifacts:
+
+- `data/projectdashboard.db`
+- `data/docs_repo/` (if document git storage is enabled)
 
 ## Restore
 
-1. restaurar diretórios/arquivos
-2. reiniciar serviço systemd
-3. validar login e endpoints principais
+1. restore data files/directories
+2. restart service
+3. validate login and key endpoints

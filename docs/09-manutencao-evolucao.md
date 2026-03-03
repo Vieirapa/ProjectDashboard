@@ -1,40 +1,40 @@
-# 09 — Manutenção e Evolução
+# 09 — Maintenance and Evolution
 
-## Checklist de manutenção
+## Maintenance checklist
 
-- [ ] validar serviço (`systemctl --user status`)
-- [ ] revisar log de auditoria periodicamente
-- [ ] revisar usuários admin ativos
-- [ ] fazer backup do banco
-- [ ] testar login e páginas críticas após alterações
+- [ ] verify service health (`systemctl status projectdashboard`)
+- [ ] verify backups and retention
+- [ ] review active admin users
+- [ ] test login and critical pages after changes
+- [ ] check audit logs for anomalies
 
-## Convenções recomendadas
+## Recommended conventions
 
-1. Toda mudança em endpoint deve atualizar `04-api.md`
-2. Toda mudança em schema deve atualizar `06-banco-de-dados.md`
-3. Toda regra de acesso nova deve atualizar `07-seguranca-acessos.md`
+1. API changes must update `04-api.md`
+2. Schema changes must update `06-banco-de-dados.md`
+3. Security-sensitive changes must update `07-seguranca-acessos.md`
 
-## Roadmap técnico sugerido
+## Suggested technical roadmap
 
-### Curto prazo
-- troca de senha do próprio usuário
-- paginação/filtro avançado do log de auditoria
-- associação explícita de tarefas (quando módulo de tasks for criado)
+### Short term
+- self-service password change
+- richer audit log filtering/pagination
+- improved validation/error consistency
 
-### Médio prazo
-- extração de camada de repositório para DB
-- migração para SQLAlchemy + migrations formais
-- tokens CSRF
+### Mid term
+- repository/data access layer extraction
+- formal DB migration tooling
+- test coverage expansion (API + UI)
 
-### Longo prazo
-- multi-tenant real (times/workspaces)
-- SSO/OAuth
-- migração para PostgreSQL
+### Long term
+- PostgreSQL migration
+- multi-tenant boundaries
+- observability stack (metrics/tracing/alerts)
 
-## Estratégia para migração SQLite -> PostgreSQL/MySQL
+## SQLite → PostgreSQL/MySQL migration strategy
 
-1. Isolar SQL em camada de acesso (Repository)
-2. Introduzir modelo ORM (SQLAlchemy)
-3. Criar migrations versionadas
-4. Rodar dupla escrita temporária (opcional)
-5. Trocar backend de leitura/escrita e validar
+1. isolate persistence layer contracts
+2. introduce migration tooling
+3. run schema parity tests
+4. optional temporary dual-write phase
+5. cut over and validate with rollback plan

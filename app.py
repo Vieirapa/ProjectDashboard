@@ -191,9 +191,9 @@ def init_db():
                 "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)",
                 ("admin", hash_password(pwd), now_iso()),
             )
-            print("[ProjectDashboard] Usuário inicial: admin / senha:", pwd)
+            print("[ProjectDashboard] Initial user: admin / password:", pwd)
 
-        # Garantir que o usuário admin seja realmente admin após upgrades/migrações
+        # Ensure admin user keeps admin role after upgrades/migrations
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE projects SET status='Em revisão' WHERE status='Bloqueado'")
         conn.execute("UPDATE projects SET document_status=status")
