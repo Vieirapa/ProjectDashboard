@@ -151,11 +151,17 @@ document.getElementById('createUserForm').onsubmit = async (e) => {
 document.getElementById('inviteForm').onsubmit = async (e) => {
   e.preventDefault();
   try {
+    const sendEmail = document.getElementById('sendInviteEmail').checked;
     const d = await api('/api/admin/invites', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       role: document.getElementById('inviteRole').value,
+      email: document.getElementById('inviteEmail').value,
+      sendEmail,
+      message: document.getElementById('inviteMessage').value,
     })});
-    const full = `${location.origin}${d.inviteUrl}`;
-    inviteOut.textContent = `Convite (expira ${d.expiresAt}): ${full}`;
+    const full = d.fullInviteUrl || `${location.origin}${d.inviteUrl}`;
+    inviteOut.textContent = sendEmail
+      ? `Convite (expira ${d.expiresAt}) enviado para ${document.getElementById('inviteEmail').value}. Link: ${full}`
+      : `Convite (expira ${d.expiresAt}): ${full}`;
     await navigator.clipboard.writeText(full);
     await loadAudit();
   } catch (e) { alert(e.message); }

@@ -39,6 +39,22 @@
           <h3>Gerar convite</h3>
           <form id="inviteForm" class="form-grid">
             <select id="inviteRole"><option value="member">member</option><option value="admin">admin</option></select>
+            <input id="inviteEmail" type="email" placeholder="email do convidado (opcional)" />
+            <label style="display:flex; align-items:center; gap:8px;">
+              <input id="sendInviteEmail" type="checkbox" />
+              Enviar por e-mail
+            </label>
+            <label>Mensagem</label>
+            <textarea id="inviteMessage" rows="6">Olá!
+
+Você foi convidado(a) para acessar o ProjectDashboard.
+
+Use este link para concluir seu cadastro:
+{invite_link}
+
+Este convite expira em: {expires_at}
+
+Bem-vindo(a) ao sistema!</textarea>
             <button type="submit">Gerar link de convite</button>
           </form>
           <p id="inviteOut" class="small"></p>

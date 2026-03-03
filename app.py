@@ -8,6 +8,8 @@ import re
 import secrets
 import sqlite3
 import subprocess
+import smtplib
+from email.message import EmailMessage
 from datetime import datetime, timedelta
 from http import cookies
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -388,6 +390,35 @@ def ensure_docs_repo() -> tuple[bool, str]:
         if not ok:
             return False, out
     return True, "ok"
+
+
+def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
+    host = os.getenv("PDASH_SMTP_HOST", "").strip()
+    port = int(os.getenv("PDASH_SMTP_PORT", "587"))
+    user = os.getenv("PDASH_SMTP_USER", "").strip()
+    password = os.getenv("PDASH_SMTP_PASS", "").strip()
+    sender = os.getenv("PDASH_SMTP_FROM", user or "")
+    use_tls = os.getenv("PDASH_SMTP_TLS", "true").strip().lower() not in {"0", "false", "no"}
+
+    if not host or not sender:
+        return False, "SMTP não configurado (defina PDASH_SMTP_HOST e PDASH_SMTP_FROM)"
+
+    msg = EmailMessage()
+    msg["From"] = sender
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP(host, port, timeout=20) as server:
+            if use_tls:
+                server.starttls()
+            if user:
+                server.login(user, password)
+            server.send_message(msg)
+        return True, "ok"
+    except Exception as e:
+        return False, f"Falha ao enviar email: {e}"
 
 
 def list_document_versions(slug: str) -> list[dict]:
@@ -859,11 +890,47 @@ class Handler(BaseHTTPRequestHandler):
             role = body.get("role") if body.get("role") in ROLES else "member"
             token = secrets.token_urlsafe(24)
             exp = (datetime.utcnow() + timedelta(days=3)).replace(microsecond=0).isoformat() + "Z"
+            invite_url = f"/signup.html?token={token}"
+            host = self.headers.get("Host") or f"127.0.0.1:{PORT}"
+            full_invite_url = f"http://{host}{invite_url}"
             with db() as conn:
                 conn.execute("INSERT INTO invites (token,role,created_by,expires_at,created_at) VALUES (?,?,?,?,?)",
                              (token, role, admin["username"], exp, now_iso()))
-            audit(admin["username"], "invite.create", token, f"role={role} expires={exp}")
-            return self._json(200, {"ok": True, "inviteUrl": f"/signup.html?token={token}", "token": token, "expiresAt": exp})
+
+            email_to = str(body.get("email") or "").strip()
+            send_email = bool(body.get("sendEmail"))
+            message_text = str(body.get("message") or "").strip()
+            email_status = "not_requested"
+
+            if send_email:
+                if not email_to:
+                    return self._json(400, {"ok": False, "error": "E-mail do convidado é obrigatório para envio"})
+                if not message_text:
+                    message_text = (
+                        "Olá!\n\n"
+                        "Você foi convidado(a) para acessar o ProjectDashboard.\n"
+                        "Use o link abaixo para concluir seu cadastro:\n\n"
+                        f"{full_invite_url}\n\n"
+                        f"Este convite expira em: {exp}\n\n"
+                        "Se você não esperava este convite, pode ignorar esta mensagem."
+                    )
+                else:
+                    message_text = message_text.replace("{invite_link}", full_invite_url).replace("{expires_at}", exp)
+
+                ok_email, msg_email = send_invite_email(email_to, "Convite para ProjectDashboard", message_text)
+                if not ok_email:
+                    return self._json(400, {"ok": False, "error": msg_email})
+                email_status = "sent"
+
+            audit(admin["username"], "invite.create", token, f"role={role} expires={exp} email={email_to or '-'} status={email_status}")
+            return self._json(200, {
+                "ok": True,
+                "inviteUrl": invite_url,
+                "fullInviteUrl": full_invite_url,
+                "token": token,
+                "expiresAt": exp,
+                "emailStatus": email_status,
+            })
 
         if p == "/api/signup":
             ok, body = self._read_json()
