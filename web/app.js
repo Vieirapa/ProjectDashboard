@@ -89,10 +89,15 @@ function makeCard(p, statuses, priorities) {
   const card = document.createElement('div');
   card.className = 'card';
   const docMeta = docStatusMeta(p.status);
+  const ageLabel = String(p.ageLabel || 'Dias desde abertura')
+    .replace('DIAS PARA SOLUÇÃO', 'Dia até solução')
+    .replace('DIAS PARA SOLUCAO', 'Dia até solução')
+    .replace('DIAS DESDE ABERTURA', 'Dias desde abertura');
+
   card.innerHTML = `
     <h3>${p.name}</h3>
     <p>${p.description || 'Sem descrição'}</p>
-    <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>${p.ageLabel || 'DIAS DESDE ABERTURA'}: <b>${p.ageDays ?? '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
+    <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>${ageLabel}: <b>${p.ageDays ?? '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
   `;
 
   const st = document.createElement('select');
