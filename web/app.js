@@ -127,9 +127,8 @@ function makeCard(p, statuses, priorities) {
 
   const actions = document.createElement('div');
   actions.className = 'card-actions';
-  actions.innerHTML = `<button class="secondary">Editar</button><button>Copiar pasta</button>`;
+  actions.innerHTML = `<button class="secondary">Detalhes</button>`;
   actions.children[0].onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}`;
-  actions.children[1].onclick = async () => { await navigator.clipboard.writeText(p.path); alert('Caminho copiado!'); };
 
   card.append(controls, actions);
   return card;
