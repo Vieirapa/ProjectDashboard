@@ -63,6 +63,28 @@ function renderReportMeta() {
   f.rRoles.innerHTML = meta.roles.map((r) => `<label class="inline-check"><input type="checkbox" value="${r}" /> <span>${r}</span></label>`).join('');
 }
 
+function weekdayLabel(v) {
+  const m = {
+    '0': 'segunda',
+    '1': 'terça',
+    '2': 'quarta',
+    '3': 'quinta',
+    '4': 'sexta',
+    '5': 'sábado',
+    '6': 'domingo',
+  };
+  return m[String(v)] || String(v);
+}
+
+function reportConfigLine(r) {
+  const statuses = (r.statuses || []).join('; ') || '-';
+  const priorities = (r.priorities || []).join('; ') || '-';
+  const roles = (r.roles || []).join('; ') || '-';
+  const days = (r.weekdays || []).map(weekdayLabel).join(', ') || '-';
+  const time = r.run_time ? `${r.run_time}h` : '-';
+  return `{${statuses}} {${priorities}} {${roles}} {${days}} {${time}}`;
+}
+
 async function loadSettings() {
   const d = await api('/api/admin/settings');
   const s = d.settings || {};
@@ -90,8 +112,11 @@ async function loadReports() {
   reportsList.innerHTML = `<table>
     <tr><th>Nome</th><th>Dias</th><th>Hora</th><th>Ativo</th><th>Ações</th></tr>
     ${d.reports.map((r) => `<tr>
-      <td>${r.name}</td>
-      <td>${(r.weekdays || []).join(', ')}</td>
+      <td>
+        <div>${r.name}</div>
+        <div class="small" style="margin-top:4px; color:#4b5563;">${reportConfigLine(r)}</div>
+      </td>
+      <td>${(r.weekdays || []).map(weekdayLabel).join(', ')}</td>
       <td>${r.run_time}</td>
       <td>${Number(r.active) === 1 ? 'Sim' : 'Não'}</td>
       <td>
