@@ -58,9 +58,9 @@ def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[
     if status == "Concluído" and released_at:
         released = _parse_iso_date(released_at) or datetime.utcnow()
         days = max(0, (released.date() - opened.date()).days)
-        return "DIAS PARA SOLUÇÃO", days
+        return "Dia até solução", days
     days = max(0, (datetime.utcnow().date() - opened.date()).days)
-    return "DIAS DESDE ABERTURA", days
+    return "Dias desde abertura", days
 
 
 def slugify(name: str) -> str:
