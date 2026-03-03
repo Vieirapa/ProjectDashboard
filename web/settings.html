@@ -63,6 +63,58 @@
           <p id="workflowFeedback" class="small"></p>
         </form>
       </section>
+
+      <section class="panel">
+        <h3>Relatórios periódicos</h3>
+        <form id="reportForm" class="form-grid" style="max-width:900px;">
+          <label>Nome do relatório</label>
+          <input id="r_name" placeholder="Ex.: Relatório semanal de revisão" required />
+
+          <label>O que reportar (listas do Kanban)</label>
+          <div id="r_statuses" class="form-grid"></div>
+
+          <label>Dados do relatório</label>
+          <div id="r_priorities" class="form-grid">
+            <label class="inline-check"><input type="checkbox" value="TODOS" checked /> <span>TODOS</span></label>
+            <label class="inline-check"><input type="checkbox" value="Baixa" /> <span>CARDS COM PRIORIDADE BAIXA</span></label>
+            <label class="inline-check"><input type="checkbox" value="Média" /> <span>CARDS COM PRIORIDADE MEDIA</span></label>
+            <label class="inline-check"><input type="checkbox" value="Alta" /> <span>CARDS COM PRIORIDADE ALTA</span></label>
+            <label class="inline-check"><input type="checkbox" value="Urgente" /> <span>CARDS COM PRIORIDADE URGENTE</span></label>
+          </div>
+
+          <label>Perfis que receberão o relatório</label>
+          <div id="r_roles" class="form-grid"></div>
+
+          <label>Periodicidade (dias da semana)</label>
+          <div id="r_weekdays" class="form-grid">
+            <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
+            <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
+            <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
+            <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
+            <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
+            <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
+            <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+          </div>
+
+          <label>Horário (HH:MM)</label>
+          <input id="r_run_time" type="time" value="10:00" />
+
+          <label>Mensagem</label>
+          <textarea id="r_message" rows="5" placeholder="Mensagem que aparecerá antes do relatório no e-mail."></textarea>
+
+          <label class="inline-check"><input id="r_active" type="checkbox" checked /> <span>Ativo</span></label>
+
+          <div class="dialog-actions" style="justify-content:flex-start;">
+            <button type="submit">Criar relatório periódico</button>
+          </div>
+          <p id="reportFeedback" class="small"></p>
+        </form>
+
+        <div style="margin-top:16px;">
+          <h4 style="margin:0 0 8px;">Relatórios cadastrados</h4>
+          <div id="reportsList" class="small">Nenhum relatório cadastrado.</div>
+        </div>
+      </section>
     </main>
   </div>
 

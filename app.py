@@ -9,6 +9,8 @@ import secrets
 import sqlite3
 import subprocess
 import smtplib
+import threading
+import time
 from email.message import EmailMessage
 from datetime import datetime, timedelta
 from http import cookies
@@ -193,6 +195,24 @@ def init_db():
                 value TEXT NOT NULL DEFAULT '',
                 updated_by TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS periodic_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                statuses_json TEXT NOT NULL,
+                priorities_json TEXT NOT NULL,
+                roles_json TEXT NOT NULL,
+                weekdays_json TEXT NOT NULL,
+                run_time TEXT NOT NULL,
+                message TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                last_run_key TEXT NOT NULL DEFAULT '',
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_by TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
         """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
@@ -508,6 +528,176 @@ def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str
         return True, "ok"
     except Exception as e:
         return False, f"Falha ao enviar email: {e}"
+
+
+def list_periodic_reports() -> list[dict]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM periodic_reports ORDER BY id DESC").fetchall()
+    out = []
+    for r in rows:
+        item = dict(r)
+        for k in ["statuses_json", "priorities_json", "roles_json", "weekdays_json"]:
+            try:
+                item[k.replace("_json", "")] = json.loads(item.get(k) or "[]")
+            except Exception:
+                item[k.replace("_json", "")] = []
+            item.pop(k, None)
+        out.append(item)
+    return out
+
+
+def create_periodic_report(payload: dict, actor: str) -> tuple[bool, str]:
+    name = str(payload.get("name") or "").strip()
+    statuses = payload.get("statuses") or []
+    priorities = payload.get("priorities") or []
+    roles = payload.get("roles") or []
+    weekdays = payload.get("weekdays") or []
+    run_time = str(payload.get("run_time") or "").strip()
+    message = str(payload.get("message") or "").strip()
+    active = 1 if bool(payload.get("active", True)) else 0
+
+    if not name:
+        return False, "Nome do relatório é obrigatório"
+    if not statuses:
+        return False, "Selecione ao menos uma lista/status"
+    if not priorities:
+        return False, "Selecione filtros de dados do relatório"
+    if not roles:
+        return False, "Selecione ao menos um perfil de destino"
+    if not weekdays:
+        return False, "Selecione ao menos um dia da semana"
+    if not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", run_time):
+        return False, "Horário inválido (use HH:MM)"
+
+    now = now_iso()
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO periodic_reports (name, statuses_json, priorities_json, roles_json, weekdays_json, run_time, message, active, created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (name, json.dumps(statuses, ensure_ascii=False), json.dumps(priorities, ensure_ascii=False), json.dumps(roles, ensure_ascii=False), json.dumps(weekdays, ensure_ascii=False), run_time, message, active, actor, now, actor, now),
+        )
+    return True, "ok"
+
+
+def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[bool, str]:
+    fields = {}
+    mapping = {
+        "name": "name", "run_time": "run_time", "message": "message", "active": "active",
+        "statuses": "statuses_json", "priorities": "priorities_json", "roles": "roles_json", "weekdays": "weekdays_json"
+    }
+    for k, dbk in mapping.items():
+        if k in payload:
+            v = payload[k]
+            if k in {"statuses", "priorities", "roles", "weekdays"}:
+                v = json.dumps(v or [], ensure_ascii=False)
+            if k == "active":
+                v = 1 if bool(v) else 0
+            fields[dbk] = v
+    if not fields:
+        return False, "nada para atualizar"
+    fields["updated_by"] = actor
+    fields["updated_at"] = now_iso()
+
+    set_clause = ", ".join([f"{k}=?" for k in fields.keys()])
+    params = list(fields.values()) + [report_id]
+    with db() as conn:
+        exists = conn.execute("SELECT id FROM periodic_reports WHERE id=?", (report_id,)).fetchone()
+        if not exists:
+            return False, "Relatório não encontrado"
+        conn.execute(f"UPDATE periodic_reports SET {set_clause} WHERE id=?", tuple(params))
+    return True, "ok"
+
+
+def delete_periodic_report(report_id: int) -> tuple[bool, str]:
+    with db() as conn:
+        exists = conn.execute("SELECT id FROM periodic_reports WHERE id=?", (report_id,)).fetchone()
+        if not exists:
+            return False, "Relatório não encontrado"
+        conn.execute("DELETE FROM periodic_reports WHERE id=?", (report_id,))
+    return True, "ok"
+
+
+def _render_report_markdown(report: dict) -> str:
+    statuses = report.get("statuses") or []
+    priorities = report.get("priorities") or []
+    with db() as conn:
+        rows = conn.execute("SELECT slug, name, status, priority, owner, due_date, updated_at FROM projects ORDER BY priority DESC, name").fetchall()
+    items = []
+    for r in rows:
+        if statuses and r["status"] not in statuses:
+            continue
+        if "TODOS" not in priorities and priorities and r["priority"] not in priorities:
+            continue
+        items.append(r)
+
+    lines = []
+    lines.append(f"## 📊 {report.get('name','Periodic Report')}")
+    lines.append("")
+    lines.append(f"- Generated at: **{now_iso()}**")
+    lines.append(f"- Lists included: **{', '.join(statuses) if statuses else '-'}**")
+    lines.append(f"- Priority filter: **{', '.join(priorities) if priorities else '-'}**")
+    lines.append("")
+    lines.append("### Summary")
+    lines.append(f"- Total cards: **{len(items)}**")
+    lines.append("")
+    lines.append("### Cards")
+    if not items:
+        lines.append("_No cards matched the selected criteria._")
+    else:
+        for it in items:
+            lines.append(f"- **[{it['slug']}] {it['name']}**  ")
+            lines.append(f"  Status: `{it['status']}` | Priority: `{it['priority']}` | Owner: `{it['owner'] or '-'}` | Due: `{it['due_date'] or '-'}`")
+    return "\n".join(lines)
+
+
+def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]:
+    roles = report.get("roles") or []
+    if not roles:
+        return False, "sem perfis de destino"
+    with db() as conn:
+        users = conn.execute(
+            "SELECT username, role, email FROM users WHERE role IN ({}) AND email<>''".format(",".join(["?"] * len(roles))),
+            tuple(roles),
+        ).fetchall()
+    if not users:
+        return False, "nenhum usuário com email encontrado para os perfis selecionados"
+
+    md = _render_report_markdown(report)
+    msg = (report.get("message") or "").strip()
+    email_body = f"{msg}\n\n---\n\n{md}" if msg else md
+    subject = f"[ProjectDashboard] {report.get('name','Periodic Report')}"
+
+    sent = 0
+    for u in users:
+        ok, _ = send_invite_email(u["email"], subject, email_body)
+        if ok:
+            sent += 1
+
+    if sent == 0:
+        return False, "falha ao enviar para os destinatários"
+    return True, f"sent={sent}"
+
+
+def report_scheduler_loop():
+    while True:
+        try:
+            now = datetime.now()
+            key = now.strftime("%Y-%m-%d %H:%M")
+            weekday = str(now.weekday())  # 0=Mon ... 6=Sun
+            reports = [r for r in list_periodic_reports() if int(r.get("active") or 0) == 1]
+            for r in reports:
+                days = [str(x) for x in (r.get("weekdays") or [])]
+                run_time = str(r.get("run_time") or "")
+                if weekday in days and run_time == now.strftime("%H:%M") and (r.get("last_run_key") or "") != key:
+                    ok, msg = run_periodic_report(r)
+                    with db() as conn:
+                        conn.execute("UPDATE periodic_reports SET last_run_key=?, updated_at=?, updated_by=? WHERE id=?", (key, now_iso(), "system", r["id"]))
+                    audit("system", "report.periodic.run", str(r.get("id")), f"ok={ok} {msg}")
+        except Exception as e:
+            print("[ProjectDashboard] report scheduler error:", e)
+        time.sleep(30)
 
 
 def list_document_versions(slug: str) -> list[dict]:
@@ -887,6 +1077,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin(): return
             return self._json(200, {"ok": True, "settings": get_admin_settings()})
 
+        if p == "/api/admin/reports":
+            if not self._require_admin(): return
+            return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": ROLES, "priorities": ["TODOS", *PRIORITIES]})
+
         if p == "/api/admin/audit":
             if not self._require_admin(): return
             return self._json(200, {"ok": True, "logs": list_audit_logs(300)})
@@ -981,6 +1175,34 @@ class Handler(BaseHTTPRequestHandler):
                 audit(admin["username"], "admin.settings.smtp_test", to_email)
                 return self._json(200, {"ok": True})
             return self._json(400, {"ok": False, "error": msg})
+
+        if p == "/api/admin/reports":
+            admin = self._require_admin()
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = create_periodic_report(body, admin["username"])
+            if done:
+                audit(admin["username"], "report.periodic.create", body.get("name", ""))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/admin/reports/") and p.endswith("/run"):
+            admin = self._require_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                rid = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "id inválido"})
+            reports = [r for r in list_periodic_reports() if int(r.get("id") or 0) == rid]
+            if not reports:
+                return self._json(404, {"ok": False, "error": "Relatório não encontrado"})
+            done, msg = run_periodic_report(reports[0], admin["username"])
+            if done:
+                audit(admin["username"], "report.periodic.run.manual", str(rid), msg)
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/users":
             admin = self._require_admin()
@@ -1142,6 +1364,23 @@ class Handler(BaseHTTPRequestHandler):
                 audit(user["username"], "project.update", slug, json.dumps(body, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
+        if p.startswith("/api/admin/reports/"):
+            admin = self._require_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                rid = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "id inválido"})
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = update_periodic_report(rid, body, admin["username"])
+            if done:
+                audit(admin["username"], "report.periodic.update", str(rid))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
         if p.startswith("/api/admin/users/"):
             admin = self._require_admin()
             if not admin: return
@@ -1200,6 +1439,21 @@ class Handler(BaseHTTPRequestHandler):
                 audit(user["username"], "project.delete", slug)
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
+        if p.startswith("/api/admin/reports/"):
+            admin = self._require_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                rid = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "id inválido"})
+            done, msg = delete_periodic_report(rid)
+            if done:
+                audit(admin["username"], "report.periodic.delete", str(rid))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
         if p.startswith("/api/admin/users/"):
             admin = self._require_admin()
             if not admin: return
@@ -1226,6 +1480,8 @@ def main():
     if not ok_repo:
         print("[ProjectDashboard] Aviso: falha ao inicializar docs_repo:", repo_msg)
     server = HTTPServer((HOST, PORT), Handler)
+    t = threading.Thread(target=report_scheduler_loop, daemon=True)
+    t.start()
     print(f"ProjectDashboard online em http://{HOST}:{PORT}")
     try:
         server.serve_forever()
