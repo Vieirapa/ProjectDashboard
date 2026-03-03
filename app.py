@@ -18,8 +18,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-BASE_DIR = Path("/home/panosso/.openclaw/workspace/projects")
-WEB_DIR = Path(__file__).parent / "web"
+APP_DIR = Path(__file__).parent
+BASE_DIR = Path(os.getenv("PDASH_PROJECTS_DIR", str(APP_DIR / "projects")))
+WEB_DIR = APP_DIR / "web"
 DATA_DIR = Path(__file__).parent / "data"
 UPLOADS_DIR = DATA_DIR / "uploads"
 DOCS_REPO_DIR = DATA_DIR / "docs_repo"
@@ -270,6 +271,7 @@ def audit(actor: str, action: str, target: str, details: str = ""):
 
 
 def migrate_existing_projects():
+    BASE_DIR.mkdir(parents=True, exist_ok=True)
     with db() as conn:
         for p in sorted(BASE_DIR.iterdir()):
             if not p.is_dir() or p.name in SKIP_DIRS:

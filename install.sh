@@ -4,6 +4,7 @@ set -euo pipefail
 APP_USER="${APP_USER:-projectdashboard}"
 APP_GROUP="${APP_GROUP:-projectdashboard}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/projectdashboard}"
+PROJECTS_DIR="${PROJECTS_DIR:-${INSTALL_DIR}/projects}"
 PORT="${PORT:-8765}"
 DOMAIN="${DOMAIN:-}"                 # ex.: dashboard.seudominio.com
 LE_EMAIL="${LE_EMAIL:-}"             # e-mail para Let's Encrypt
@@ -88,6 +89,8 @@ rsync -a --delete \
 chown -R "${APP_USER}:${APP_GROUP}" "${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}/data"
 chown -R "${APP_USER}:${APP_GROUP}" "${INSTALL_DIR}/data"
+mkdir -p "${PROJECTS_DIR}"
+chown -R "${APP_USER}:${APP_GROUP}" "${PROJECTS_DIR}"
 
 echo "[4/9] Criando ambiente virtual..."
 if [[ ! -d "${INSTALL_DIR}/.venv" ]]; then
@@ -103,6 +106,7 @@ ENV_FILE="/etc/projectdashboard.env"
 touch "$ENV_FILE"
 set_or_replace_env "$ENV_FILE" "PDASH_HOST" "${APP_HOST}"
 set_or_replace_env "$ENV_FILE" "PDASH_PORT" "${PORT}"
+set_or_replace_env "$ENV_FILE" "PDASH_PROJECTS_DIR" "${PROJECTS_DIR}"
 set_or_replace_env "$ENV_FILE" "PDASH_INITIAL_PASSWORD" "${ADMIN_PASSWORD}"
 
 # Preserve existing SMTP settings if already configured; seed empty keys when missing.

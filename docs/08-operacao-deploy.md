@@ -23,6 +23,7 @@ Installer output includes:
 - deployment to `/opt/projectdashboard`
 - `projectdashboard.service` enabled at boot
 - environment file at `/etc/projectdashboard.env` (preserves SMTP keys on reinstall)
+- dedicated projects directory (`PDASH_PROJECTS_DIR`, default `/opt/projectdashboard/projects`)
 - optional Nginx reverse proxy
 - optional Let's Encrypt HTTPS
 - daily backup timer (`projectdashboard-backup.timer`)

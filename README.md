@@ -76,6 +76,7 @@ sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 ### Useful installer variables
 
 - `PORT` (default: `8765`)
+- `PROJECTS_DIR` (default: `/opt/projectdashboard/projects`)
 - `ENABLE_NGINX=yes|no`
 - `ENABLE_HTTPS=yes|no`
 - `ENABLE_BACKUP_TIMER=yes|no`
