@@ -17,7 +17,6 @@ const f = {
   priority: document.getElementById('priority'),
   owner: document.getElementById('owner'),
   dueDate: document.getElementById('dueDate'),
-  path: document.getElementById('path'),
   documentFile: document.getElementById('documentFile'),
   documentName: document.getElementById('documentName'),
   documentVersions: document.getElementById('documentVersions'),
@@ -121,7 +120,7 @@ async function loadProject() {
   const d = await api(`/api/projects/${encodeURIComponent(slug)}`);
   const p = d.project;
   project = p;
-  f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate; f.path.value = p.path;
+  f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate;
   f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
   d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
