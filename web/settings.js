@@ -126,7 +126,7 @@ async function loadSettings() {
   f.inviteDefaultMessage.value = getSetting(s, 'invite.default_message', '');
   f.defaultDueDays.value = getSetting(s, 'workflow.default_due_days', '7');
   f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
-  f.backupPath.value = getSetting(s, 'backup.path', '/var/backups/projectdashboard');
+  f.backupPath.value = getSetting(s, 'backup.path', '/opt/projectdashboard/data/backups');
   f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
   f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
   f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'main');

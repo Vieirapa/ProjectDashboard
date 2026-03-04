@@ -829,44 +829,67 @@ def _backup_config(settings: dict) -> dict:
     clean_days = [str(d) for d in days if str(d) in {"0", "1", "2", "3", "4", "5", "6"}]
     return {
         "enabled": _setting(settings, "backup.enabled", "PDASH_BACKUP_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
-        "path": _setting(settings, "backup.path", "PDASH_BACKUP_PATH", "/var/backups/projectdashboard"),
+        "path": _setting(settings, "backup.path", "PDASH_BACKUP_PATH", str(DATA_DIR / "backups")),
         "weekdays": clean_days,
         "run_time": _setting(settings, "backup.run_time", "PDASH_BACKUP_RUN_TIME", "03:00"),
     }
 
 
+def _backup_permission_hint(path: Path) -> str:
+    p = str(path)
+    return (
+        f"Permissão negada em '{p}'. "
+        "Sugestões: (1) use um caminho gravável pelo serviço (ex.: ./data/backups), "
+        f"ou (2) ajuste permissões no Ubuntu: sudo mkdir -p {p} && sudo chown -R <usuario_servico>:<grupo_servico> {p}"
+    )
+
+
 def run_system_backup(actor: str = "system") -> tuple[bool, str]:
     settings = get_admin_settings()
     cfg = _backup_config(settings)
-    out_dir = Path(cfg["path"]).expanduser()
+    primary_out_dir = Path(cfg["path"]).expanduser()
+    fallback_out_dir = DATA_DIR / "backups"
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     db_src = DATA_DIR / "projectdashboard.db"
     docs_src = DATA_DIR / "docs_repo"
 
-    try:
-        out_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        return False, f"não foi possível criar pasta de backup: {e}"
-
-    copied = []
-    try:
+    def _write_backup(target_dir: Path) -> list[str]:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        copied_local: list[str] = []
         if db_src.exists():
-            db_out = out_dir / f"projectdashboard-db-{stamp}.sqlite3"
+            db_out = target_dir / f"projectdashboard-db-{stamp}.sqlite3"
             db_out.write_bytes(db_src.read_bytes())
-            copied.append(db_out.name)
+            copied_local.append(db_out.name)
         if docs_src.exists() and docs_src.is_dir():
-            archive = out_dir / f"projectdashboard-docs-{stamp}.tar.gz"
+            archive = target_dir / f"projectdashboard-docs-{stamp}.tar.gz"
             subprocess.run(["tar", "-czf", str(archive), "-C", str(DATA_DIR), "docs_repo"], check=True)
-            copied.append(archive.name)
+            copied_local.append(archive.name)
+        return copied_local
+
+    used_dir = primary_out_dir
+    try:
+        copied = _write_backup(primary_out_dir)
+    except PermissionError:
+        try:
+            copied = _write_backup(fallback_out_dir)
+            used_dir = fallback_out_dir
+            hint = _backup_permission_hint(primary_out_dir)
+            msg = (
+                f"backup salvo em {used_dir} ({', '.join(copied)}) | "
+                f"Obs: caminho configurado sem permissão. {hint}"
+            )
+            audit(actor, "system.backup.run", str(used_dir), msg)
+            return True, msg
+        except Exception as e2:
+            return False, f"falha no backup. {_backup_permission_hint(primary_out_dir)} | detalhe: {e2}"
     except Exception as e:
         return False, f"falha no backup: {e}"
 
     if not copied:
         return False, "nenhum artefato encontrado para backup"
 
-    audit(actor, "system.backup.run", str(out_dir), ", ".join(copied))
-    return True, f"backup salvo em {out_dir} ({', '.join(copied)})"
-
+    audit(actor, "system.backup.run", str(used_dir), ", ".join(copied))
+    return True, f"backup salvo em {used_dir} ({', '.join(copied)})"
 
 def run_system_diagnostics() -> dict:
     settings = get_admin_settings()
