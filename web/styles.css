@@ -39,8 +39,8 @@ button:disabled {
 .card select { width: 100%; padding: 6px; border-radius: 8px; border: 1px solid #cbd5e1; margin-top: 6px; }
 .card-controls { display: grid; grid-template-columns: 1fr 92px; gap: 10px; align-items: end; margin-top: 8px; }
 .card-selects { display: grid; gap: 0; }
-.card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
-.card-actions button { padding: 6px 8px; font-size: 12px; }
+.card-actions { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 8px; }
+.card-actions button { width: 100%; padding: 6px 8px; font-size: 12px; }
 .doc-btn {
   min-width: 84px;
   width: 84px;
