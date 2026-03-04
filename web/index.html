@@ -34,17 +34,19 @@
         <select id="statusFilter"><option value="">Todos os status</option></select>
         <select id="priorityFilter"><option value="">Todas prioridades</option></select>
         <input id="ownerFilter" placeholder="Filtrar por responsável" />
-        <select id="sortByFilter">
-          <option value="priority">Ordenar por: Prioridade</option>
-          <option value="openedAt">Ordenar por: Data de abertura</option>
-          <option value="ageDays">Ordenar por: Tempo de ticket aberto</option>
-          <option value="name">Ordenar por: Ordem alfabética</option>
-          <option value="dueDate">Ordenar por: Prazo</option>
-          <option value="updatedAt">Ordenar por: Última atualização</option>
-        </select>
-        <select id="sortDirFilter">
-          <option value="desc">Ordem: Decrescente</option>
-          <option value="asc">Ordem: Crescente</option>
+        <select id="sortOrderFilter">
+          <option value="priority_desc">Ordenação: Prioridade (maior → menor)</option>
+          <option value="priority_asc">Ordenação: Prioridade (menor → maior)</option>
+          <option value="openedAt_desc">Ordenação: Data de abertura (mais novo → mais antigo)</option>
+          <option value="openedAt_asc">Ordenação: Data de abertura (mais antigo → mais novo)</option>
+          <option value="ageDays_desc">Ordenação: Tempo de ticket (maior → menor)</option>
+          <option value="ageDays_asc">Ordenação: Tempo de ticket (menor → maior)</option>
+          <option value="name_asc">Ordenação: Alfabética (A → Z)</option>
+          <option value="name_desc">Ordenação: Alfabética (Z → A)</option>
+          <option value="dueDate_asc">Ordenação: Prazo (mais próximo → mais distante)</option>
+          <option value="dueDate_desc">Ordenação: Prazo (mais distante → mais próximo)</option>
+          <option value="updatedAt_desc">Ordenação: Última atualização (mais recente → mais antiga)</option>
+          <option value="updatedAt_asc">Ordenação: Última atualização (mais antiga → mais recente)</option>
         </select>
       </section>
 

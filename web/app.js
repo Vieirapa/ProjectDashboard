@@ -10,8 +10,7 @@ const searchInput = document.getElementById('searchInput');
 const statusFilter = document.getElementById('statusFilter');
 const priorityFilter = document.getElementById('priorityFilter');
 const ownerFilter = document.getElementById('ownerFilter');
-const sortByFilter = document.getElementById('sortByFilter');
-const sortDirFilter = document.getElementById('sortDirFilter');
+const sortOrderFilter = document.getElementById('sortOrderFilter');
 
 const dialog = document.getElementById('projectDialog');
 const form = document.getElementById('projectForm');
@@ -45,13 +44,14 @@ async function loadMe() {
 }
 
 function currentFilters() {
+  const [sortBy = 'priority', sortDir = 'desc'] = String(sortOrderFilter.value || 'priority_desc').split('_');
   return {
     q: (searchInput.value || '').toLowerCase().trim(),
     status: statusFilter.value,
     priority: priorityFilter.value,
     owner: (ownerFilter.value || '').toLowerCase().trim(),
-    sortBy: sortByFilter.value || 'priority',
-    sortDir: sortDirFilter.value || 'desc',
+    sortBy,
+    sortDir,
   };
 }
 
@@ -202,7 +202,7 @@ async function render() {
   cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} projeto(s)`);
 }
 
-[newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter, sortByFilter, sortDirFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
+[newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter, sortOrderFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
 
 newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();
