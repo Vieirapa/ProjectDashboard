@@ -116,7 +116,13 @@ function makeCard(p, statuses, priorities) {
 
   const selectsWrap = document.createElement('div');
   selectsWrap.className = 'card-selects';
-  selectsWrap.append(st, pr);
+
+  const detailsBtn = document.createElement('button');
+  detailsBtn.className = 'secondary details-btn';
+  detailsBtn.textContent = 'Detalhes';
+  detailsBtn.onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}`;
+
+  selectsWrap.append(st, pr, detailsBtn);
 
   const docBtn = document.createElement('button');
   docBtn.className = `doc-btn ${docMeta.cls}`;
@@ -133,12 +139,7 @@ function makeCard(p, statuses, priorities) {
 
   controls.append(selectsWrap, docBtn);
 
-  const actions = document.createElement('div');
-  actions.className = 'card-actions';
-  actions.innerHTML = `<button class="secondary">Detalhes</button>`;
-  actions.children[0].onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}`;
-
-  card.append(controls, actions);
+  card.append(controls);
   return card;
 }
 
