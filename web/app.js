@@ -10,6 +10,8 @@ const searchInput = document.getElementById('searchInput');
 const statusFilter = document.getElementById('statusFilter');
 const priorityFilter = document.getElementById('priorityFilter');
 const ownerFilter = document.getElementById('ownerFilter');
+const sortByFilter = document.getElementById('sortByFilter');
+const sortDirFilter = document.getElementById('sortDirFilter');
 
 const dialog = document.getElementById('projectDialog');
 const form = document.getElementById('projectForm');
@@ -48,6 +50,8 @@ function currentFilters() {
     status: statusFilter.value,
     priority: priorityFilter.value,
     owner: (ownerFilter.value || '').toLowerCase().trim(),
+    sortBy: sortByFilter.value || 'priority',
+    sortDir: sortDirFilter.value || 'desc',
   };
 }
 
@@ -58,6 +62,32 @@ function passesFilters(project, f) {
   const hay = `${project.name} ${project.description}`.toLowerCase();
   if (f.q && !hay.includes(f.q)) return false;
   return true;
+}
+
+function toTimestamp(value) {
+  const t = Date.parse(value || '');
+  return Number.isFinite(t) ? t : 0;
+}
+
+function compareProjects(a, b, sortBy, sortDir) {
+  const dir = sortDir === 'asc' ? 1 : -1;
+  const priorityWeight = { Urgente: 4, Alta: 3, 'Média': 2, Baixa: 1 };
+
+  if (sortBy === 'priority') {
+    return dir * ((priorityWeight[a.priority] || 0) - (priorityWeight[b.priority] || 0));
+  }
+
+  if (sortBy === 'ageDays') {
+    return dir * ((Number(a.ageDays) || 0) - (Number(b.ageDays) || 0));
+  }
+
+  if (sortBy === 'openedAt' || sortBy === 'updatedAt' || sortBy === 'dueDate') {
+    return dir * (toTimestamp(a[sortBy]) - toTimestamp(b[sortBy]));
+  }
+
+  const left = String(a[sortBy] || a.name || '').toLowerCase();
+  const right = String(b[sortBy] || b.name || '').toLowerCase();
+  return dir * left.localeCompare(right, 'pt-BR');
 }
 
 function makeColumn(status) {
@@ -157,17 +187,22 @@ function fillFilters(statuses, priorities, users=[]) {
 async function render() {
   state = await api('/api/projects');
   fillFilters(state.statuses, state.priorities, state.users || []);
-  const filtered = state.projects.filter(p => passesFilters(p, currentFilters()));
+  const filters = currentFilters();
+  const filtered = state.projects.filter(p => passesFilters(p, filters));
   board.innerHTML = '';
   const cols = new Map(state.statuses.map(s => [s, makeColumn(s)]));
   cols.forEach(c => board.appendChild(c));
 
-  filtered.sort((a,b) => ({Urgente:0,Alta:1,'Média':2,Baixa:3}[a.priority] - ({Urgente:0,Alta:1,'Média':2,Baixa:3}[b.priority])));
+  filtered.sort((a, b) => {
+    const cmp = compareProjects(a, b, filters.sortBy, filters.sortDir);
+    if (cmp !== 0) return cmp;
+    return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
+  });
   filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
   cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} projeto(s)`);
 }
 
-[newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
+[newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter, sortByFilter, sortDirFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
 
 newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();

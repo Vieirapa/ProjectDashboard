@@ -34,6 +34,18 @@
         <select id="statusFilter"><option value="">Todos os status</option></select>
         <select id="priorityFilter"><option value="">Todas prioridades</option></select>
         <input id="ownerFilter" placeholder="Filtrar por responsável" />
+        <select id="sortByFilter">
+          <option value="priority">Ordenar por: Prioridade</option>
+          <option value="openedAt">Ordenar por: Data de abertura</option>
+          <option value="ageDays">Ordenar por: Tempo de ticket aberto</option>
+          <option value="name">Ordenar por: Ordem alfabética</option>
+          <option value="dueDate">Ordenar por: Prazo</option>
+          <option value="updatedAt">Ordenar por: Última atualização</option>
+        </select>
+        <select id="sortDirFilter">
+          <option value="desc">Ordem: Decrescente</option>
+          <option value="asc">Ordem: Crescente</option>
+        </select>
       </section>
 
       <main id="board"></main>
