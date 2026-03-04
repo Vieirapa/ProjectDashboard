@@ -11,6 +11,7 @@ LE_EMAIL="${LE_EMAIL:-}"             # e-mail para Let's Encrypt
 ENABLE_NGINX="${ENABLE_NGINX:-yes}"  # yes|no
 ENABLE_HTTPS="${ENABLE_HTTPS:-yes}"  # yes|no
 ENABLE_BACKUP_TIMER="${ENABLE_BACKUP_TIMER:-yes}" # yes|no
+ENABLE_UFW="${ENABLE_UFW:-yes}"      # yes|no
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/projectdashboard}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 ADMIN_USER="admin"
@@ -22,6 +23,14 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  if [[ "${ID:-}" != "ubuntu" ]]; then
+    echo "Aviso: este instalador foi otimizado para Ubuntu (detectado: ${ID:-desconhecido})."
+  fi
+fi
 
 prompt_default() {
   local var_name="$1"; shift
@@ -58,9 +67,13 @@ if [[ -z "$DOMAIN" ]]; then
   ENABLE_HTTPS="no"
 fi
 
-echo "[1/9] Installing dependencies..."
+if [[ "${PROJECTS_DIR}" != /* ]]; then
+  PROJECTS_DIR="${INSTALL_DIR}/${PROJECTS_DIR}"
+fi
+
+echo "[1/10] Installing dependencies..."
 apt-get update -y
-apt-get install -y python3 python3-venv rsync curl
+apt-get install -y python3 python3-venv rsync curl git ca-certificates ufw
 if [[ "$ENABLE_NGINX" == "yes" ]]; then
   apt-get install -y nginx
 fi
@@ -78,7 +91,7 @@ if ! id -u "${APP_USER}" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir /var/lib/projectdashboard --gid "${APP_GROUP}" --shell /usr/sbin/nologin "${APP_USER}"
 fi
 
-echo "[3/9] Copying application to ${INSTALL_DIR}..."
+echo "[3/10] Copying application to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}"
 rsync -a --delete \
   --exclude '.git' \
@@ -86,11 +99,15 @@ rsync -a --delete \
   --exclude 'data/server.log' \
   --exclude 'data/projectdashboard.db' \
   "${SCRIPT_DIR}/" "${INSTALL_DIR}/"
-chown -R "${APP_USER}:${APP_GROUP}" "${INSTALL_DIR}"
-mkdir -p "${INSTALL_DIR}/data"
-chown -R "${APP_USER}:${APP_GROUP}" "${INSTALL_DIR}/data"
-mkdir -p "${PROJECTS_DIR}"
-chown -R "${APP_USER}:${APP_GROUP}" "${PROJECTS_DIR}"
+
+# Past correction: keep runtime folders anchored under INSTALL_DIR.
+APP_DATA_DIR="${INSTALL_DIR}/data"
+APP_UPLOADS_DIR="${APP_DATA_DIR}/uploads"
+APP_DOCS_REPO_DIR="${APP_DATA_DIR}/docs_repo"
+
+mkdir -p "${APP_DATA_DIR}" "${APP_UPLOADS_DIR}" "${APP_DOCS_REPO_DIR}" "${PROJECTS_DIR}"
+chown -R "${APP_USER}:${APP_GROUP}" "${INSTALL_DIR}" "${PROJECTS_DIR}"
+chmod 750 "${INSTALL_DIR}" "${APP_DATA_DIR}" "${PROJECTS_DIR}" || true
 
 echo "[4/9] Criando ambiente virtual..."
 if [[ ! -d "${INSTALL_DIR}/.venv" ]]; then
@@ -224,7 +241,7 @@ else
 fi
 
 if [[ "$ENABLE_BACKUP_TIMER" == "yes" ]]; then
-  echo "[9/9] Configuring daily automatic backup..."
+  echo "[9/10] Configuring daily automatic backup..."
   mkdir -p "$BACKUP_DIR"
   chown root:root "$BACKUP_DIR"
   chmod 750 "$BACKUP_DIR"
@@ -271,7 +288,20 @@ EOF
   systemctl daemon-reload
   systemctl enable --now projectdashboard-backup.timer
 else
-  echo "[9/9] Automatic backup disabled."
+  echo "[9/10] Automatic backup disabled."
+fi
+
+if [[ "$ENABLE_UFW" == "yes" ]]; then
+  echo "[10/10] Applying Ubuntu firewall rules (UFW)..."
+  ufw allow OpenSSH >/dev/null 2>&1 || true
+  if [[ "$ENABLE_NGINX" == "yes" ]]; then
+    ufw allow 'Nginx Full' >/dev/null 2>&1 || true
+  else
+    ufw allow "${PORT}/tcp" >/dev/null 2>&1 || true
+  fi
+  ufw --force enable >/dev/null 2>&1 || true
+else
+  echo "[10/10] UFW configuration skipped."
 fi
 
 echo

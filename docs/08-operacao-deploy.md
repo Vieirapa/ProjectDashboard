@@ -21,12 +21,14 @@ sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 Installer output includes:
 
 - deployment to `/opt/projectdashboard`
+- runtime folders fixed under install path (`/opt/projectdashboard/data`, `/opt/projectdashboard/data/docs_repo`, `/opt/projectdashboard/projects`)
 - `projectdashboard.service` enabled at boot
 - environment file at `/etc/projectdashboard.env` (preserves SMTP keys on reinstall)
 - dedicated projects directory (`PDASH_PROJECTS_DIR`, default `/opt/projectdashboard/projects`)
 - optional Nginx reverse proxy
 - optional Let's Encrypt HTTPS
 - daily backup timer (`projectdashboard-backup.timer`)
+- optional Ubuntu UFW setup (`ENABLE_UFW=yes`, default)
 - bootstrap admin account: `admin` / `admin`
 
 After first login as admin, configure operational settings in `/settings.html` (SMTP, defaults, periodic reports).
