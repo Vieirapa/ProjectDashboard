@@ -15,6 +15,7 @@ This file tracks future ideas and improvements for ProjectDashboard.
 - Add pagination for Deleted Projects list (for large environments)
 - Add optional "health badge" UI (green/yellow/red) in System Diagnostics
 - Short label mode for ordering dropdown (compact text)
+- Run a final UI language QA pass with a checklist (PT-BR consistency, accents, terminology, and microcopy clarity)
 
 ### Operations / Installer
 
