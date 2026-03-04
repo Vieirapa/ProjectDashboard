@@ -3,12 +3,19 @@ const logoutBtn = document.getElementById('logoutBtn');
 const smtpForm = document.getElementById('smtpForm');
 const workflowForm = document.getElementById('workflowForm');
 const reportForm = document.getElementById('reportForm');
+const backupForm = document.getElementById('backupForm');
+const diagForm = document.getElementById('diagForm');
 const feedback = document.getElementById('feedback');
 const workflowFeedback = document.getElementById('workflowFeedback');
 const reportFeedback = document.getElementById('reportFeedback');
+const backupFeedback = document.getElementById('backupFeedback');
+const diagFeedback = document.getElementById('diagFeedback');
 const reportsList = document.getElementById('reportsList');
 const reportPreview = document.getElementById('reportPreview');
+const diagOutput = document.getElementById('diagOutput');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
+const runBackupNowBtn = document.getElementById('runBackupNowBtn');
+const runDiagBtn = document.getElementById('runDiagBtn');
 
 const f = {
   host: document.getElementById('smtp_host'),
@@ -20,6 +27,12 @@ const f = {
   inviteDefaultMessage: document.getElementById('invite_default_message'),
   smtpTestTo: document.getElementById('smtp_test_to'),
   defaultDueDays: document.getElementById('default_due_days'),
+  backupEnabled: document.getElementById('backup_enabled'),
+  backupPath: document.getElementById('backup_path'),
+  backupWeekdays: document.getElementById('backup_weekdays'),
+  backupRunTime: document.getElementById('backup_run_time'),
+  systemGitRepo: document.getElementById('system_git_repo'),
+  systemGitBranch: document.getElementById('system_git_branch'),
 
   rName: document.getElementById('r_name'),
   rStatuses: document.getElementById('r_statuses'),
@@ -85,6 +98,22 @@ function reportConfigLine(r) {
   return `{${statuses}} {${priorities}} {${roles}} {${days}} {${time}}`;
 }
 
+function renderDiagnostics(diagnostics) {
+  const lines = [];
+  lines.push(`Timestamp: ${diagnostics?.timestamp || '-'}`);
+  if (diagnostics?.version) {
+    lines.push(`Local: ${diagnostics.version.local || 'unknown'}`);
+    lines.push(`Remote (${diagnostics.version.branch || '-'}): ${diagnostics.version.remote || 'unknown'}`);
+    lines.push(`Update available: ${diagnostics.version.updateAvailable ? 'SIM' : 'NÃO'}`);
+  }
+  lines.push('');
+  lines.push('Checks:');
+  (diagnostics?.checks || []).forEach((c) => {
+    lines.push(`- ${c.ok ? '✅' : '❌'} ${c.name}: ${c.detail || '-'}`);
+  });
+  diagOutput.value = lines.join('\n');
+}
+
 async function loadSettings() {
   const d = await api('/api/admin/settings');
   const s = d.settings || {};
@@ -96,6 +125,18 @@ async function loadSettings() {
   f.tls.checked = String(getSetting(s, 'smtp.tls', 'true')).toLowerCase() !== 'false';
   f.inviteDefaultMessage.value = getSetting(s, 'invite.default_message', '');
   f.defaultDueDays.value = getSetting(s, 'workflow.default_due_days', '7');
+  f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
+  f.backupPath.value = getSetting(s, 'backup.path', '/var/backups/projectdashboard');
+  f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
+  f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
+  f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'main');
+
+  let days = [];
+  try { days = JSON.parse(getSetting(s, 'backup.weekdays', '["0","1","2","3","4","5","6"]')); } catch { days = []; }
+  const setDays = new Set((days || []).map(String));
+  f.backupWeekdays.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+    el.checked = setDays.has(String(el.value));
+  });
 }
 
 async function loadReports() {
@@ -194,6 +235,44 @@ workflowForm.onsubmit = async (e) => {
   }
 };
 
+backupForm.onsubmit = async (e) => {
+  e.preventDefault();
+  backupFeedback.textContent = '';
+  try {
+    await api('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        'backup.enabled': f.backupEnabled.checked ? 'true' : 'false',
+        'backup.path': f.backupPath.value,
+        'backup.weekdays': JSON.stringify(checkedValues(f.backupWeekdays)),
+        'backup.run_time': f.backupRunTime.value,
+      }),
+    });
+    backupFeedback.textContent = 'Política de backup salva ✅';
+  } catch (err) {
+    backupFeedback.textContent = err.message;
+  }
+};
+
+diagForm.onsubmit = async (e) => {
+  e.preventDefault();
+  diagFeedback.textContent = '';
+  try {
+    await api('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        'system.git_repo': f.systemGitRepo.value,
+        'system.git_branch': f.systemGitBranch.value,
+      }),
+    });
+    diagFeedback.textContent = 'Fonte de versão salva ✅';
+  } catch (err) {
+    diagFeedback.textContent = err.message;
+  }
+};
+
 reportForm.onsubmit = async (e) => {
   e.preventDefault();
   reportFeedback.textContent = '';
@@ -239,6 +318,27 @@ testSmtpBtn.onclick = async () => {
   }
 };
 
+runBackupNowBtn.onclick = async () => {
+  backupFeedback.textContent = '';
+  try {
+    const d = await api('/api/admin/system/backup/run', { method: 'POST' });
+    backupFeedback.textContent = d.message || 'Backup manual executado ✅';
+  } catch (err) {
+    backupFeedback.textContent = err.message;
+  }
+};
+
+runDiagBtn.onclick = async () => {
+  diagFeedback.textContent = '';
+  try {
+    const d = await api('/api/admin/system/diagnostics');
+    renderDiagnostics(d.diagnostics || {});
+    diagFeedback.textContent = 'Diagnóstico executado ✅';
+  } catch (err) {
+    diagFeedback.textContent = err.message;
+  }
+};
+
 logoutBtn.onclick = async () => {
   await api('/api/logout', { method: 'POST' });
   location.href = '/login.html';
@@ -248,6 +348,12 @@ logoutBtn.onclick = async () => {
   try {
     await ensureAdmin();
     await Promise.all([loadSettings(), loadReports()]);
+    try {
+      const d = await api('/api/admin/system/diagnostics');
+      renderDiagnostics(d.diagnostics || {});
+    } catch (_) {
+      // diagnóstico pode falhar sem bloquear tela
+    }
   } catch {
     location.href = '/';
   }

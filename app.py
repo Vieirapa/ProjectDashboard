@@ -532,7 +532,9 @@ def get_admin_settings() -> dict:
 def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
     allowed = {
         "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls",
-        "invite.default_message", "workflow.default_due_days"
+        "invite.default_message", "workflow.default_due_days",
+        "backup.enabled", "backup.path", "backup.weekdays", "backup.run_time",
+        "system.git_repo", "system.git_branch",
     }
     incoming = {k: str(v) for k, v in (payload or {}).items() if k in allowed}
     if not incoming:
@@ -556,6 +558,49 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
                 return False, "workflow.default_due_days inválido"
         except Exception:
             return False, "workflow.default_due_days inválido"
+
+    if "backup.enabled" in incoming:
+        incoming["backup.enabled"] = "true" if incoming["backup.enabled"].strip().lower() in {"1", "true", "yes", "on"} else "false"
+
+    if "backup.path" in incoming:
+        p = Path(incoming["backup.path"]).expanduser()
+        if not p.is_absolute():
+            return False, "backup.path deve ser caminho absoluto"
+        incoming["backup.path"] = str(p)
+
+    if "backup.weekdays" in incoming:
+        try:
+            raw = json.loads(incoming["backup.weekdays"])
+            if not isinstance(raw, list):
+                return False, "backup.weekdays inválido"
+            clean_days = sorted({str(int(x)) for x in raw if str(x).strip() != ""})
+            for d in clean_days:
+                if d not in {"0", "1", "2", "3", "4", "5", "6"}:
+                    return False, "backup.weekdays inválido"
+            incoming["backup.weekdays"] = json.dumps(clean_days, ensure_ascii=False)
+        except Exception:
+            return False, "backup.weekdays inválido"
+
+    if "backup.run_time" in incoming:
+        rt = incoming["backup.run_time"].strip()
+        if not re.match(r"^\d{2}:\d{2}$", rt):
+            return False, "backup.run_time inválido"
+        hh, mm = rt.split(":")
+        if int(hh) > 23 or int(mm) > 59:
+            return False, "backup.run_time inválido"
+        incoming["backup.run_time"] = rt
+
+    if "system.git_repo" in incoming and incoming["system.git_repo"]:
+        repo = incoming["system.git_repo"].strip()
+        if not (repo.startswith("https://") or repo.startswith("git@") or repo.startswith("ssh://")):
+            return False, "system.git_repo inválido"
+        incoming["system.git_repo"] = repo
+
+    if "system.git_branch" in incoming and incoming["system.git_branch"]:
+        branch = incoming["system.git_branch"].strip()
+        if not re.match(r"^[A-Za-z0-9._/-]+$", branch):
+            return False, "system.git_branch inválido"
+        incoming["system.git_branch"] = branch
 
     with db() as conn:
         for key, value in incoming.items():
@@ -773,6 +818,108 @@ def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]
     return True, f"sent={sent}"
 
 
+def _backup_config(settings: dict) -> dict:
+    raw_days = _setting(settings, "backup.weekdays", "PDASH_BACKUP_WEEKDAYS", "[]")
+    try:
+        days = json.loads(raw_days)
+        if not isinstance(days, list):
+            days = []
+    except Exception:
+        days = []
+    clean_days = [str(d) for d in days if str(d) in {"0", "1", "2", "3", "4", "5", "6"}]
+    return {
+        "enabled": _setting(settings, "backup.enabled", "PDASH_BACKUP_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
+        "path": _setting(settings, "backup.path", "PDASH_BACKUP_PATH", "/var/backups/projectdashboard"),
+        "weekdays": clean_days,
+        "run_time": _setting(settings, "backup.run_time", "PDASH_BACKUP_RUN_TIME", "03:00"),
+    }
+
+
+def run_system_backup(actor: str = "system") -> tuple[bool, str]:
+    settings = get_admin_settings()
+    cfg = _backup_config(settings)
+    out_dir = Path(cfg["path"]).expanduser()
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    db_src = DATA_DIR / "projectdashboard.db"
+    docs_src = DATA_DIR / "docs_repo"
+
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return False, f"não foi possível criar pasta de backup: {e}"
+
+    copied = []
+    try:
+        if db_src.exists():
+            db_out = out_dir / f"projectdashboard-db-{stamp}.sqlite3"
+            db_out.write_bytes(db_src.read_bytes())
+            copied.append(db_out.name)
+        if docs_src.exists() and docs_src.is_dir():
+            archive = out_dir / f"projectdashboard-docs-{stamp}.tar.gz"
+            subprocess.run(["tar", "-czf", str(archive), "-C", str(DATA_DIR), "docs_repo"], check=True)
+            copied.append(archive.name)
+    except Exception as e:
+        return False, f"falha no backup: {e}"
+
+    if not copied:
+        return False, "nenhum artefato encontrado para backup"
+
+    audit(actor, "system.backup.run", str(out_dir), ", ".join(copied))
+    return True, f"backup salvo em {out_dir} ({', '.join(copied)})"
+
+
+def run_system_diagnostics() -> dict:
+    settings = get_admin_settings()
+    repo_url = _setting(settings, "system.git_repo", "PDASH_GIT_REPO", "https://github.com/Vieirapa/ProjectDashboard.git")
+    repo_branch = _setting(settings, "system.git_branch", "PDASH_GIT_BRANCH", "main")
+
+    diagnostics = {
+        "timestamp": now_iso(),
+        "checks": [],
+        "version": {
+            "local": "unknown",
+            "remote": "unknown",
+            "repo": repo_url,
+            "branch": repo_branch,
+            "updateAvailable": False,
+        }
+    }
+
+    def add_check(name: str, ok: bool, detail: str):
+        diagnostics["checks"].append({"name": name, "ok": bool(ok), "detail": detail})
+
+    add_check("Banco de dados", DB_PATH.exists(), str(DB_PATH))
+    add_check("Pasta de dados", DATA_DIR.exists(), str(DATA_DIR))
+    add_check("Pasta de projetos", BASE_DIR.exists(), str(BASE_DIR))
+
+    if (APP_DIR / ".git").exists():
+        try:
+            local = subprocess.check_output(["git", "-C", str(APP_DIR), "rev-parse", "HEAD"], text=True, timeout=6).strip()
+            diagnostics["version"]["local"] = local
+            add_check("Git local", True, local[:12])
+        except Exception as e:
+            add_check("Git local", False, str(e))
+    else:
+        add_check("Git local", False, "instalação sem .git (normal em deploy via rsync)")
+
+    try:
+        remote_line = subprocess.check_output(["git", "ls-remote", repo_url, f"refs/heads/{repo_branch}"], text=True, timeout=10).strip()
+        remote = remote_line.split()[0] if remote_line else ""
+        if remote:
+            diagnostics["version"]["remote"] = remote
+            add_check("GitHub remoto", True, remote[:12])
+        else:
+            add_check("GitHub remoto", False, "branch não encontrada")
+    except Exception as e:
+        add_check("GitHub remoto", False, str(e))
+
+    local = diagnostics["version"]["local"]
+    remote = diagnostics["version"]["remote"]
+    diagnostics["version"]["updateAvailable"] = bool(local and remote and local != "unknown" and remote != "unknown" and local != remote)
+
+    return diagnostics
+
+
 def report_scheduler_loop():
     while True:
         try:
@@ -788,8 +935,23 @@ def report_scheduler_loop():
                     with db() as conn:
                         conn.execute("UPDATE periodic_reports SET last_run_key=?, updated_at=?, updated_by=? WHERE id=?", (key, now_iso(), "system", r["id"]))
                     audit("system", "report.periodic.run", str(r.get("id")), f"ok={ok} {msg}")
+
+            backup_cfg = _backup_config(get_admin_settings())
+            if backup_cfg["enabled"] and weekday in backup_cfg["weekdays"] and backup_cfg["run_time"] == now.strftime("%H:%M"):
+                backup_key = f"backup:{key}"
+                with db() as conn:
+                    lock = conn.execute("SELECT value FROM app_settings WHERE key='backup.last_run_key'").fetchone()
+                    last_key = (lock["value"] if lock else "")
+                    if last_key != backup_key:
+                        ok, msg = run_system_backup("system")
+                        conn.execute(
+                            "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?) "
+                            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+                            ("backup.last_run_key", backup_key, "system", now_iso()),
+                        )
+                        audit("system", "system.backup.schedule", backup_cfg["path"], f"ok={ok} {msg}")
         except Exception as e:
-            print("[ProjectDashboard] report scheduler error:", e)
+            print("[ProjectDashboard] report/backup scheduler error:", e)
         time.sleep(30)
 
 
@@ -1195,6 +1357,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin(): return
             return self._json(200, {"ok": True, "logs": list_audit_logs(300)})
 
+        if p == "/api/admin/system/diagnostics":
+            if not self._require_admin(): return
+            return self._json(200, {"ok": True, "diagnostics": run_system_diagnostics()})
+
         self.send_error(404)
 
     def do_POST(self):
@@ -1295,6 +1461,12 @@ class Handler(BaseHTTPRequestHandler):
                 audit(admin["username"], "admin.settings.smtp_test", to_email)
                 return self._json(200, {"ok": True})
             return self._json(400, {"ok": False, "error": msg})
+
+        if p == "/api/admin/system/backup/run":
+            admin = self._require_admin()
+            if not admin: return
+            done, msg = run_system_backup(admin["username"])
+            return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
 
         if p == "/api/admin/reports":
             admin = self._require_admin()

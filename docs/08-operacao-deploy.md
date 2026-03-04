@@ -31,7 +31,11 @@ Installer output includes:
 - optional Ubuntu UFW setup (`ENABLE_UFW=yes`, default)
 - bootstrap admin account: `admin` / `admin`
 
-After first login as admin, configure operational settings in `/settings.html` (SMTP, defaults, periodic reports).
+After first login as admin, configure operational settings in `/settings.html` (SMTP, defaults, periodic reports, backup policy, diagnostics).
+
+## Next installer enhancement (scheduled)
+
+- Add `--dry-run` mode to `install.sh` (planned for next installer update) to simulate changes without applying them.
 
 ## Manual execution
 

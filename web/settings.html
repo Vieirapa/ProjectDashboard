@@ -65,6 +65,52 @@
       </section>
 
       <section class="panel">
+        <h3>Backup do sistema</h3>
+        <form id="backupForm" class="form-grid" style="max-width:900px;">
+          <label class="inline-check"><input id="backup_enabled" type="checkbox" /> <span>Habilitar backup automático interno</span></label>
+          <label>Caminho de saída dos backups</label>
+          <input id="backup_path" placeholder="/var/backups/projectdashboard" />
+
+          <label>Dias da semana</label>
+          <div id="backup_weekdays" class="form-grid">
+            <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
+            <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
+            <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
+            <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
+            <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
+            <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
+            <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+          </div>
+
+          <label>Horário (HH:MM)</label>
+          <input id="backup_run_time" type="time" value="03:00" />
+
+          <div class="dialog-actions" style="justify-content:flex-start;">
+            <button type="submit">Salvar política de backup</button>
+            <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
+          </div>
+          <p id="backupFeedback" class="small"></p>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h3>Diagnóstico do sistema</h3>
+        <form id="diagForm" class="form-grid" style="max-width:900px;">
+          <label>Repositório Git para comparação de versão</label>
+          <input id="system_git_repo" placeholder="https://github.com/Vieirapa/ProjectDashboard.git" />
+          <label>Branch</label>
+          <input id="system_git_branch" placeholder="main" />
+
+          <div class="dialog-actions" style="justify-content:flex-start;">
+            <button type="submit">Salvar fonte de versão</button>
+            <button type="button" id="runDiagBtn" class="secondary">Rodar diagnóstico agora</button>
+          </div>
+          <p id="diagFeedback" class="small"></p>
+          <textarea id="diagOutput" rows="12" readonly placeholder="Resultado do diagnóstico..."></textarea>
+        </form>
+      </section>
+
+      <section class="panel">
         <h3>Relatórios periódicos</h3>
         <form id="reportForm" class="form-grid" style="max-width:900px;">
           <label>Nome do relatório</label>
