@@ -64,6 +64,93 @@ Check service runtime identity again:
 systemctl show -p User,Group projectdashboard
 ```
 
+## 5) Restore a specific backup (manual step-by-step)
+
+Use this procedure when you need to recover a specific backup set.
+
+### A. Identify backup files
+
+Typical files are:
+
+- Database backup: `projectdashboard-db-YYYYMMDD-HHMMSS.sqlite3`
+- Documents backup: `projectdashboard-docs-YYYYMMDD-HHMMSS.tar.gz`
+
+Example listing:
+
+```bash
+ls -lh /var/backups/projectdashboard
+```
+
+### B. Stop the service
+
+```bash
+sudo systemctl stop projectdashboard
+```
+
+### C. (Recommended) Snapshot current data before restore
+
+```bash
+sudo mkdir -p /opt/projectdashboard/data/restore-snapshots
+sudo cp -a /opt/projectdashboard/data/projectdashboard.db /opt/projectdashboard/data/restore-snapshots/projectdashboard.db.pre-restore
+sudo tar -czf /opt/projectdashboard/data/restore-snapshots/docs_repo.pre-restore.tar.gz -C /opt/projectdashboard/data docs_repo
+```
+
+### D. Restore database file
+
+```bash
+sudo cp -a /var/backups/projectdashboard/projectdashboard-db-YYYYMMDD-HHMMSS.sqlite3 /opt/projectdashboard/data/projectdashboard.db
+```
+
+### E. Restore docs repository (optional, if you have the archive)
+
+```bash
+sudo rm -rf /opt/projectdashboard/data/docs_repo
+sudo tar -xzf /var/backups/projectdashboard/projectdashboard-docs-YYYYMMDD-HHMMSS.tar.gz -C /opt/projectdashboard/data
+```
+
+### F. Re-apply ownership and start service
+
+```bash
+sudo chown -R projectdashboard:projectdashboard /opt/projectdashboard/data
+sudo systemctl start projectdashboard
+sudo systemctl status projectdashboard --no-pager
+```
+
+## 6) Automatic restore script
+
+A helper script is available:
+
+- `scripts/restore_backup.sh`
+
+### Basic usage
+
+```bash
+sudo ./scripts/restore_backup.sh \
+  --db-backup /var/backups/projectdashboard/projectdashboard-db-YYYYMMDD-HHMMSS.sqlite3 \
+  --docs-backup /var/backups/projectdashboard/projectdashboard-docs-YYYYMMDD-HHMMSS.tar.gz
+```
+
+### Restore only database
+
+```bash
+sudo ./scripts/restore_backup.sh \
+  --db-backup /var/backups/projectdashboard/projectdashboard-db-YYYYMMDD-HHMMSS.sqlite3
+```
+
+### Useful options
+
+- `--service <name>` (default: `projectdashboard`)
+- `--install-dir <path>` (default: `/opt/projectdashboard`)
+- `--app-user <user>` (default: `projectdashboard`)
+- `--app-group <group>` (default: `projectdashboard`)
+- `--no-snapshot` (skip pre-restore safety snapshot)
+
+Get full help:
+
+```bash
+./scripts/restore_backup.sh --help
+```
+
 ## Troubleshooting
 
 - If permission errors persist, confirm:
