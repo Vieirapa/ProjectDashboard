@@ -47,7 +47,8 @@
       <label>Descrição</label><textarea id="pDescription" rows="3"></textarea>
       <label>Status</label><select id="pStatus"></select>
       <label>Prioridade</label><select id="pPriority"></select>
-      <label>Responsável</label><input id="pOwner" />
+      <label>Responsável</label><input id="pOwner" list="ownersList" />
+      <datalist id="ownersList"></datalist>
       <label>Prazo</label><input id="pDueDate" type="date" />
       <div class="dialog-actions">
         <button type="button" class="secondary" id="cancelDialogBtn">Cancelar</button>

@@ -398,6 +398,21 @@ def list_audit_logs(limit: int = 200) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def list_usernames() -> list[str]:
+    with db() as conn:
+        rows = conn.execute("SELECT username FROM users ORDER BY username").fetchall()
+    return [r["username"] for r in rows]
+
+
+def is_valid_owner(owner: str) -> bool:
+    owner = (owner or "").strip()
+    if not owner:
+        return True
+    with db() as conn:
+        row = conn.execute("SELECT 1 FROM users WHERE username=?", (owner,)).fetchone()
+    return bool(row)
+
+
 def sync_project_meta(project: dict):
     p = Path(project["path"])
     (p / "project.json").write_text(json.dumps(project, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -414,12 +429,16 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
 
     status = payload.get("status") if payload.get("status") in STATUSES else "Backlog"
     opened_at = now_iso()
+    owner = (payload.get("owner") or "").strip()
+    if not is_valid_owner(owner):
+        return False, "Responsável inválido (usuário não encontrado)"
+
     project = {
         "slug": slug,
         "name": name,
         "status": status,
         "priority": payload.get("priority") if payload.get("priority") in PRIORITIES else "Média",
-        "owner": (payload.get("owner") or "").strip(),
+        "owner": owner,
         "dueDate": ("-" if status == "Concluído" else ((payload.get("dueDate") or "").strip() or default_due_date_iso())),
         "description": (payload.get("description") or "Sem descrição").strip(),
         "path": str(proj_dir),
@@ -457,7 +476,10 @@ def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
     if "priority" in payload and payload["priority"] in PRIORITIES:
         p["priority"] = payload["priority"]
     if "owner" in payload:
-        p["owner"] = str(payload["owner"]).strip()
+        next_owner = str(payload["owner"]).strip()
+        if not is_valid_owner(next_owner):
+            return False, "Responsável inválido (usuário não encontrado)"
+        p["owner"] = next_owner
 
     status_changed = p.get("status") != old_status
     if "dueDate" in payload:
@@ -1086,7 +1108,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/projects":
             if not self._require_auth(): return
-            return self._json(200, {"projects": list_projects(), "statuses": STATUSES, "priorities": PRIORITIES})
+            return self._json(200, {"projects": list_projects(), "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
 
         if p.startswith("/api/projects/") and p.endswith("/document/versions"):
             if not self._require_auth(): return
@@ -1141,7 +1163,7 @@ class Handler(BaseHTTPRequestHandler):
             slug = p.split("/")[3]
             proj = get_project(slug)
             if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
-            return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES})
+            return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
 
         if p == "/api/admin/users":
             if not self._require_admin(): return

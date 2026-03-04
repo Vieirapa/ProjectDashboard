@@ -11,6 +11,7 @@ const saveBtn = document.getElementById('saveBtn');
 const reviewNoteInput = document.getElementById('reviewNoteInput');
 const addReviewNoteBtn = document.getElementById('addReviewNoteBtn');
 const reviewNotesHistory = document.getElementById('reviewNotesHistory');
+const ownersList = document.getElementById('ownersList');
 
 const f = {
   name: document.getElementById('name'),
@@ -164,6 +165,8 @@ async function loadProject() {
   f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
   d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
+  ownersList.innerHTML = '';
+  (d.users || []).forEach(u => ownersList.append(new Option(u, u)));
 
   const editable = canEditCard();
   [f.name, f.description, f.status, f.priority, f.owner, f.dueDate].forEach((el) => el.disabled = !editable);
@@ -248,8 +251,17 @@ async function handleSave() {
   isSaving = true;
   saveBtn.disabled = true;
   try {
+    const owner = (f.owner.value || '').trim();
+    const validOwners = Array.from(ownersList.options).map(o => o.value);
+    if (owner && !validOwners.includes(owner)) {
+      feedback.textContent = 'Responsável inválido. Selecione um usuário existente.';
+      isSaving = false;
+      saveBtn.disabled = !isDirty;
+      return;
+    }
+
     await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner:f.owner.value, dueDate:f.dueDate.value,
+      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value,
     })});
 
     const file = f.documentFile.files?.[0];

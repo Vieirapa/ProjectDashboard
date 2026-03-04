@@ -21,6 +21,7 @@ const pStatus = document.getElementById('pStatus');
 const pPriority = document.getElementById('pPriority');
 const pOwner = document.getElementById('pOwner');
 const pDueDate = document.getElementById('pDueDate');
+const ownersList = document.getElementById('ownersList');
 
 let me = null;
 let state = { projects: [], statuses: [], priorities: [] };
@@ -141,18 +142,20 @@ function makeCard(p, statuses, priorities) {
   return card;
 }
 
-function fillFilters(statuses, priorities) {
+function fillFilters(statuses, priorities, users=[]) {
   if (statusFilter.options.length <= 1) statuses.forEach(s => statusFilter.append(new Option(s, s)));
   if (priorityFilter.options.length <= 1) priorities.forEach(p => priorityFilter.append(new Option(p, p)));
   pStatus.innerHTML = ''; pPriority.innerHTML = '';
   statuses.forEach(s => pStatus.append(new Option(s, s)));
   priorities.forEach(p => pPriority.append(new Option(p, p)));
+  ownersList.innerHTML = '';
+  (users || []).forEach(u => ownersList.append(new Option(u, u)));
   pStatus.value = 'Backlog'; pPriority.value = 'Média';
 }
 
 async function render() {
   state = await api('/api/projects');
-  fillFilters(state.statuses, state.priorities);
+  fillFilters(state.statuses, state.priorities, state.users || []);
   const filtered = state.projects.filter(p => passesFilters(p, currentFilters()));
   board.innerHTML = '';
   const cols = new Map(state.statuses.map(s => [s, makeColumn(s)]));
@@ -171,7 +174,12 @@ cancelDialogBtn.onclick = () => dialog.close();
 form.onsubmit = async (e) => {
   e.preventDefault();
   try {
-    await api('/api/projects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner:pOwner.value, dueDate:pDueDate.value })});
+    const owner = (pOwner.value || '').trim();
+    if (owner && !(state.users || []).includes(owner)) {
+      alert('Responsável inválido. Selecione um usuário existente.');
+      return;
+    }
+    await api('/api/projects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value })});
     dialog.close();
     render();
   } catch (e) { alert(e.message); }

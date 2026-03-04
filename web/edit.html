@@ -36,7 +36,8 @@
             <label>Descrição</label><textarea id="description" rows="4"></textarea>
             <label>Status</label><select id="status"></select>
             <label>Prioridade</label><select id="priority"></select>
-            <label>Responsável</label><input id="owner" />
+            <label>Responsável</label><input id="owner" list="ownersList" />
+            <datalist id="ownersList"></datalist>
             <label>Prazo</label><input id="dueDate" type="date" />
             <label>Anexo do card (1 arquivo)</label><input id="documentFile" type="file" />
             <label>Documento atual</label><input id="documentName" readonly />
