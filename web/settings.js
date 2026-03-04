@@ -5,17 +5,21 @@ const workflowForm = document.getElementById('workflowForm');
 const reportForm = document.getElementById('reportForm');
 const backupForm = document.getElementById('backupForm');
 const diagForm = document.getElementById('diagForm');
+const deletedPolicyForm = document.getElementById('deletedPolicyForm');
 const feedback = document.getElementById('feedback');
 const workflowFeedback = document.getElementById('workflowFeedback');
 const reportFeedback = document.getElementById('reportFeedback');
 const backupFeedback = document.getElementById('backupFeedback');
 const diagFeedback = document.getElementById('diagFeedback');
+const deletedPolicyFeedback = document.getElementById('deletedPolicyFeedback');
 const reportsList = document.getElementById('reportsList');
+const deletedProjectsList = document.getElementById('deletedProjectsList');
 const reportPreview = document.getElementById('reportPreview');
 const diagOutput = document.getElementById('diagOutput');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
 const runBackupNowBtn = document.getElementById('runBackupNowBtn');
 const runDiagBtn = document.getElementById('runDiagBtn');
+const refreshDeletedBtn = document.getElementById('refreshDeletedBtn');
 
 const f = {
   host: document.getElementById('smtp_host'),
@@ -33,6 +37,7 @@ const f = {
   backupRunTime: document.getElementById('backup_run_time'),
   systemGitRepo: document.getElementById('system_git_repo'),
   systemGitBranch: document.getElementById('system_git_branch'),
+  deletedRetentionDays: document.getElementById('deleted_retention_days'),
 
   rName: document.getElementById('r_name'),
   rStatuses: document.getElementById('r_statuses'),
@@ -130,12 +135,61 @@ async function loadSettings() {
   f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
   f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
   f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'main');
+  f.deletedRetentionDays.value = getSetting(s, 'deleted.retention_days', '30');
 
   let days = [];
   try { days = JSON.parse(getSetting(s, 'backup.weekdays', '["0","1","2","3","4","5","6"]')); } catch { days = []; }
   const setDays = new Set((days || []).map(String));
   f.backupWeekdays.querySelectorAll('input[type="checkbox"]').forEach((el) => {
     el.checked = setDays.has(String(el.value));
+  });
+}
+
+async function loadDeletedProjects() {
+  const d = await api('/api/admin/deleted-projects');
+
+  if (!d.deleted_projects?.length) {
+    deletedProjectsList.textContent = 'No deleted projects.';
+    return;
+  }
+
+  deletedProjectsList.innerHTML = `<table>
+    <tr><th>Name</th><th>Slug</th><th>Deleted at</th><th>Deleted by</th><th>Actions</th></tr>
+    ${d.deleted_projects.map((p) => `<tr>
+      <td>${p.name || '-'}</td>
+      <td>${p.slug || '-'}</td>
+      <td>${p.deleted_at || '-'}</td>
+      <td>${p.deleted_by || '-'}</td>
+      <td>
+        <button class="secondary" data-restore="${p.id}">Restore</button>
+        <button class="danger" data-purge="${p.id}">Delete permanently</button>
+      </td>
+    </tr>`).join('')}
+  </table>`;
+
+  deletedProjectsList.querySelectorAll('[data-restore]').forEach((btn) => {
+    btn.onclick = async () => {
+      try {
+        await api(`/api/admin/deleted-projects/${btn.dataset.restore}/restore`, { method: 'POST' });
+        deletedPolicyFeedback.textContent = 'Project restored ✅';
+        await Promise.all([loadDeletedProjects(), loadReports()]);
+      } catch (err) {
+        deletedPolicyFeedback.textContent = err.message;
+      }
+    };
+  });
+
+  deletedProjectsList.querySelectorAll('[data-purge]').forEach((btn) => {
+    btn.onclick = async () => {
+      if (!confirm('Permanently delete this item and associated files?')) return;
+      try {
+        await api(`/api/admin/deleted-projects/${btn.dataset.purge}`, { method: 'DELETE' });
+        deletedPolicyFeedback.textContent = 'Deleted permanently.';
+        await loadDeletedProjects();
+      } catch (err) {
+        deletedPolicyFeedback.textContent = err.message;
+      }
+    };
   });
 }
 
@@ -273,6 +327,23 @@ diagForm.onsubmit = async (e) => {
   }
 };
 
+deletedPolicyForm.onsubmit = async (e) => {
+  e.preventDefault();
+  deletedPolicyFeedback.textContent = '';
+  try {
+    await api('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        'deleted.retention_days': String(f.deletedRetentionDays.value || '30'),
+      }),
+    });
+    deletedPolicyFeedback.textContent = 'Deleted-project retention saved ✅';
+  } catch (err) {
+    deletedPolicyFeedback.textContent = err.message;
+  }
+};
+
 reportForm.onsubmit = async (e) => {
   e.preventDefault();
   reportFeedback.textContent = '';
@@ -339,6 +410,16 @@ runDiagBtn.onclick = async () => {
   }
 };
 
+refreshDeletedBtn.onclick = async () => {
+  deletedPolicyFeedback.textContent = '';
+  try {
+    await loadDeletedProjects();
+    deletedPolicyFeedback.textContent = 'Deleted projects list refreshed.';
+  } catch (err) {
+    deletedPolicyFeedback.textContent = err.message;
+  }
+};
+
 logoutBtn.onclick = async () => {
   await api('/api/logout', { method: 'POST' });
   location.href = '/login.html';
@@ -347,7 +428,7 @@ logoutBtn.onclick = async () => {
 (async () => {
   try {
     await ensureAdmin();
-    await Promise.all([loadSettings(), loadReports()]);
+    await Promise.all([loadSettings(), loadReports(), loadDeletedProjects()]);
     try {
       const d = await api('/api/admin/system/diagnostics');
       renderDiagnostics(d.diagnostics || {});

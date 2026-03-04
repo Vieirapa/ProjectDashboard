@@ -111,6 +111,25 @@
       </section>
 
       <section class="panel">
+        <h3>Deleted Projects (Admin)</h3>
+        <form id="deletedPolicyForm" class="form-grid" style="max-width:900px;">
+          <label>Retention after delete (days)</label>
+          <input id="deleted_retention_days" type="number" min="1" max="3650" placeholder="30" />
+          <p class="small">After this period, deleted cards are permanently removed (including stored files) to free disk space.</p>
+          <div class="dialog-actions" style="justify-content:flex-start;">
+            <button type="submit">Save retention policy</button>
+            <button type="button" id="refreshDeletedBtn" class="secondary">Refresh list</button>
+          </div>
+          <p id="deletedPolicyFeedback" class="small"></p>
+        </form>
+
+        <div style="margin-top:16px;">
+          <h4 style="margin:0 0 8px;">Deleted projects available for restore</h4>
+          <div id="deletedProjectsList" class="small">No deleted projects.</div>
+        </div>
+      </section>
+
+      <section class="panel">
         <h3>Relatórios periódicos</h3>
         <form id="reportForm" class="form-grid" style="max-width:900px;">
           <label>Nome do relatório</label>

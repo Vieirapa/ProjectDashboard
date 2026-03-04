@@ -239,6 +239,19 @@ def init_db():
                 updated_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS deleted_projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT NOT NULL,
+                name TEXT NOT NULL,
+                deleted_at TEXT NOT NULL,
+                deleted_by TEXT NOT NULL,
+                trash_path TEXT NOT NULL,
+                project_json TEXT NOT NULL,
+                review_notes_json TEXT NOT NULL DEFAULT '[]',
+                document_versions_json TEXT NOT NULL DEFAULT '[]'
+            )
+        """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
         ensure_column(conn, "projects", "document_status", "document_status TEXT NOT NULL DEFAULT 'aguardando edição'")
         ensure_column(conn, "projects", "document_name", "document_name TEXT NOT NULL DEFAULT ''")
@@ -536,6 +549,7 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
         "invite.default_message", "workflow.default_due_days",
         "backup.enabled", "backup.path", "backup.weekdays", "backup.run_time",
         "system.git_repo", "system.git_branch",
+        "deleted.retention_days",
     }
     incoming = {k: str(v) for k, v in (payload or {}).items() if k in allowed}
     if not incoming:
@@ -602,6 +616,15 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
         if not re.match(r"^[A-Za-z0-9._/-]+$", branch):
             return False, "system.git_branch inválido"
         incoming["system.git_branch"] = branch
+
+    if "deleted.retention_days" in incoming:
+        try:
+            days = int(incoming["deleted.retention_days"])
+            if days < 1 or days > 3650:
+                return False, "deleted.retention_days inválido"
+            incoming["deleted.retention_days"] = str(days)
+        except Exception:
+            return False, "deleted.retention_days inválido"
 
     with db() as conn:
         for key, value in incoming.items():
@@ -974,6 +997,20 @@ def report_scheduler_loop():
                             ("backup.last_run_key", backup_key, "system", now_iso()),
                         )
                         audit("system", "system.backup.schedule", backup_cfg["path"], f"ok={ok} {msg}")
+
+            purge_key = f"purge:{now.strftime('%Y-%m-%d %H')}"
+            with db() as conn:
+                lock = conn.execute("SELECT value FROM app_settings WHERE key='deleted.last_purge_key'").fetchone()
+                last_purge = (lock["value"] if lock else "")
+                if last_purge != purge_key:
+                    purged, retention = purge_expired_deleted_projects("system")
+                    conn.execute(
+                        "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?) "
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+                        ("deleted.last_purge_key", purge_key, "system", now_iso()),
+                    )
+                    if purged:
+                        audit("system", "project.deleted.purge.hourly", str(purged), f"retention_days={retention}")
         except Exception as e:
             print("[ProjectDashboard] report/backup scheduler error:", e)
         time.sleep(30)
@@ -1131,27 +1168,170 @@ def save_project_document(slug: str, filename: str, mime_type: str, b64_content:
     return True, "ok"
 
 
-def delete_project(slug: str) -> tuple[bool, str]:
+def list_deleted_projects() -> list[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, slug, name, deleted_at, deleted_by, trash_path FROM deleted_projects ORDER BY deleted_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _purge_deleted_project_record(record: sqlite3.Row | dict) -> tuple[bool, str]:
+    rec = dict(record)
+    trash_path = Path(rec.get("trash_path") or "")
+    if trash_path.exists() and trash_path.is_dir():
+        shutil.rmtree(trash_path, ignore_errors=True)
+
+    try:
+        versions = json.loads(rec.get("document_versions_json") or "[]")
+    except Exception:
+        versions = []
+    for v in versions:
+        rel = str(v.get("file_rel_path") or "").strip()
+        if rel:
+            try:
+                p = DOCS_REPO_DIR / rel
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
+
+    with db() as conn:
+        conn.execute("DELETE FROM deleted_projects WHERE id=?", (int(rec["id"]),))
+    return True, "ok"
+
+
+def purge_expired_deleted_projects(actor: str = "system") -> tuple[int, int]:
+    settings = get_admin_settings()
+    try:
+        retention_days = int(_setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30"))
+    except Exception:
+        retention_days = 30
+    retention_days = max(1, min(retention_days, 3650))
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+
+    purged = 0
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM deleted_projects WHERE deleted_at < ? ORDER BY deleted_at ASC",
+            (cutoff.replace(microsecond=0).isoformat() + "Z",),
+        ).fetchall()
+    for r in rows:
+        ok, _ = _purge_deleted_project_record(r)
+        if ok:
+            purged += 1
+    if purged:
+        audit(actor, "project.deleted.purge", "deleted_projects", f"purged={purged} retention_days={retention_days}")
+    return purged, retention_days
+
+
+def restore_deleted_project(deleted_id: int, actor: str) -> tuple[bool, str]:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM deleted_projects WHERE id=?", (deleted_id,)).fetchone()
+    if not row:
+        return False, "Registro de projeto apagado não encontrado"
+
+    rec = dict(row)
+    try:
+        project = json.loads(rec.get("project_json") or "{}")
+        notes = json.loads(rec.get("review_notes_json") or "[]")
+        versions = json.loads(rec.get("document_versions_json") or "[]")
+    except Exception:
+        return False, "Dados de restauração inválidos"
+
+    slug = str(project.get("slug") or rec.get("slug") or "").strip()
+    if not slug:
+        return False, "Slug inválido para restauração"
+
+    with db() as conn:
+        exists = conn.execute("SELECT 1 FROM projects WHERE slug=?", (slug,)).fetchone()
+        if exists:
+            return False, "Já existe um projeto ativo com este slug"
+
+    trash_path = Path(rec.get("trash_path") or "")
+    target_path = BASE_DIR / slug
+    if target_path.exists():
+        return False, "Já existe pasta de projeto com este slug"
+
+    if trash_path.exists() and trash_path.is_dir():
+        try:
+            shutil.move(str(trash_path), str(target_path))
+        except Exception as e:
+            return False, f"Falha ao restaurar pasta do projeto: {e}"
+
+    project["path"] = str(target_path)
+
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                project.get("slug", slug), project.get("name", rec.get("name", slug)), project.get("status", "Backlog"),
+                project.get("priority", "Média"), project.get("owner", ""), project.get("dueDate", ""),
+                project.get("description", "Sem descrição"), project.get("path", str(target_path)), project.get("updatedAt", now_iso()),
+                project.get("documentStatus", "aguardando edição"), project.get("documentName", ""), project.get("documentMime", ""),
+                project.get("documentPath", ""), project.get("createdBy", actor), project.get("openedAt", now_iso()), project.get("releasedAt", ""),
+            ),
+        )
+        for n in notes:
+            conn.execute(
+                "INSERT INTO review_notes (project_slug, note, created_by, created_at, resolved_by, resolved_at, is_resolved) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (slug, n.get("note", ""), n.get("created_by", ""), n.get("created_at", now_iso()), n.get("resolved_by", ""), n.get("resolved_at", ""), int(n.get("is_resolved") or 0)),
+            )
+        for v in versions:
+            conn.execute(
+                "INSERT OR IGNORE INTO document_versions (project_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (slug, int(v.get("version") or 1), v.get("document_name", ""), v.get("document_mime", "application/octet-stream"), v.get("document_status", ""), v.get("file_rel_path", ""), v.get("git_commit", ""), v.get("checksum", ""), v.get("created_by", ""), v.get("created_at", now_iso())),
+            )
+        conn.execute("DELETE FROM deleted_projects WHERE id=?", (deleted_id,))
+
+    audit(actor, "project.restore", slug, f"deleted_id={deleted_id}")
+    return True, "ok"
+
+
+def delete_deleted_project_permanently(deleted_id: int, actor: str) -> tuple[bool, str]:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM deleted_projects WHERE id=?", (deleted_id,)).fetchone()
+    if not row:
+        return False, "Registro de projeto apagado não encontrado"
+    ok, msg = _purge_deleted_project_record(row)
+    if ok:
+        audit(actor, "project.deleted.purge.manual", str(deleted_id))
+    return ok, msg
+
+
+def delete_project(slug: str, actor: str) -> tuple[bool, str]:
     p = get_project(slug)
     if not p:
         return False, "Projeto não encontrado"
 
-    # Prevent deleted cards from reappearing after app restart/migration:
-    # move project folder out of BASE_DIR before removing DB records.
     proj_path = Path(p.get("path") or "")
+    trash_root = DATA_DIR / "deleted_projects"
+    trash_root.mkdir(parents=True, exist_ok=True)
+    target = trash_root / f"{slug}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
     if proj_path.exists():
         try:
             resolved_proj = proj_path.resolve()
             resolved_base = BASE_DIR.resolve()
             if str(resolved_proj).startswith(str(resolved_base) + os.sep):
-                trash_root = DATA_DIR / "deleted_projects"
-                trash_root.mkdir(parents=True, exist_ok=True)
-                target = trash_root / f"{slug}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
                 shutil.move(str(resolved_proj), str(target))
         except Exception as e:
             return False, f"Falha ao remover pasta do projeto: {e}"
 
     with db() as conn:
+        notes = conn.execute("SELECT * FROM review_notes WHERE project_slug=?", (slug,)).fetchall()
+        versions = conn.execute("SELECT * FROM document_versions WHERE project_slug=?", (slug,)).fetchall()
+
+        conn.execute(
+            "INSERT INTO deleted_projects (slug, name, deleted_at, deleted_by, trash_path, project_json, review_notes_json, document_versions_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                p.get("slug", slug), p.get("name", slug), now_iso(), actor, str(target),
+                json.dumps(p, ensure_ascii=False),
+                json.dumps([dict(x) for x in notes], ensure_ascii=False),
+                json.dumps([dict(x) for x in versions], ensure_ascii=False),
+            ),
+        )
+
         conn.execute("DELETE FROM review_notes WHERE project_slug=?", (slug,))
         conn.execute("DELETE FROM document_versions WHERE project_slug=?", (slug,))
         conn.execute("DELETE FROM projects WHERE slug=?", (slug,))
@@ -1399,6 +1579,12 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin(): return
             return self._json(200, {"ok": True, "logs": list_audit_logs(300)})
 
+        if p == "/api/admin/deleted-projects":
+            if not self._require_admin(): return
+            settings = get_admin_settings()
+            retention_days = _setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30")
+            return self._json(200, {"ok": True, "retention_days": retention_days, "deleted_projects": list_deleted_projects()})
+
         if p == "/api/admin/system/diagnostics":
             if not self._require_admin(): return
             return self._json(200, {"ok": True, "diagnostics": run_system_diagnostics()})
@@ -1509,6 +1695,19 @@ class Handler(BaseHTTPRequestHandler):
             if not admin: return
             done, msg = run_system_backup(admin["username"])
             return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
+
+        if p.startswith("/api/admin/deleted-projects/") and p.endswith("/restore"):
+            admin = self._require_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                deleted_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "id inválido"})
+            done, msg = restore_deleted_project(deleted_id, admin["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/reports":
             admin = self._require_admin()
@@ -1771,9 +1970,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
             if not can_delete_project(user["role"], user["username"], proj):
                 return self._json(403, {"ok": False, "error": "Sem permissão para apagar card"})
-            done, msg = delete_project(slug)
+            done, msg = delete_project(slug, user["username"])
             if done:
                 audit(user["username"], "project.delete", slug)
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/admin/deleted-projects/"):
+            admin = self._require_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                deleted_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "id inválido"})
+            done, msg = delete_deleted_project_permanently(deleted_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/"):
