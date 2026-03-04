@@ -305,6 +305,59 @@ else
 fi
 
 echo
+echo "[post-check] Auto-validation (post-reboot readiness)..."
+post_ok=1
+
+check_enabled_and_active() {
+  local svc="$1"
+  local label="$2"
+  local enabled="no"
+  local active="no"
+
+  if systemctl is-enabled "$svc" >/dev/null 2>&1; then
+    enabled="yes"
+  fi
+  if systemctl is-active "$svc" >/dev/null 2>&1; then
+    active="yes"
+  fi
+
+  if [[ "$enabled" == "yes" && "$active" == "yes" ]]; then
+    echo "  ✅ ${label}: enabled=${enabled}, active=${active}"
+  else
+    echo "  ❌ ${label}: enabled=${enabled}, active=${active}"
+    post_ok=0
+  fi
+}
+
+check_enabled_and_active "projectdashboard.service" "projectdashboard.service"
+
+if [[ "$ENABLE_NGINX" == "yes" ]]; then
+  check_enabled_and_active "nginx.service" "nginx.service"
+fi
+
+if [[ "$ENABLE_BACKUP_TIMER" == "yes" ]]; then
+  check_enabled_and_active "projectdashboard-backup.timer" "projectdashboard-backup.timer"
+fi
+
+if curl -fsS "http://127.0.0.1:${PORT}/login.html" >/dev/null 2>&1; then
+  echo "  ✅ HTTP local check: ok (127.0.0.1:${PORT}/login.html)"
+else
+  echo "  ❌ HTTP local check: failed (127.0.0.1:${PORT}/login.html)"
+  post_ok=0
+fi
+
+if [[ "$post_ok" -eq 1 ]]; then
+  echo "  ✅ Post-reboot readiness: PASS"
+else
+  echo "  ⚠️  Post-reboot readiness: CHECK REQUIRED"
+  echo "     Suggested diagnostics:"
+  echo "     - sudo systemctl status projectdashboard --no-pager"
+  echo "     - sudo systemctl status nginx --no-pager"
+  echo "     - sudo systemctl status projectdashboard-backup.timer --no-pager"
+  echo "     - sudo journalctl -u projectdashboard -n 120 --no-pager"
+fi
+
+echo
 echo "Installation completed ✅"
 if [[ "$ENABLE_NGINX" == "yes" && -n "$DOMAIN" ]]; then
   echo "Acesso: http://${DOMAIN}/login.html"
