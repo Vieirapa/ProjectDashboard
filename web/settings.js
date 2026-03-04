@@ -149,7 +149,7 @@ async function loadDeletedProjects() {
   const d = await api('/api/admin/deleted-projects');
 
   if (!d.deleted_projects?.length) {
-    deletedProjectsList.textContent = 'No deleted projects.';
+    deletedProjectsList.textContent = 'No deleted documents.';
     return;
   }
 
@@ -414,7 +414,7 @@ refreshDeletedBtn.onclick = async () => {
   deletedPolicyFeedback.textContent = '';
   try {
     await loadDeletedProjects();
-    deletedPolicyFeedback.textContent = 'Deleted projects list refreshed.';
+    deletedPolicyFeedback.textContent = 'Deleted documents list refreshed.';
   } catch (err) {
     deletedPolicyFeedback.textContent = err.message;
   }

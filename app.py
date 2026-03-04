@@ -67,7 +67,7 @@ def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[
 def slugify(name: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name.strip())
     slug = re.sub(r"-+", "-", slug).strip("-")
-    return slug.lower() or "projeto"
+    return slug.lower() or "documento"
 
 
 def hash_password(password: str, salt_hex: str | None = None) -> str:
@@ -439,7 +439,7 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
     slug = slugify(name)
     proj_dir = BASE_DIR / slug
     if proj_dir.exists():
-        return False, "Projeto já existe"
+        return False, "Documento já existe"
 
     status = payload.get("status") if payload.get("status") in STATUSES else "Backlog"
     opened_at = now_iso()
@@ -466,8 +466,8 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
     }
 
     proj_dir.mkdir(parents=True, exist_ok=False)
-    (proj_dir / "README.md").write_text(f"# Projeto: {project['name']}\n\n{project['description']}\n", encoding="utf-8")
-    (proj_dir / "TASKS.md").write_text("# TASKS\n\n## Done\n\n- [ ] Inicializar projeto\n\n## Next\n\n- [ ] Definir roadmap\n", encoding="utf-8")
+    (proj_dir / "README.md").write_text(f"# Documento: {project['name']}\n\n{project['description']}\n", encoding="utf-8")
+    (proj_dir / "TASKS.md").write_text("# TASKS\n\n## Done\n\n- [ ] Inicializar documento\n\n## Next\n\n- [ ] Definir roadmap\n", encoding="utf-8")
 
     with db() as conn:
         conn.execute(
@@ -481,7 +481,7 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
 def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
     p = get_project(slug)
     if not p:
-        return False, "Projeto não encontrado"
+        return False, "Documento não encontrado"
     old_status = p.get("status")
     if "name" in payload and str(payload["name"]).strip():
         p["name"] = str(payload["name"]).strip()
@@ -937,7 +937,7 @@ def run_system_diagnostics() -> dict:
 
     add_check("Banco de dados", DB_PATH.exists(), str(DB_PATH))
     add_check("Pasta de dados", DATA_DIR.exists(), str(DATA_DIR))
-    add_check("Pasta de projetos", BASE_DIR.exists(), str(BASE_DIR))
+    add_check("Pasta de documentos", BASE_DIR.exists(), str(BASE_DIR))
 
     if (APP_DIR / ".git").exists():
         try:
@@ -1047,7 +1047,7 @@ def list_review_notes(slug: str) -> list[dict]:
 def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
     proj = get_project(slug)
     if not proj:
-        return False, "Projeto não encontrado"
+        return False, "Documento não encontrado"
     if (proj.get("status") or "").strip().lower() != "em revisão":
         return False, "Notas de revisão só podem ser adicionadas quando o documento estiver em 'em revisão'"
     clean_note = (note or "").strip()
@@ -1066,7 +1066,7 @@ def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
 def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bool) -> tuple[bool, str]:
     proj = get_project(slug)
     if not proj:
-        return False, "Projeto não encontrado"
+        return False, "Documento não encontrado"
     if (proj.get("status") or "").strip().lower() != "em revisão":
         return False, "Notas só podem ser alteradas quando o card estiver em 'em revisão'"
 
@@ -1109,7 +1109,7 @@ def get_document_version(slug: str, version: int | None = None) -> dict | None:
 def save_project_document(slug: str, filename: str, mime_type: str, b64_content: str, actor: str) -> tuple[bool, str]:
     p = get_project(slug)
     if not p:
-        return False, "Projeto não encontrado"
+        return False, "Documento não encontrado"
 
     ok_repo, repo_msg = ensure_docs_repo()
     if not ok_repo:
@@ -1229,7 +1229,7 @@ def restore_deleted_project(deleted_id: int, actor: str) -> tuple[bool, str]:
     with db() as conn:
         row = conn.execute("SELECT * FROM deleted_projects WHERE id=?", (deleted_id,)).fetchone()
     if not row:
-        return False, "Registro de projeto apagado não encontrado"
+        return False, "Registro de documento apagado não encontrado"
 
     rec = dict(row)
     try:
@@ -1246,18 +1246,18 @@ def restore_deleted_project(deleted_id: int, actor: str) -> tuple[bool, str]:
     with db() as conn:
         exists = conn.execute("SELECT 1 FROM projects WHERE slug=?", (slug,)).fetchone()
         if exists:
-            return False, "Já existe um projeto ativo com este slug"
+            return False, "Já existe um documento ativo com este slug"
 
     trash_path = Path(rec.get("trash_path") or "")
     target_path = BASE_DIR / slug
     if target_path.exists():
-        return False, "Já existe pasta de projeto com este slug"
+        return False, "Já existe pasta de documento com este slug"
 
     if trash_path.exists() and trash_path.is_dir():
         try:
             shutil.move(str(trash_path), str(target_path))
         except Exception as e:
-            return False, f"Falha ao restaurar pasta do projeto: {e}"
+            return False, f"Falha ao restaurar pasta do documento: {e}"
 
     project["path"] = str(target_path)
 
@@ -1292,7 +1292,7 @@ def delete_deleted_project_permanently(deleted_id: int, actor: str) -> tuple[boo
     with db() as conn:
         row = conn.execute("SELECT * FROM deleted_projects WHERE id=?", (deleted_id,)).fetchone()
     if not row:
-        return False, "Registro de projeto apagado não encontrado"
+        return False, "Registro de documento apagado não encontrado"
     ok, msg = _purge_deleted_project_record(row)
     if ok:
         audit(actor, "project.deleted.purge.manual", str(deleted_id))
@@ -1302,7 +1302,7 @@ def delete_deleted_project_permanently(deleted_id: int, actor: str) -> tuple[boo
 def delete_project(slug: str, actor: str) -> tuple[bool, str]:
     p = get_project(slug)
     if not p:
-        return False, "Projeto não encontrado"
+        return False, "Documento não encontrado"
 
     proj_path = Path(p.get("path") or "")
     trash_root = DATA_DIR / "deleted_projects"
@@ -1316,7 +1316,7 @@ def delete_project(slug: str, actor: str) -> tuple[bool, str]:
             if str(resolved_proj).startswith(str(resolved_base) + os.sep):
                 shutil.move(str(resolved_proj), str(target))
         except Exception as e:
-            return False, f"Falha ao remover pasta do projeto: {e}"
+            return False, f"Falha ao remover pasta do documento: {e}"
 
     with db() as conn:
         notes = conn.execute("SELECT * FROM review_notes WHERE project_slug=?", (slug,)).fetchall()
@@ -1498,21 +1498,21 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_auth(): return
             slug = p.split("/")[3]
             proj = get_project(slug)
-            if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             return self._json(200, {"ok": True, "versions": list_document_versions(slug)})
 
         if p.startswith("/api/projects/") and p.endswith("/review-notes"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
             proj = get_project(slug)
-            if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             return self._json(200, {"ok": True, "notes": list_review_notes(slug)})
 
         if p.startswith("/api/projects/") and p.endswith("/document"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
             proj = get_project(slug)
-            if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
 
             version = None
             if "version" in qs and qs["version"]:
@@ -1546,7 +1546,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_auth(): return
             slug = p.split("/")[3]
             proj = get_project(slug)
-            if not proj: return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
 
         if p == "/api/admin/users":
@@ -1640,7 +1640,7 @@ class Handler(BaseHTTPRequestHandler):
             slug = p.split("/")[3]
             proj = get_project(slug)
             if not proj:
-                return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+                return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             if not can_upload_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para anexar documento"})
             ok, body = self._read_json()
@@ -1662,7 +1662,7 @@ class Handler(BaseHTTPRequestHandler):
             slug = p.split("/")[3]
             proj = get_project(slug)
             if not proj:
-                return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+                return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             if not can_add_review_note(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para adicionar nota de revisão"})
             ok, body = self._read_json()
@@ -1967,9 +1967,9 @@ class Handler(BaseHTTPRequestHandler):
             slug = p.split("/")[3]
             proj = get_project(slug)
             if not proj:
-                return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+                return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             if not can_delete_project(user["role"], user["username"], proj):
-                return self._json(403, {"ok": False, "error": "Sem permissão para apagar card"})
+                return self._json(403, {"ok": False, "error": "Sem permissão para apagar documento"})
             done, msg = delete_project(slug, user["username"])
             if done:
                 audit(user["username"], "project.delete", slug)

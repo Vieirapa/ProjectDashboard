@@ -93,7 +93,7 @@ function compareProjects(a, b, sortBy, sortDir) {
 function makeColumn(status) {
   const col = document.createElement('div');
   col.className = 'column';
-  col.innerHTML = `<h2>${status}</h2><div class="small">0 projetos</div>`;
+  col.innerHTML = `<h2>${status}</h2><div class="small">0 documentos</div>`;
   col.dataset.status = status;
   return col;
 }
@@ -199,7 +199,7 @@ async function render() {
     return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
   });
   filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
-  cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} projeto(s)`);
+  cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} documento(s)`);
 }
 
 [newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter, sortOrderFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));

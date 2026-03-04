@@ -298,7 +298,7 @@ formEl.addEventListener('submit', (e) => {
 saveBtn.onclick = handleSave;
 
 deleteBtn.onclick = async () => {
-  if (!confirm('Apagar este projeto do dashboard? (somente admin)')) return;
+  if (!confirm('Apagar este documento do dashboard? (somente admin)')) return;
   try {
     await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'DELETE'});
     location.href = '/';
