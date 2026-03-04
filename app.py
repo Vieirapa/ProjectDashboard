@@ -9,6 +9,7 @@ import secrets
 import sqlite3
 import subprocess
 import smtplib
+import shutil
 import threading
 import time
 from email.message import EmailMessage
@@ -1134,7 +1135,25 @@ def delete_project(slug: str) -> tuple[bool, str]:
     p = get_project(slug)
     if not p:
         return False, "Projeto não encontrado"
+
+    # Prevent deleted cards from reappearing after app restart/migration:
+    # move project folder out of BASE_DIR before removing DB records.
+    proj_path = Path(p.get("path") or "")
+    if proj_path.exists():
+        try:
+            resolved_proj = proj_path.resolve()
+            resolved_base = BASE_DIR.resolve()
+            if str(resolved_proj).startswith(str(resolved_base) + os.sep):
+                trash_root = DATA_DIR / "deleted_projects"
+                trash_root.mkdir(parents=True, exist_ok=True)
+                target = trash_root / f"{slug}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+                shutil.move(str(resolved_proj), str(target))
+        except Exception as e:
+            return False, f"Falha ao remover pasta do projeto: {e}"
+
     with db() as conn:
+        conn.execute("DELETE FROM review_notes WHERE project_slug=?", (slug,))
+        conn.execute("DELETE FROM document_versions WHERE project_slug=?", (slug,))
         conn.execute("DELETE FROM projects WHERE slug=?", (slug,))
     return True, "ok"
 
