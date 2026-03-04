@@ -15,6 +15,7 @@ This directory contains the current technical and operational documentation for 
 9. [09-manutencao-evolucao.md](./09-manutencao-evolucao.md)
 10. [10-mapa-de-arquivos.md](./10-mapa-de-arquivos.md)
 11. [11-email-smtp-setup.md](./11-email-smtp-setup.md)
+12. [12-backup-permissions-setup.md](./12-backup-permissions-setup.md)
 
 ## Scope
 
