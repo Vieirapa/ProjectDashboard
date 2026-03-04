@@ -105,14 +105,14 @@ function reportConfigLine(r) {
 
 function renderDiagnostics(diagnostics) {
   const lines = [];
-  lines.push(`Timestamp: ${diagnostics?.timestamp || '-'}`);
+  lines.push(`Data/Hora: ${diagnostics?.timestamp || '-'}`);
   if (diagnostics?.version) {
-    lines.push(`Local: ${diagnostics.version.local || 'unknown'}`);
-    lines.push(`Remote (${diagnostics.version.branch || '-'}): ${diagnostics.version.remote || 'unknown'}`);
-    lines.push(`Update available: ${diagnostics.version.updateAvailable ? 'SIM' : 'NÃO'}`);
+    lines.push(`Versão local: ${diagnostics.version.local || 'desconhecida'}`);
+    lines.push(`Versão remota (${diagnostics.version.branch || '-'}): ${diagnostics.version.remote || 'desconhecida'}`);
+    lines.push(`Atualização disponível: ${diagnostics.version.updateAvailable ? 'SIM' : 'NÃO'}`);
   }
   lines.push('');
-  lines.push('Checks:');
+  lines.push('Verificações:');
   (diagnostics?.checks || []).forEach((c) => {
     lines.push(`- ${c.ok ? '✅' : '❌'} ${c.name}: ${c.detail || '-'}`);
   });
@@ -149,20 +149,20 @@ async function loadDeletedProjects() {
   const d = await api('/api/admin/deleted-projects');
 
   if (!d.deleted_projects?.length) {
-    deletedProjectsList.textContent = 'No deleted documents.';
+    deletedProjectsList.textContent = 'Nenhum documento apagado.';
     return;
   }
 
   deletedProjectsList.innerHTML = `<table>
-    <tr><th>Name</th><th>Slug</th><th>Deleted at</th><th>Deleted by</th><th>Actions</th></tr>
+    <tr><th>Nome</th><th>Slug</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr>
     ${d.deleted_projects.map((p) => `<tr>
       <td>${p.name || '-'}</td>
       <td>${p.slug || '-'}</td>
       <td>${p.deleted_at || '-'}</td>
       <td>${p.deleted_by || '-'}</td>
       <td>
-        <button class="secondary" data-restore="${p.id}">Restore</button>
-        <button class="danger" data-purge="${p.id}">Delete permanently</button>
+        <button class="secondary" data-restore="${p.id}">Restaurar</button>
+        <button class="danger" data-purge="${p.id}">Apagar permanentemente</button>
       </td>
     </tr>`).join('')}
   </table>`;
@@ -171,7 +171,7 @@ async function loadDeletedProjects() {
     btn.onclick = async () => {
       try {
         await api(`/api/admin/deleted-projects/${btn.dataset.restore}/restore`, { method: 'POST' });
-        deletedPolicyFeedback.textContent = 'Document restored ✅';
+        deletedPolicyFeedback.textContent = 'Documento restaurado ✅';
         await Promise.all([loadDeletedProjects(), loadReports()]);
       } catch (err) {
         deletedPolicyFeedback.textContent = err.message;
@@ -184,7 +184,7 @@ async function loadDeletedProjects() {
       if (!confirm('Permanently delete this item and associated files?')) return;
       try {
         await api(`/api/admin/deleted-projects/${btn.dataset.purge}`, { method: 'DELETE' });
-        deletedPolicyFeedback.textContent = 'Deleted permanently.';
+        deletedPolicyFeedback.textContent = 'Apagado permanentemente.';
         await loadDeletedProjects();
       } catch (err) {
         deletedPolicyFeedback.textContent = err.message;
@@ -338,7 +338,7 @@ deletedPolicyForm.onsubmit = async (e) => {
         'deleted.retention_days': String(f.deletedRetentionDays.value || '30'),
       }),
     });
-    deletedPolicyFeedback.textContent = 'Deleted-project retention saved ✅';
+    deletedPolicyFeedback.textContent = 'Retenção de documentos apagados salva ✅';
   } catch (err) {
     deletedPolicyFeedback.textContent = err.message;
   }
@@ -414,7 +414,7 @@ refreshDeletedBtn.onclick = async () => {
   deletedPolicyFeedback.textContent = '';
   try {
     await loadDeletedProjects();
-    deletedPolicyFeedback.textContent = 'Deleted documents list refreshed.';
+    deletedPolicyFeedback.textContent = 'Lista de documentos apagados atualizada.';
   } catch (err) {
     deletedPolicyFeedback.textContent = err.message;
   }

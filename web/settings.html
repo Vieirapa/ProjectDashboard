@@ -10,7 +10,7 @@
   <div class="layout">
     <aside class="sidebar">
       <h2>ProjectDashboard</h2>
-      <div class="side-group">Workspace</div>
+      <div class="side-group">Área de trabalho</div>
       <a class="side-link" href="/">Kanban</a>
       <a class="side-link" href="/profile.html">Meu perfil</a>
       <div class="side-group">Administração</div>
@@ -98,7 +98,7 @@
         <form id="diagForm" class="form-grid" style="max-width:900px;">
           <label>Repositório Git para comparação de versão</label>
           <input id="system_git_repo" placeholder="https://github.com/Vieirapa/ProjectDashboard.git" />
-          <label>Branch</label>
+          <label>Branch (ramo)</label>
           <input id="system_git_branch" placeholder="main" />
 
           <div class="dialog-actions" style="justify-content:flex-start;">
@@ -111,21 +111,21 @@
       </section>
 
       <section class="panel">
-        <h3>Deleted Documents (Admin)</h3>
+        <h3>Documentos apagados (Admin)</h3>
         <form id="deletedPolicyForm" class="form-grid" style="max-width:900px;">
-          <label>Retention after delete (days)</label>
+          <label>Retenção após exclusão (dias)</label>
           <input id="deleted_retention_days" type="number" min="1" max="3650" placeholder="30" />
-          <p class="small">After this period, deleted documents are permanently removed (including stored files) to free disk space.</p>
+          <p class="small">Após este período, documentos apagados são removidos permanentemente (incluindo arquivos armazenados) para liberar espaço em disco.</p>
           <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit">Save retention policy</button>
-            <button type="button" id="refreshDeletedBtn" class="secondary">Refresh list</button>
+            <button type="submit">Salvar política de retenção</button>
+            <button type="button" id="refreshDeletedBtn" class="secondary">Atualizar lista</button>
           </div>
           <p id="deletedPolicyFeedback" class="small"></p>
         </form>
 
         <div style="margin-top:16px;">
-          <h4 style="margin:0 0 8px;">Deleted documents available for restore</h4>
-          <div id="deletedProjectsList" class="small">No deleted documents.</div>
+          <h4 style="margin:0 0 8px;">Documentos apagados disponíveis para restauração</h4>
+          <div id="deletedProjectsList" class="small">Nenhum documento apagado.</div>
         </div>
       </section>
 
@@ -141,10 +141,10 @@
           <label>Dados do relatório</label>
           <div id="r_priorities" class="form-grid">
             <label class="inline-check"><input type="checkbox" value="TODOS" checked /> <span>TODOS</span></label>
-            <label class="inline-check"><input type="checkbox" value="Baixa" /> <span>CARDS COM PRIORIDADE BAIXA</span></label>
-            <label class="inline-check"><input type="checkbox" value="Média" /> <span>CARDS COM PRIORIDADE MEDIA</span></label>
-            <label class="inline-check"><input type="checkbox" value="Alta" /> <span>CARDS COM PRIORIDADE ALTA</span></label>
-            <label class="inline-check"><input type="checkbox" value="Urgente" /> <span>CARDS COM PRIORIDADE URGENTE</span></label>
+            <label class="inline-check"><input type="checkbox" value="Baixa" /> <span>DOCUMENTOS COM PRIORIDADE BAIXA</span></label>
+            <label class="inline-check"><input type="checkbox" value="Média" /> <span>DOCUMENTOS COM PRIORIDADE MÉDIA</span></label>
+            <label class="inline-check"><input type="checkbox" value="Alta" /> <span>DOCUMENTOS COM PRIORIDADE ALTA</span></label>
+            <label class="inline-check"><input type="checkbox" value="Urgente" /> <span>DOCUMENTOS COM PRIORIDADE URGENTE</span></label>
           </div>
 
           <label>Perfis que receberão o relatório</label>
