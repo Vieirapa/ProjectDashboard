@@ -56,7 +56,7 @@
         <form id="workflowForm" class="form-grid" style="max-width:760px;">
           <label>Prazo padrão (dias)</label>
           <input id="default_due_days" type="number" min="0" max="3650" placeholder="7" />
-          <p class="small">Regra: ao criar um card (ou alterar status sem informar prazo manual), o prazo será recalculado para hoje + X dias.</p>
+          <p class="small">Regra: ao criar um documento (ou alterar status sem informar prazo manual), o prazo será recalculado para hoje + X dias.</p>
           <div class="dialog-actions" style="justify-content:flex-start;">
             <button type="submit">Salvar comportamento</button>
           </div>
@@ -115,7 +115,7 @@
         <form id="deletedPolicyForm" class="form-grid" style="max-width:900px;">
           <label>Retention after delete (days)</label>
           <input id="deleted_retention_days" type="number" min="1" max="3650" placeholder="30" />
-          <p class="small">After this period, deleted cards are permanently removed (including stored files) to free disk space.</p>
+          <p class="small">After this period, deleted documents are permanently removed (including stored files) to free disk space.</p>
           <div class="dialog-actions" style="justify-content:flex-start;">
             <button type="submit">Save retention policy</button>
             <button type="button" id="refreshDeletedBtn" class="secondary">Refresh list</button>

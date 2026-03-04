@@ -793,11 +793,11 @@ def _render_report_markdown(report: dict) -> str:
     lines.append(f"- Priority filter: **{', '.join(priorities) if priorities else '-'}**")
     lines.append("")
     lines.append("### Summary")
-    lines.append(f"- Total cards: **{len(items)}**")
+    lines.append(f"- Total documentos: **{len(items)}**")
     lines.append("")
-    lines.append("### Cards")
+    lines.append("### Documentos")
     if not items:
-        lines.append("_No cards matched the selected criteria._")
+        lines.append("_Nenhum documento atendeu aos critérios selecionados._")
     else:
         for it in items:
             lines.append(f"- **[{it['slug']}] {it['name']}**  ")
@@ -1068,7 +1068,7 @@ def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bo
     if not proj:
         return False, "Documento não encontrado"
     if (proj.get("status") or "").strip().lower() != "em revisão":
-        return False, "Notas só podem ser alteradas quando o card estiver em 'em revisão'"
+        return False, "Notas só podem ser alteradas quando o documento estiver em 'em revisão'"
 
     with db() as conn:
         row = conn.execute(
@@ -1128,7 +1128,7 @@ def save_project_document(slug: str, filename: str, mime_type: str, b64_content:
         row = conn.execute("SELECT COALESCE(MAX(version), 0) AS last FROM document_versions WHERE project_slug=?", (slug,)).fetchone()
         next_version = int(row["last"]) + 1
 
-    rel_path = Path("cards") / slug / f"v{next_version:04d}_{safe_name}"
+    rel_path = Path("documents") / slug / f"v{next_version:04d}_{safe_name}"
     abs_path = DOCS_REPO_DIR / rel_path
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     abs_path.write_bytes(raw)
@@ -1626,7 +1626,7 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_auth()
             if not user: return
             if not can_create_project(user["role"]):
-                return self._json(403, {"ok": False, "error": "Sem permissão para criar card"})
+                return self._json(403, {"ok": False, "error": "Sem permissão para criar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = create_project(body, user["username"])
@@ -1890,7 +1890,7 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_auth()
             if not user: return
             if not can_edit_project(user["role"]):
-                return self._json(403, {"ok": False, "error": "Sem permissão para editar card"})
+                return self._json(403, {"ok": False, "error": "Sem permissão para editar documento"})
             slug = p.split("/")[3]
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})

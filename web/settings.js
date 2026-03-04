@@ -171,7 +171,7 @@ async function loadDeletedProjects() {
     btn.onclick = async () => {
       try {
         await api(`/api/admin/deleted-projects/${btn.dataset.restore}/restore`, { method: 'POST' });
-        deletedPolicyFeedback.textContent = 'Project restored ✅';
+        deletedPolicyFeedback.textContent = 'Document restored ✅';
         await Promise.all([loadDeletedProjects(), loadReports()]);
       } catch (err) {
         deletedPolicyFeedback.textContent = err.message;

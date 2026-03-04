@@ -159,7 +159,7 @@ function makeCard(p, statuses, priorities) {
   docBtn.title = `${docMeta.label}${p.documentName ? ` · ${p.documentName}` : ''}`;
   docBtn.innerHTML = `<span class="doc-main">📄</span><span class="doc-state">${docMeta.icon}</span>`;
   docBtn.onclick = () => {
-    if (!p.hasDocument) return alert('Este card ainda não tem documento anexado.');
+    if (!p.hasDocument) return alert('Este documento ainda não tem anexo.');
     window.open(`/api/projects/${encodeURIComponent(p.slug)}/document`, '_blank');
   };
   if (!p.hasDocument) {
