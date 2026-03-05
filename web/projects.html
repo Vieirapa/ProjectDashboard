@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Projetos</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>DocumentDashboard</h2>
+      <div class="side-group">Área de trabalho</div>
+      <a class="side-link active" href="/projects.html">Projetos</a>
+      <a class="side-link" href="/">Kanban</a>
+      <a class="side-link" href="/profile.html">Meu perfil</a>
+      <div class="side-group">Administração</div>
+      <a id="usersLink" class="side-link" href="/admin-users.html">Usuários & Convites</a>
+      <a id="settingsLink" class="side-link" href="/settings.html">Configurações</a>
+      <div class="side-foot" id="whoami"></div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <h1>🗂️ Projetos</h1>
+        <div class="header-actions">
+          <button id="logoutBtn" class="secondary">Logout</button>
+        </div>
+      </header>
+
+      <section class="edit-wrap">
+        <div class="edit-two-cols">
+          <form id="projectForm" class="edit-form">
+            <label>ID do Projeto</label>
+            <input id="projectId" type="number" readonly placeholder="(auto)" />
+            <label>Nome do Projeto</label>
+            <input id="projectName" required />
+            <label>Data de Início</label>
+            <input id="startDate" type="date" />
+            <label>Notas</label>
+            <textarea id="notes" rows="6"></textarea>
+            <div class="dialog-actions" style="justify-content:flex-start;">
+              <button type="button" id="newBtn" class="secondary">Novo</button>
+              <button type="button" id="saveBtn">Salvar</button>
+              <button type="button" id="deleteBtn" class="danger">Apagar</button>
+            </div>
+            <p id="feedback" class="small"></p>
+          </form>
+
+          <section class="review-panel">
+            <h3>Projetos cadastrados</h3>
+            <div id="projectsList" class="small">Carregando...</div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/projects.js"></script>
+</body>
+</html>

@@ -552,6 +552,66 @@ def list_usernames() -> list[str]:
     return [r["username"] for r in rows]
 
 
+def list_projects_registry() -> list[dict]:
+    with db() as conn:
+        rows = conn.execute("SELECT project_id, project_name, start_date, notes FROM projects ORDER BY project_id").fetchall()
+    return [dict(r) for r in rows]
+
+
+def create_project_registry(payload: dict) -> tuple[bool, str]:
+    name = str(payload.get("project_name") or "").strip()
+    start_date = str(payload.get("start_date") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+    if not name:
+        return False, "Nome do projeto é obrigatório"
+    if not start_date:
+        start_date = now_iso()
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO projects (project_name, start_date, notes) VALUES (?, ?, ?)",
+            (name, start_date, notes),
+        )
+    return True, "ok"
+
+
+def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
+    fields = []
+    vals: list = []
+    if "project_name" in payload:
+        name = str(payload.get("project_name") or "").strip()
+        if not name:
+            return False, "Nome do projeto é obrigatório"
+        fields.append("project_name=?")
+        vals.append(name)
+    if "start_date" in payload:
+        fields.append("start_date=?")
+        vals.append(str(payload.get("start_date") or "").strip())
+    if "notes" in payload:
+        fields.append("notes=?")
+        vals.append(str(payload.get("notes") or "").strip())
+    if not fields:
+        return False, "Nada para atualizar"
+    vals.append(project_id)
+    with db() as conn:
+        exists = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
+        if not exists:
+            return False, "Projeto não encontrado"
+        conn.execute(f"UPDATE projects SET {', '.join(fields)} WHERE project_id=?", tuple(vals))
+    return True, "ok"
+
+
+def delete_project_registry(project_id: int) -> tuple[bool, str]:
+    with db() as conn:
+        exists = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
+        if not exists:
+            return False, "Projeto não encontrado"
+        linked = conn.execute("SELECT 1 FROM documents WHERE project_id=? LIMIT 1", (project_id,)).fetchone()
+        if linked:
+            return False, "Não é possível apagar projeto com documentos vinculados"
+        conn.execute("DELETE FROM projects WHERE project_id=?", (project_id,))
+    return True, "ok"
+
+
 def is_valid_owner(owner: str) -> bool:
     owner = (owner or "").strip()
     if not owner:
@@ -1604,6 +1664,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/login.html": return self._serve(WEB_DIR / "login.html", "text/html; charset=utf-8")
         if p == "/signup.html": return self._serve(WEB_DIR / "signup.html", "text/html; charset=utf-8")
         if p == "/edit.html": return self._serve(WEB_DIR / "edit.html", "text/html; charset=utf-8")
+        if p == "/projects.html": return self._serve(WEB_DIR / "projects.html", "text/html; charset=utf-8")
         if p == "/admin-users.html": return self._serve(WEB_DIR / "admin-users.html", "text/html; charset=utf-8")
         if p == "/profile.html": return self._serve(WEB_DIR / "profile.html", "text/html; charset=utf-8")
         if p == "/settings.html":
@@ -1614,7 +1675,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             return self._serve(WEB_DIR / "settings.html", "text/html; charset=utf-8")
-        if p in ["/app.js", "/edit.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
+        if p in ["/app.js", "/edit.js", "/projects.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
             ctype = "application/javascript; charset=utf-8" if p.endswith(".js") else "text/css; charset=utf-8"
             return self._serve(WEB_DIR / p.lstrip("/"), ctype)
 
@@ -1688,6 +1749,10 @@ class Handler(BaseHTTPRequestHandler):
             doc = get_document(slug)
             if not doc: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
+
+        if p == "/api/admin/projects":
+            if not self._require_admin(): return
+            return self._json(200, {"ok": True, "projects": list_projects_registry()})
 
         if p == "/api/admin/users":
             if not self._require_admin(): return
@@ -1880,6 +1945,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "subject": subject, "previewText": preview_text, "recipients": len(recipients), "message": msg})
             return self._json(400, {"ok": False, "error": msg, "subject": subject, "previewText": preview_text, "recipients": len(recipients)})
 
+        if p == "/api/admin/projects":
+            admin = self._require_admin()
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = create_project_registry(body)
+            if done:
+                audit(admin["username"], "project.registry.create", body.get("project_name", ""))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
         if p == "/api/admin/users":
             admin = self._require_admin()
             if not admin: return
@@ -2057,6 +2132,21 @@ class Handler(BaseHTTPRequestHandler):
                 audit(admin["username"], "report.periodic.update", str(rid))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
+        if p.startswith("/api/admin/projects/"):
+            admin = self._require_admin()
+            if not admin: return
+            pid = p.split("/")[4]
+            try:
+                project_id = int(pid)
+            except Exception:
+                return self._json(400, {"ok": False, "error": "ID inválido"})
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = update_project_registry(project_id, body)
+            if done:
+                audit(admin["username"], "project.registry.update", str(project_id))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
         if p.startswith("/api/admin/users/"):
             admin = self._require_admin()
             if not admin: return
@@ -2141,6 +2231,18 @@ class Handler(BaseHTTPRequestHandler):
             done, msg = delete_periodic_report(rid)
             if done:
                 audit(admin["username"], "report.periodic.delete", str(rid))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/admin/projects/"):
+            admin = self._require_admin()
+            if not admin: return
+            try:
+                project_id = int(p.split("/")[4])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "ID inválido"})
+            done, msg = delete_project_registry(project_id)
+            if done:
+                audit(admin["username"], "project.registry.delete", str(project_id))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):
