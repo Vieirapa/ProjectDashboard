@@ -1,6 +1,3 @@
-const usersLink = document.getElementById('usersLink');
-const settingsLink = document.getElementById('settingsLink');
-const whoami = document.getElementById('whoami');
 const logoutBtn = document.getElementById('logoutBtn');
 
 const projectId = document.getElementById('projectId');
@@ -27,9 +24,6 @@ async function api(url, opts = {}) {
 async function loadMe() {
   const d = await api('/api/me');
   me = d.user;
-  whoami.textContent = `${me.username} (${me.role})`;
-  usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
-  settingsLink.style.display = me.role === 'admin' ? 'block' : 'none';
   if (me.role !== 'admin') {
     alert('Acesso restrito a administradores.');
     window.location.href = '/';

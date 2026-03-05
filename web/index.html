@@ -8,18 +8,7 @@
 </head>
 <body>
   <div class="layout">
-    <aside class="sidebar">
-      <h2>DocumentDashboard</h2>
-      <div class="side-group">Área de trabalho</div>
-      <a class="side-link" href="/projects.html">Projetos</a>
-      <a class="side-link active" href="/">Kanban</a>
-      <div class="side-group">Administração</div>
-      <a id="usersLink" class="side-link" href="/admin-users.html">Usuários & Convites</a>
-      <a id="settingsLink" class="side-link" href="/settings.html">Configurações</a>
-      <div class="side-group" id="whoamiTitle">Usuário</div>
-      <a id="profileBottomLink" class="side-link" href="/profile.html">Meu perfil</a>
-      <a id="logoutLink" class="side-link" href="#">Logout</a>
-    </aside>
+    <aside class="sidebar" id="sidebar-root" data-active="kanban"></aside>
 
     <main class="content">
       <header>
@@ -73,7 +62,7 @@
     </form>
   </dialog>
 
-  <script src="/sidebar-project-select.js"></script>
+  <script src="/sidebar.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -1,6 +1,5 @@
 const usersList = document.getElementById('usersList');
 const auditList = document.getElementById('auditList');
-const whoami = document.getElementById('whoami');
 const logoutBtn = document.getElementById('logoutBtn');
 const inviteOut = document.getElementById('inviteOut');
 
@@ -18,7 +17,6 @@ async function ensureAdmin() {
   const d = await api('/api/me');
   if (!d.user || d.user.role !== 'admin') throw new Error('Acesso restrito a admin');
   me = d.user;
-  whoami.textContent = `${d.user.username} (${d.user.role})`;
 }
 
 async function loadSettingsDefaults() {

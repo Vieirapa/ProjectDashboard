@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+
+if [[ -x "$ROOT_DIR/scripts/test_navigation.sh" ]]; then
+  echo "[pre-commit] running navigation checks..."
+  "$ROOT_DIR/scripts/test_navigation.sh"
+else
+  echo "[pre-commit] warning: scripts/test_navigation.sh not found/executable; skipping"
+fi

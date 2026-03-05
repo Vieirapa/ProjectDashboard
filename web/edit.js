@@ -1,7 +1,4 @@
 const slug = new URLSearchParams(location.search).get('slug');
-const usersLink = document.getElementById('usersLink');
-const settingsLink = document.getElementById('settingsLink');
-const whoami = document.getElementById('whoami');
 const backBtn = document.getElementById('backBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const deleteBtn = document.getElementById('deleteBtn');
@@ -69,9 +66,6 @@ function setDirty(v) {
 async function initMe() {
   const d = await api('/api/me');
   me = d.user;
-  whoami.textContent = `${me.username} (${me.role})`;
-  usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
-  settingsLink.style.display = me.role === 'admin' ? 'block' : 'none';
   deleteBtn.style.display = 'none';
 }
 

@@ -1,4 +1,3 @@
-const whoami = document.getElementById('whoami');
 const logoutBtn = document.getElementById('logoutBtn');
 const smtpForm = document.getElementById('smtpForm');
 const workflowForm = document.getElementById('workflowForm');
@@ -65,7 +64,6 @@ async function api(url, opts = {}) {
 async function ensureAdmin() {
   const d = await api('/api/me');
   if (!d.user || d.user.role !== 'admin') throw new Error('Acesso restrito a admin');
-  whoami.textContent = `${d.user.username} (${d.user.role})`;
 }
 
 function getSetting(settings, key, fallback = '') {

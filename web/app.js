@@ -1,10 +1,6 @@
 const board = document.getElementById('board');
 const refreshBtn = document.getElementById('refreshBtn');
 const newBtn = document.getElementById('newBtn');
-const logoutLink = document.getElementById('logoutLink');
-const usersLink = document.getElementById('usersLink');
-const settingsLink = document.getElementById('settingsLink');
-const whoamiTitle = document.getElementById('whoamiTitle');
 
 const searchInput = document.getElementById('searchInput');
 const statusFilter = document.getElementById('statusFilter');
@@ -37,9 +33,6 @@ async function api(url, opts = {}) {
 async function loadMe() {
   const data = await api('/api/me');
   me = data.user;
-  if (whoamiTitle) whoamiTitle.textContent = `${me.username} (${me.role})`;
-  usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
-  settingsLink.style.display = me.role === 'admin' ? 'block' : 'none';
   newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
 }
 
@@ -226,13 +219,6 @@ form.onsubmit = async (e) => {
   } catch (e) { alert(e.message); }
 };
 
-if (logoutLink) {
-  logoutLink.onclick = async (e) => {
-    e.preventDefault();
-    await api('/api/logout', {method:'POST'});
-    window.location.href = '/login.html';
-  };
-}
 
 (async () => {
   try { await loadMe(); await render(); } catch { window.location.href = '/login.html'; }
