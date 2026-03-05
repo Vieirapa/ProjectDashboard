@@ -13,6 +13,21 @@ body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #f5f6f8
   color: #e5e7eb;
   margin-bottom: 10px;
 }
+.header-project-select {
+  min-width: 260px;
+  padding: 8px 10px;
+  border: 2px solid #2563eb;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #0f172a;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(37,99,235,.15);
+}
+.header-project-select:focus {
+  outline: none;
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(37,99,235,.25);
+}
 .side-group { margin-top: 14px; font-size: 12px; text-transform: uppercase; color: #9ca3af; }
 .side-link { display: block; margin-top: 6px; padding: 8px 10px; border-radius: 8px; color: #e5e7eb; text-decoration: none; }
 .side-link:hover { background: #1f2937; }
