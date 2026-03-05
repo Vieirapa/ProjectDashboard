@@ -1663,9 +1663,9 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/documents/"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            proj = get_document(slug)
-            if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
-            return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
+            doc = get_document(slug)
+            if not doc: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+            return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
 
         if p == "/api/admin/users":
             if not self._require_admin(): return
