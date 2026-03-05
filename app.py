@@ -546,7 +546,13 @@ def is_valid_owner(owner: str) -> bool:
 
 
 def sync_document_meta(document: dict):
-    p = Path(document["path"])
+    p = Path(document.get("path") or "")
+    if not p.exists():
+        p = BASE_DIR / (document.get("slug") or "documento")
+        p.mkdir(parents=True, exist_ok=True)
+        document["path"] = str(p)
+        with db() as conn:
+            conn.execute("UPDATE documents SET path=? WHERE slug=?", (document["path"], document.get("slug", "")))
     (p / "document.json").write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
