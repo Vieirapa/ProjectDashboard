@@ -126,8 +126,8 @@ def _column_exists(conn, table: str, col: str) -> bool:
 
 
 def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
-    # Migrate main table
-    if _table_exists(conn, 'projects'):
+    # Migrate legacy projects table into documents table (only if legacy schema exists)
+    if _table_exists(conn, 'projects') and _column_exists(conn, 'projects', 'slug'):
         total_docs = conn.execute("SELECT COUNT(*) AS c FROM documents").fetchone()[0]
         total_projects = conn.execute("SELECT COUNT(*) AS c FROM projects").fetchone()[0]
         if total_projects and total_docs == 0:
@@ -278,6 +278,14 @@ def init_db():
                 description TEXT NOT NULL,
                 path TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                project_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_name TEXT NOT NULL,
+                start_date TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT ''
             )
         """)
         conn.execute("""
