@@ -22,6 +22,15 @@ Main columns:
 - `created_at`
 - `email`, `phone`, `extension`, `work_area`, `notes`
 
+### `projects`
+Top-level project registry (semantic/administrative grouping).
+
+Main columns:
+- `project_id` (PK)
+- `project_name`
+- `start_date`
+- `notes`
+
 ### `documents`
 Kanban documents.
 
@@ -82,11 +91,11 @@ Columns:
 - `created_by`, `created_at`, `updated_by`, `updated_at`
 
 ### `deleted_documents`
-Soft-delete archive for deleted documents/documents.
+Soft-delete archive for deleted documents.
 
 Columns:
 - `id` (PK), `slug`, `name`, `deleted_at`, `deleted_by`, `trash_path`
-- `project_json`, `review_notes_json`, `document_versions_json`
+- `document_json`, `review_notes_json`, `document_versions_json`
 
 ## 3) Module → DB mapping
 
@@ -100,7 +109,17 @@ Backend/API:
 Tables:
 - `users`, `audit_logs`
 
-### B) Kanban (documents)
+### B) Project registry (`projects` table)
+Frontend:
+- no dedicated CRUD UI yet (table is currently bootstraped in DB layer)
+
+Backend/API:
+- no dedicated API endpoints yet (reserved for upcoming project management flow)
+
+Tables:
+- `projects`
+
+### C) Kanban (documents)
 Frontend:
 - `web/index.html`, `web/app.js`, `web/edit.html`, `web/edit.js`
 
@@ -202,6 +221,13 @@ erDiagram
         string notes
     }
 
+    PROJECTS {
+        int project_id PK
+        string project_name
+        string start_date
+        string notes
+    }
+
     DOCUMENTS {
         int id PK
         string slug UK
@@ -297,7 +323,7 @@ erDiagram
         string deleted_at
         string deleted_by
         string trash_path
-        string project_json
+        string document_json
         string review_notes_json
         string document_versions_json
     }
