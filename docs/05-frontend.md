@@ -4,7 +4,7 @@
 
 - `index.html` + `app.js`
   - main board rendering
-  - card creation
+  - document creation
   - quick status/priority changes
   - filtering/searching
 

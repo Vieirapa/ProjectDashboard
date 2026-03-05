@@ -23,11 +23,11 @@
    - validates sessions and permissions
 
 2. **Persistence**
-   - stores users, projects, invitations, audit logs, revision records
+   - stores users, documents, invitations, audit logs, revision records
 
 3. **Frontend pages**
    - `index.html` + `app.js`: Kanban board
-   - `edit.html` + `edit.js`: full card details and revision timeline
+   - `edit.html` + `edit.js`: full document details and revision timeline
    - `login/signup/admin-users` pages for auth/admin operations
 
 ## High-level flow

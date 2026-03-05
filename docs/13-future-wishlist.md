@@ -8,11 +8,11 @@ This file tracks future ideas and improvements for ProjectDashboard.
 
 ### UX / Kanban
 
-- Add search/filter in **Deleted Projects** admin section
+- Add search/filter in **Deleted Documents** admin section
   - filter by name/slug
   - filter by deleted date range
   - filter by deleted-by user
-- Add pagination for Deleted Projects list (for large environments)
+- Add pagination for Deleted Documents list (for large environments)
 - Add optional "health badge" UI (green/yellow/red) in System Diagnostics
 - Short label mode for ordering dropdown (compact text)
 - Run a final UI language QA pass with a checklist (PT-BR consistency, accents, terminology, and microcopy clarity)

@@ -21,10 +21,10 @@ sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 Installer output includes:
 
 - deployment to `/opt/projectdashboard`
-- runtime folders fixed under install path (`/opt/projectdashboard/data`, `/opt/projectdashboard/data/docs_repo`, `/opt/projectdashboard/projects`)
+- runtime folders fixed under install path (`/opt/projectdashboard/data`, `/opt/projectdashboard/data/docs_repo`, `/opt/projectdashboard/documents`)
 - `projectdashboard.service` enabled at boot
 - environment file at `/etc/projectdashboard.env` (preserves SMTP keys on reinstall)
-- dedicated projects directory (`PDASH_PROJECTS_DIR`, default `/opt/projectdashboard/projects`)
+- dedicated documents directory (`PDASH_DOCUMENTS_DIR`, default `/opt/projectdashboard/documents`)
 - optional Nginx reverse proxy
 - optional Let's Encrypt HTTPS
 - daily backup timer (`projectdashboard-backup.timer`)

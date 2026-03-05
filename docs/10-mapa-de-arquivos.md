@@ -15,7 +15,7 @@
 
 ## `web/`
 
-- `index.html`, `app.js` — board UI and card operations
+- `index.html`, `app.js` — board UI and document operations
 - `edit.html`, `edit.js` — details page, uploads, revisions, review notes
 - `login.html`, `login.js` — authentication UI
 - `signup.html`, `signup.js` — signup/invite flow

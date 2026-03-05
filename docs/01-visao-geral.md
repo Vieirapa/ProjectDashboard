@@ -6,8 +6,8 @@ ProjectDashboard is a Kanban-oriented web app for project tracking with controll
 
 - User authentication
 - Role-based permissions (RBAC)
-- Kanban board for project cards
-- Dedicated card details/edit page
+- Kanban board for project documents
+- Dedicated document details/edit page
 - Document attachment and revision history
 - Review notes
 - User administration (admin-only)
@@ -18,7 +18,7 @@ ProjectDashboard is a Kanban-oriented web app for project tracking with controll
 - `admin`
   - full access, including user administration and protected deletions
 - `member`
-  - create/edit cards, no admin panel access
+  - create/edit documents, no admin panel access
 
 ## User deletion safeguards
 
