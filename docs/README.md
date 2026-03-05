@@ -17,6 +17,7 @@ This directory contains the current technical and operational documentation for 
 11. [11-email-smtp-setup.md](./11-email-smtp-setup.md)
 12. [12-backup-permissions-setup.md](./12-backup-permissions-setup.md)
 13. [13-future-wishlist.md](./13-future-wishlist.md)
+14. [14-db-structure-and-module-mapping-3be2bc7.md](./14-db-structure-and-module-mapping-3be2bc7.md)
 
 ## Scope
 
