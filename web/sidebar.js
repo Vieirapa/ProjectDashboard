@@ -26,6 +26,8 @@
 
     const projectId = currentProjectId(projects || []);
 
+    const canAdminTools = user.role === 'admin';
+
     root.innerHTML = `
       <h2>DocumentDashboard</h2>
 
@@ -33,9 +35,11 @@
       <a class="side-link ${active === 'projects' ? 'active' : ''}" href="/projects.html?project_id=${projectId}">Projetos</a>
       <a class="side-link ${active === 'kanban' ? 'active' : ''}" href="/?project_id=${projectId}">Kanban</a>
 
+      ${canAdminTools ? `
       <div class="side-group">Administração</div>
       <a id="usersLink" class="side-link ${active === 'users' ? 'active' : ''}" href="/admin-users.html?project_id=${projectId}">Usuários & Convites</a>
       <a id="settingsLink" class="side-link ${active === 'settings' ? 'active' : ''}" href="/settings.html?project_id=${projectId}">Configurações</a>
+      ` : ''}
 
       <div class="side-group" id="whoamiTitle"></div>
       <a class="side-link ${active === 'profile' ? 'active' : ''}" href="/profile.html?project_id=${projectId}">Meu perfil</a>
@@ -44,11 +48,6 @@
 
     const whoamiTitle = document.getElementById('whoamiTitle');
     if (whoamiTitle) whoamiTitle.textContent = `${user.username} (${user.role})`;
-
-    const usersLink = document.getElementById('usersLink');
-    const settingsLink = document.getElementById('settingsLink');
-    if (usersLink) usersLink.style.display = user.role === 'admin' ? 'block' : 'none';
-    if (settingsLink) settingsLink.style.display = user.role === 'admin' ? 'block' : 'none';
 
 
     const logoutLink = document.getElementById('logoutLink');
