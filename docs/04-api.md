@@ -19,32 +19,32 @@ Returns board data (projects + enumerations).
 ### `POST /api/projects`
 Creates a new project card.
 
-### `GET /api/projects/:slug`
+### `GET /api/documents/:slug`
 Returns one project.
 
-### `PATCH /api/projects/:slug`
+### `PATCH /api/documents/:slug`
 Updates project fields (name, description, status, priority, owner, due date).
 
-### `DELETE /api/projects/:slug`
+### `DELETE /api/documents/:slug`
 Deletes a project (permission-protected).
 
 ## Documents and revisions
 
-### `POST /api/projects/:slug/document`
+### `POST /api/documents/:slug/document`
 Uploads/replaces project document and creates a new revision record.
 
-### `GET /api/projects/:slug/document`
+### `GET /api/documents/:slug/document`
 Downloads latest or selected revision document.
 
-### `GET /api/projects/:slug/document/versions`
+### `GET /api/documents/:slug/document/versions`
 Returns revision timeline metadata.
 
 ## Review notes
 
-### `GET /api/projects/:slug/review-notes`
+### `GET /api/documents/:slug/review-notes`
 Lists notes attached to project review stage.
 
-### `POST /api/projects/:slug/review-notes`
+### `POST /api/documents/:slug/review-notes`
 Creates a review note (permission/stage validation applies).
 
 ## Admin

@@ -13,7 +13,7 @@ const backupFeedback = document.getElementById('backupFeedback');
 const diagFeedback = document.getElementById('diagFeedback');
 const deletedPolicyFeedback = document.getElementById('deletedPolicyFeedback');
 const reportsList = document.getElementById('reportsList');
-const deletedProjectsList = document.getElementById('deletedProjectsList');
+const deletedDocumentsList = document.getElementById('deletedDocumentsList');
 const reportPreview = document.getElementById('reportPreview');
 const diagOutput = document.getElementById('diagOutput');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
@@ -131,9 +131,9 @@ async function loadSettings() {
   f.inviteDefaultMessage.value = getSetting(s, 'invite.default_message', '');
   f.defaultDueDays.value = getSetting(s, 'workflow.default_due_days', '7');
   f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
-  f.backupPath.value = getSetting(s, 'backup.path', '/opt/projectdashboard/data/backups');
+  f.backupPath.value = getSetting(s, 'backup.path', '/opt/documentdashboard/data/backups');
   f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
-  f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
+  f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/DocumentDashboard.git');
   f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'main');
   f.deletedRetentionDays.value = getSetting(s, 'deleted.retention_days', '30');
 
@@ -145,17 +145,17 @@ async function loadSettings() {
   });
 }
 
-async function loadDeletedProjects() {
-  const d = await api('/api/admin/deleted-projects');
+async function loadDeletedDocuments() {
+  const d = await api('/api/admin/deleted-documents');
 
-  if (!d.deleted_projects?.length) {
-    deletedProjectsList.textContent = 'Nenhum documento apagado.';
+  if (!d.deleted_documents?.length) {
+    deletedDocumentsList.textContent = 'Nenhum documento apagado.';
     return;
   }
 
-  deletedProjectsList.innerHTML = `<table>
+  deletedDocumentsList.innerHTML = `<table>
     <tr><th>Nome</th><th>Slug</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr>
-    ${d.deleted_projects.map((p) => `<tr>
+    ${d.deleted_documents.map((p) => `<tr>
       <td>${p.name || '-'}</td>
       <td>${p.slug || '-'}</td>
       <td>${p.deleted_at || '-'}</td>
@@ -167,25 +167,25 @@ async function loadDeletedProjects() {
     </tr>`).join('')}
   </table>`;
 
-  deletedProjectsList.querySelectorAll('[data-restore]').forEach((btn) => {
+  deletedDocumentsList.querySelectorAll('[data-restore]').forEach((btn) => {
     btn.onclick = async () => {
       try {
-        await api(`/api/admin/deleted-projects/${btn.dataset.restore}/restore`, { method: 'POST' });
+        await api(`/api/admin/deleted-documents/${btn.dataset.restore}/restore`, { method: 'POST' });
         deletedPolicyFeedback.textContent = 'Documento restaurado ✅';
-        await Promise.all([loadDeletedProjects(), loadReports()]);
+        await Promise.all([loadDeletedDocuments(), loadReports()]);
       } catch (err) {
         deletedPolicyFeedback.textContent = err.message;
       }
     };
   });
 
-  deletedProjectsList.querySelectorAll('[data-purge]').forEach((btn) => {
+  deletedDocumentsList.querySelectorAll('[data-purge]').forEach((btn) => {
     btn.onclick = async () => {
       if (!confirm('Permanently delete this item and associated files?')) return;
       try {
-        await api(`/api/admin/deleted-projects/${btn.dataset.purge}`, { method: 'DELETE' });
+        await api(`/api/admin/deleted-documents/${btn.dataset.purge}`, { method: 'DELETE' });
         deletedPolicyFeedback.textContent = 'Apagado permanentemente.';
-        await loadDeletedProjects();
+        await loadDeletedDocuments();
       } catch (err) {
         deletedPolicyFeedback.textContent = err.message;
       }
@@ -413,7 +413,7 @@ runDiagBtn.onclick = async () => {
 refreshDeletedBtn.onclick = async () => {
   deletedPolicyFeedback.textContent = '';
   try {
-    await loadDeletedProjects();
+    await loadDeletedDocuments();
     deletedPolicyFeedback.textContent = 'Lista de documentos apagados atualizada.';
   } catch (err) {
     deletedPolicyFeedback.textContent = err.message;
@@ -428,7 +428,7 @@ logoutBtn.onclick = async () => {
 (async () => {
   try {
     await ensureAdmin();
-    await Promise.all([loadSettings(), loadReports(), loadDeletedProjects()]);
+    await Promise.all([loadSettings(), loadReports(), loadDeletedDocuments()]);
     try {
       const d = await api('/api/admin/system/diagnostics');
       renderDiagnostics(d.diagnostics || {});

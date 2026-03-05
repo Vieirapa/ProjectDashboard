@@ -9,7 +9,7 @@
 <body>
   <div class="layout">
     <aside class="sidebar">
-      <h2>ProjectDashboard</h2>
+      <h2>DocumentDashboard</h2>
       <div class="side-group">Área de trabalho</div>
       <a class="side-link" href="/">Kanban</a>
       <a class="side-link" href="/profile.html">Meu perfil</a>
@@ -69,7 +69,7 @@
         <form id="backupForm" class="form-grid" style="max-width:900px;">
           <label class="inline-check"><input id="backup_enabled" type="checkbox" /> <span>Habilitar backup automático interno</span></label>
           <label>Caminho de saída dos backups</label>
-          <input id="backup_path" placeholder="/opt/projectdashboard/data/backups" />
+          <input id="backup_path" placeholder="/opt/documentdashboard/data/backups" />
 
           <label>Dias da semana</label>
           <div id="backup_weekdays" class="form-grid">
@@ -97,7 +97,7 @@
         <h3>Diagnóstico do sistema</h3>
         <form id="diagForm" class="form-grid" style="max-width:900px;">
           <label>Repositório Git para comparação de versão</label>
-          <input id="system_git_repo" placeholder="https://github.com/Vieirapa/ProjectDashboard.git" />
+          <input id="system_git_repo" placeholder="https://github.com/Vieirapa/DocumentDashboard.git" />
           <label>Branch (ramo)</label>
           <input id="system_git_branch" placeholder="main" />
 
@@ -125,7 +125,7 @@
 
         <div style="margin-top:16px;">
           <h4 style="margin:0 0 8px;">Documentos apagados disponíveis para restauração</h4>
-          <div id="deletedProjectsList" class="small">Nenhum documento apagado.</div>
+          <div id="deletedDocumentsList" class="small">Nenhum documento apagado.</div>
         </div>
       </section>
 

@@ -26,7 +26,7 @@ const f = {
 };
 
 let me = null;
-let project = null;
+let document = null;
 let isDirty = false;
 let isSaving = false;
 saveBtn.disabled = true;
@@ -55,9 +55,9 @@ function canAddReviewNotes() {
 }
 
 function canDeleteCard() {
-  if (!project || !me) return false;
+  if (!document || !me) return false;
   if (me.role === 'admin') return true;
-  if (me.role === 'member') return (project.createdBy || '').toLowerCase() === (me.username || '').toLowerCase();
+  if (me.role === 'member') return (document.createdBy || '').toLowerCase() === (me.username || '').toLowerCase();
   return false;
 }
 
@@ -93,7 +93,7 @@ function updateReviewNotesAvailability() {
 }
 
 async function loadReviewNotes() {
-  const d = await api(`/api/projects/${encodeURIComponent(slug)}/review-notes`);
+  const d = await api(`/api/documents/${encodeURIComponent(slug)}/review-notes`);
   if (!d.notes?.length) {
     reviewNotesHistory.textContent = 'Sem notas registradas.';
     return;
@@ -122,7 +122,7 @@ async function loadReviewNotes() {
       const input = e.currentTarget;
       const nextResolved = !!input.checked;
       try {
-        await api(`/api/projects/${encodeURIComponent(slug)}/review-notes/${encodeURIComponent(input.dataset.noteId)}`, {
+        await api(`/api/documents/${encodeURIComponent(slug)}/review-notes/${encodeURIComponent(input.dataset.noteId)}`, {
           method: 'PATCH',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ resolved: nextResolved })
@@ -141,12 +141,12 @@ async function loadReviewNotes() {
 
 async function loadVersions() {
   try {
-    const d = await api(`/api/projects/${encodeURIComponent(slug)}/document/versions`);
+    const d = await api(`/api/documents/${encodeURIComponent(slug)}/document/versions`);
     if (!d.versions?.length) {
       f.documentVersions.textContent = 'Sem revisões ainda.';
       return;
     }
-    const items = d.versions.map(v => `<li><a href="/api/projects/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">r${v.version}</a> · ${v.document_status} · ${v.document_name} · usuário: ${v.created_by || '-'} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
+    const items = d.versions.map(v => `<li><a href="/api/documents/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">r${v.version}</a> · ${v.document_status} · ${v.document_name} · usuário: ${v.created_by || '-'} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
     f.documentVersions.innerHTML = `<ul>${items}</ul>`;
   } catch (e) {
     if (e?.status === 404) {
@@ -157,10 +157,10 @@ async function loadVersions() {
   }
 }
 
-async function loadProject() {
-  const d = await api(`/api/projects/${encodeURIComponent(slug)}`);
-  const p = d.project;
-  project = p;
+async function loadDocument() {
+  const d = await api(`/api/documents/${encodeURIComponent(slug)}`);
+  const p = d.document;
+  document = p;
   f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate;
   f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
@@ -232,7 +232,7 @@ addReviewNoteBtn.onclick = async () => {
       feedback.textContent = 'Digite uma nota antes de adicionar.';
       return;
     }
-    await api(`/api/projects/${encodeURIComponent(slug)}/review-notes`, {
+    await api(`/api/documents/${encodeURIComponent(slug)}/review-notes`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ note })
@@ -260,14 +260,14 @@ async function handleSave() {
       return;
     }
 
-    await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    await api(`/api/documents/${encodeURIComponent(slug)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value,
     })});
 
     const file = f.documentFile.files?.[0];
     if (file) {
       const b64 = await fileToBase64(file);
-      await api(`/api/projects/${encodeURIComponent(slug)}/document`, {
+      await api(`/api/documents/${encodeURIComponent(slug)}/document`, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
@@ -300,7 +300,7 @@ saveBtn.onclick = handleSave;
 deleteBtn.onclick = async () => {
   if (!confirm('Apagar este documento do dashboard? (somente admin)')) return;
   try {
-    await api(`/api/projects/${encodeURIComponent(slug)}`, {method:'DELETE'});
+    await api(`/api/documents/${encodeURIComponent(slug)}`, {method:'DELETE'});
     location.href = '/';
   } catch (e) { feedback.textContent = e.message; }
 };
@@ -308,7 +308,7 @@ deleteBtn.onclick = async () => {
 (async () => {
   try {
     await initMe();
-    await loadProject();
+    await loadDocument();
   } catch (e) {
     if (e?.status === 401) {
       location.href = '/login.html';

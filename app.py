@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 APP_DIR = Path(__file__).parent
-BASE_DIR = Path(os.getenv("PDASH_PROJECTS_DIR", str(APP_DIR / "projects")))
+BASE_DIR = Path(os.getenv("PDASH_DOCUMENTS_DIR", str(APP_DIR / "documents")))
 WEB_DIR = APP_DIR / "web"
 DATA_DIR = Path(__file__).parent / "data"
 UPLOADS_DIR = DATA_DIR / "uploads"
@@ -110,12 +110,128 @@ def ensure_column(conn: sqlite3.Connection, table: str, col: str, ddl: str):
     if col not in cols:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
 
+# --- Legacy migrations: projects -> documents ---
 
-def can_create_project(role: str) -> bool:
+def _table_exists(conn, name: str) -> bool:
+    row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
+    return bool(row)
+
+
+def _column_exists(conn, table: str, col: str) -> bool:
+    try:
+        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    except Exception:
+        return False
+    return col in cols
+
+
+def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
+    # Migrate main table
+    if _table_exists(conn, 'projects'):
+        total_docs = conn.execute("SELECT COUNT(*) AS c FROM documents").fetchone()[0]
+        total_projects = conn.execute("SELECT COUNT(*) AS c FROM projects").fetchone()[0]
+        if total_projects and total_docs == 0:
+            conn.execute(
+                "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) "
+                "SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM projects"
+            )
+
+    # Migrate deleted table (project_json -> document_json)
+    if _table_exists(conn, 'deleted_projects') or _table_exists(conn, 'deleted_documents'):
+        # create new table with correct column name
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS deleted_documents_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT NOT NULL,
+                name TEXT NOT NULL,
+                deleted_at TEXT NOT NULL,
+                deleted_by TEXT NOT NULL,
+                trash_path TEXT NOT NULL,
+                document_json TEXT NOT NULL,
+                review_notes_json TEXT NOT NULL DEFAULT '[]',
+                document_versions_json TEXT NOT NULL DEFAULT '[]'
+            )
+        """)
+
+        # from deleted_projects
+        if _table_exists(conn, 'deleted_projects'):
+            conn.execute(
+                "INSERT INTO deleted_documents_new (id, slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json) "
+                "SELECT id, slug, name, deleted_at, deleted_by, trash_path, project_json, review_notes_json, document_versions_json FROM deleted_projects"
+            )
+        # from old deleted_documents (if it had project_json)
+        if _table_exists(conn, 'deleted_documents'):
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(deleted_documents)").fetchall()]
+            if 'project_json' in cols:
+                conn.execute(
+                    "INSERT INTO deleted_documents_new (id, slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json) "
+                    "SELECT id, slug, name, deleted_at, deleted_by, trash_path, project_json, review_notes_json, document_versions_json FROM deleted_documents"
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO deleted_documents_new (id, slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json) "
+                    "SELECT id, slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json FROM deleted_documents"
+                )
+
+        # swap tables
+        if _table_exists(conn, 'deleted_documents'):
+            conn.execute("DROP TABLE deleted_documents")
+        conn.execute("ALTER TABLE deleted_documents_new RENAME TO deleted_documents")
+
+    # Migrate review_notes.project_slug -> document_slug
+    if _table_exists(conn, 'review_notes') and _column_exists(conn, 'review_notes', 'project_slug') and not _column_exists(conn, 'review_notes', 'document_slug'):
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS review_notes_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_slug TEXT NOT NULL,
+                note TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                resolved_by TEXT NOT NULL DEFAULT '',
+                resolved_at TEXT NOT NULL DEFAULT '',
+                is_resolved INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute(
+            "INSERT INTO review_notes_new (id, document_slug, note, created_by, created_at, resolved_by, resolved_at, is_resolved) "
+            "SELECT id, project_slug, note, created_by, created_at, resolved_by, resolved_at, is_resolved FROM review_notes"
+        )
+        conn.execute("DROP TABLE review_notes")
+        conn.execute("ALTER TABLE review_notes_new RENAME TO review_notes")
+
+    # Migrate document_versions.project_slug -> document_slug
+    if _table_exists(conn, 'document_versions') and _column_exists(conn, 'document_versions', 'project_slug') and not _column_exists(conn, 'document_versions', 'document_slug'):
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS document_versions_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_slug TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                document_name TEXT NOT NULL,
+                document_mime TEXT NOT NULL,
+                document_status TEXT NOT NULL,
+                file_rel_path TEXT NOT NULL,
+                git_commit TEXT NOT NULL,
+                checksum TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(document_slug, version)
+            )
+        """)
+        conn.execute(
+            "INSERT INTO document_versions_new (id, document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) "
+            "SELECT id, project_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at FROM document_versions"
+        )
+        conn.execute("DROP TABLE document_versions")
+        conn.execute("ALTER TABLE document_versions_new RENAME TO document_versions")
+
+
+
+
+def can_create_document(role: str) -> bool:
     return role in {"admin", "member"}
 
 
-def can_edit_project(role: str) -> bool:
+def can_edit_document(role: str) -> bool:
     return role in {"admin", "member", "desenhista"}
 
 
@@ -131,11 +247,11 @@ def can_resolve_review_note(role: str) -> bool:
     return role in {"desenhista", "admin"}
 
 
-def can_delete_project(role: str, user: str, project: dict) -> bool:
+def can_delete_document(role: str, user: str, document: dict) -> bool:
     if role == "admin":
         return True
     if role == "member":
-        return (project.get("createdBy") or "").strip().lower() == user.strip().lower()
+        return (document.get("createdBy") or "").strip().lower() == user.strip().lower()
     return False
 
 
@@ -151,7 +267,7 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS projects (
+            CREATE TABLE IF NOT EXISTS documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slug TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
@@ -188,7 +304,7 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS document_versions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_slug TEXT NOT NULL,
+                document_slug TEXT NOT NULL,
                 version INTEGER NOT NULL,
                 document_name TEXT NOT NULL,
                 document_mime TEXT NOT NULL,
@@ -198,13 +314,13 @@ def init_db():
                 checksum TEXT NOT NULL,
                 created_by TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                UNIQUE(project_slug, version)
+                UNIQUE(document_slug, version)
             )
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS review_notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_slug TEXT NOT NULL,
+                document_slug TEXT NOT NULL,
                 note TEXT NOT NULL,
                 created_by TEXT NOT NULL,
                 created_at TEXT NOT NULL,
@@ -240,26 +356,26 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS deleted_projects (
+            CREATE TABLE IF NOT EXISTS deleted_documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slug TEXT NOT NULL,
                 name TEXT NOT NULL,
                 deleted_at TEXT NOT NULL,
                 deleted_by TEXT NOT NULL,
                 trash_path TEXT NOT NULL,
-                project_json TEXT NOT NULL,
+                document_json TEXT NOT NULL,
                 review_notes_json TEXT NOT NULL DEFAULT '[]',
                 document_versions_json TEXT NOT NULL DEFAULT '[]'
             )
         """)
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
-        ensure_column(conn, "projects", "document_status", "document_status TEXT NOT NULL DEFAULT 'aguardando edição'")
-        ensure_column(conn, "projects", "document_name", "document_name TEXT NOT NULL DEFAULT ''")
-        ensure_column(conn, "projects", "document_mime", "document_mime TEXT NOT NULL DEFAULT ''")
-        ensure_column(conn, "projects", "document_path", "document_path TEXT NOT NULL DEFAULT ''")
-        ensure_column(conn, "projects", "created_by", "created_by TEXT NOT NULL DEFAULT ''")
-        ensure_column(conn, "projects", "opened_at", "opened_at TEXT NOT NULL DEFAULT ''")
-        ensure_column(conn, "projects", "released_at", "released_at TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "documents", "document_status", "document_status TEXT NOT NULL DEFAULT 'aguardando edição'")
+        ensure_column(conn, "documents", "document_name", "document_name TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "documents", "document_mime", "document_mime TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "documents", "document_path", "document_path TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "documents", "created_by", "created_by TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "documents", "opened_at", "opened_at TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "documents", "released_at", "released_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
@@ -278,15 +394,17 @@ def init_db():
             )
             print("[ProjectDashboard] Initial user: admin / password:", pwd)
 
+        migrate_projects_to_documents(conn)
+
         # Ensure admin user keeps admin role after upgrades/migrations
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
-        conn.execute("UPDATE projects SET status='Em revisão' WHERE status='Bloqueado'")
-        conn.execute("UPDATE projects SET document_status=status")
-        conn.execute("UPDATE projects SET created_by=owner WHERE created_by='' AND owner<>''")
-        conn.execute("UPDATE projects SET opened_at=updated_at WHERE opened_at='' AND updated_at<>''")
-        conn.execute("UPDATE projects SET opened_at=? WHERE opened_at=''",(now_iso(),))
-        conn.execute("UPDATE projects SET due_date='-' WHERE status='Concluído'")
-        conn.execute("UPDATE projects SET released_at=updated_at WHERE status='Concluído' AND released_at='' AND updated_at<>''")
+        conn.execute("UPDATE documents SET status='Em revisão' WHERE status='Bloqueado'")
+        conn.execute("UPDATE documents SET document_status=status")
+        conn.execute("UPDATE documents SET created_by=owner WHERE created_by='' AND owner<>''")
+        conn.execute("UPDATE documents SET opened_at=updated_at WHERE opened_at='' AND updated_at<>''")
+        conn.execute("UPDATE documents SET opened_at=? WHERE opened_at=''",(now_iso(),))
+        conn.execute("UPDATE documents SET due_date='-' WHERE status='Concluído'")
+        conn.execute("UPDATE documents SET released_at=updated_at WHERE status='Concluído' AND released_at='' AND updated_at<>''")
 
         for k, v in [
             ("smtp.host", ""),
@@ -312,18 +430,18 @@ def audit(actor: str, action: str, target: str, details: str = ""):
         )
 
 
-def migrate_existing_projects():
+def migrate_existing_documents():
     BASE_DIR.mkdir(parents=True, exist_ok=True)
     with db() as conn:
         for p in sorted(BASE_DIR.iterdir()):
             if not p.is_dir() or p.name in SKIP_DIRS:
                 continue
             slug = p.name.lower()
-            if conn.execute("SELECT id FROM projects WHERE slug=?", (slug,)).fetchone():
+            if conn.execute("SELECT id FROM documents WHERE slug=?", (slug,)).fetchone():
                 continue
 
             data = {}
-            meta = p / "project.json"
+            meta = p / "document.json"
             if meta.exists():
                 try:
                     data = json.loads(meta.read_text(encoding="utf-8"))
@@ -344,7 +462,7 @@ def migrate_existing_projects():
 
             conn.execute(
                 """
-                INSERT INTO projects (slug, name, status, priority, owner, due_date, description, path, updated_at, document_status, document_name, document_mime, document_path, created_by, opened_at, released_at)
+                INSERT INTO documents (slug, name, status, priority, owner, due_date, description, path, updated_at, document_status, document_name, document_mime, document_path, created_by, opened_at, released_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -368,9 +486,9 @@ def migrate_existing_projects():
             )
 
 
-def list_projects() -> list[dict]:
+def list_documents() -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM projects ORDER BY name").fetchall()
+        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM documents ORDER BY name").fetchall()
     return [{
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
@@ -384,9 +502,9 @@ def list_projects() -> list[dict]:
     } for r in rows]
 
 
-def get_project(slug: str) -> dict | None:
+def get_document(slug: str) -> dict | None:
     with db() as conn:
-        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM projects WHERE slug=?", (slug,)).fetchone()
+        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM documents WHERE slug=?", (slug,)).fetchone()
     if not r:
         return None
     age_label, age_days = _project_age_fields(r["opened_at"], r["status"], r["released_at"])
@@ -427,12 +545,12 @@ def is_valid_owner(owner: str) -> bool:
     return bool(row)
 
 
-def sync_project_meta(project: dict):
-    p = Path(project["path"])
-    (p / "project.json").write_text(json.dumps(project, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+def sync_document_meta(document: dict):
+    p = Path(document["path"])
+    (p / "document.json").write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def create_project(payload: dict, actor: str) -> tuple[bool, str]:
+def create_document(payload: dict, actor: str) -> tuple[bool, str]:
     name = (payload.get("name") or "").strip()
     if not name:
         return False, "Nome é obrigatório"
@@ -447,7 +565,7 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
     if not is_valid_owner(owner):
         return False, "Responsável inválido (usuário não encontrado)"
 
-    project = {
+    document = {
         "slug": slug,
         "name": name,
         "status": status,
@@ -466,20 +584,20 @@ def create_project(payload: dict, actor: str) -> tuple[bool, str]:
     }
 
     proj_dir.mkdir(parents=True, exist_ok=False)
-    (proj_dir / "README.md").write_text(f"# Documento: {project['name']}\n\n{project['description']}\n", encoding="utf-8")
+    (proj_dir / "README.md").write_text(f"# Documento: {document['name']}\n\n{document['description']}\n", encoding="utf-8")
     (proj_dir / "TASKS.md").write_text("# TASKS\n\n## Done\n\n- [ ] Inicializar documento\n\n## Next\n\n- [ ] Definir roadmap\n", encoding="utf-8")
 
     with db() as conn:
         conn.execute(
-            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (project["slug"], project["name"], project["status"], project["priority"], project["owner"], project["dueDate"], project["description"], project["path"], project["updatedAt"], project["status"], project["documentName"], project["documentMime"], project["documentPath"], project["createdBy"], project["openedAt"], project["releasedAt"]),
+            "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (document["slug"], document["name"], document["status"], document["priority"], document["owner"], document["dueDate"], document["description"], document["path"], document["updatedAt"], document["status"], document["documentName"], document["documentMime"], document["documentPath"], document["createdBy"], document["openedAt"], document["releasedAt"]),
         )
-    sync_project_meta(project)
+    sync_document_meta(document)
     return True, "ok"
 
 
-def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
-    p = get_project(slug)
+def patch_document(slug: str, payload: dict) -> tuple[bool, str]:
+    p = get_document(slug)
     if not p:
         return False, "Documento não encontrado"
     old_status = p.get("status")
@@ -512,9 +630,9 @@ def patch_project(slug: str, payload: dict) -> tuple[bool, str]:
     p["updatedAt"] = now_iso()
 
     with db() as conn:
-        conn.execute("UPDATE projects SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=?,released_at=? WHERE slug=?",
+        conn.execute("UPDATE documents SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=?,released_at=? WHERE slug=?",
                      (p["name"], p["status"], p["priority"], p["owner"], p["dueDate"], p["description"], p["status"], p["updatedAt"], p.get("releasedAt") or "", slug))
-    sync_project_meta(p)
+    sync_document_meta(p)
     return True, "ok"
 
 
@@ -776,7 +894,7 @@ def _render_report_markdown(report: dict) -> str:
     statuses = report.get("statuses") or []
     priorities = report.get("priorities") or []
     with db() as conn:
-        rows = conn.execute("SELECT slug, name, status, priority, owner, due_date, updated_at FROM projects ORDER BY priority DESC, name").fetchall()
+        rows = conn.execute("SELECT slug, name, status, priority, owner, due_date, updated_at FROM documents ORDER BY priority DESC, name").fetchall()
     items = []
     for r in rows:
         if statuses and r["status"] not in statuses:
@@ -1003,14 +1121,14 @@ def report_scheduler_loop():
                 lock = conn.execute("SELECT value FROM app_settings WHERE key='deleted.last_purge_key'").fetchone()
                 last_purge = (lock["value"] if lock else "")
                 if last_purge != purge_key:
-                    purged, retention = purge_expired_deleted_projects("system")
+                    purged, retention = purge_expired_deleted_documents("system")
                     conn.execute(
                         "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?) "
                         "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, updated_at=excluded.updated_at",
                         ("deleted.last_purge_key", purge_key, "system", now_iso()),
                     )
                     if purged:
-                        audit("system", "project.deleted.purge.hourly", str(purged), f"retention_days={retention}")
+                        audit("system", "document.deleted.purge.hourly", str(purged), f"retention_days={retention}")
         except Exception as e:
             print("[ProjectDashboard] report/backup scheduler error:", e)
         time.sleep(30)
@@ -1022,7 +1140,7 @@ def list_document_versions(slug: str) -> list[dict]:
             """
             SELECT version, document_name, document_mime, document_status, git_commit, checksum, created_by, created_at
             FROM document_versions
-            WHERE project_slug=?
+            WHERE document_slug=?
             ORDER BY version DESC
             """,
             (slug,),
@@ -1036,7 +1154,7 @@ def list_review_notes(slug: str) -> list[dict]:
             """
             SELECT id, note, created_by, created_at, resolved_by, resolved_at, is_resolved
             FROM review_notes
-            WHERE project_slug=?
+            WHERE document_slug=?
             ORDER BY id DESC
             """,
             (slug,),
@@ -1045,7 +1163,7 @@ def list_review_notes(slug: str) -> list[dict]:
 
 
 def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
-    proj = get_project(slug)
+    proj = get_document(slug)
     if not proj:
         return False, "Documento não encontrado"
     if (proj.get("status") or "").strip().lower() != "em revisão":
@@ -1057,14 +1175,14 @@ def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
         return False, "Nota muito longa (máximo 4000 caracteres)"
     with db() as conn:
         conn.execute(
-            "INSERT INTO review_notes (project_slug, note, created_by, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO review_notes (document_slug, note, created_by, created_at) VALUES (?, ?, ?, ?)",
             (slug, clean_note, actor, now_iso()),
         )
     return True, "ok"
 
 
 def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bool) -> tuple[bool, str]:
-    proj = get_project(slug)
+    proj = get_document(slug)
     if not proj:
         return False, "Documento não encontrado"
     if (proj.get("status") or "").strip().lower() != "em revisão":
@@ -1072,7 +1190,7 @@ def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bo
 
     with db() as conn:
         row = conn.execute(
-            "SELECT id FROM review_notes WHERE id=? AND project_slug=?",
+            "SELECT id FROM review_notes WHERE id=? AND document_slug=?",
             (note_id, slug),
         ).fetchone()
         if not row:
@@ -1080,12 +1198,12 @@ def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bo
 
         if resolved:
             conn.execute(
-                "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=? WHERE id=? AND project_slug=?",
+                "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=? WHERE id=? AND document_slug=?",
                 (actor, now_iso(), note_id, slug),
             )
         else:
             conn.execute(
-                "UPDATE review_notes SET is_resolved=0, resolved_by='', resolved_at='' WHERE id=? AND project_slug=?",
+                "UPDATE review_notes SET is_resolved=0, resolved_by='', resolved_at='' WHERE id=? AND document_slug=?",
                 (note_id, slug),
             )
     return True, "ok"
@@ -1095,19 +1213,19 @@ def get_document_version(slug: str, version: int | None = None) -> dict | None:
     with db() as conn:
         if version is None:
             row = conn.execute(
-                "SELECT * FROM document_versions WHERE project_slug=? ORDER BY version DESC LIMIT 1",
+                "SELECT * FROM document_versions WHERE document_slug=? ORDER BY version DESC LIMIT 1",
                 (slug,),
             ).fetchone()
         else:
             row = conn.execute(
-                "SELECT * FROM document_versions WHERE project_slug=? AND version=?",
+                "SELECT * FROM document_versions WHERE document_slug=? AND version=?",
                 (slug, version),
             ).fetchone()
     return dict(row) if row else None
 
 
-def save_project_document(slug: str, filename: str, mime_type: str, b64_content: str, actor: str) -> tuple[bool, str]:
-    p = get_project(slug)
+def save_document_file(slug: str, filename: str, mime_type: str, b64_content: str, actor: str) -> tuple[bool, str]:
+    p = get_document(slug)
     if not p:
         return False, "Documento não encontrado"
 
@@ -1125,7 +1243,7 @@ def save_project_document(slug: str, filename: str, mime_type: str, b64_content:
         return False, "Arquivo excede 12MB"
 
     with db() as conn:
-        row = conn.execute("SELECT COALESCE(MAX(version), 0) AS last FROM document_versions WHERE project_slug=?", (slug,)).fetchone()
+        row = conn.execute("SELECT COALESCE(MAX(version), 0) AS last FROM document_versions WHERE document_slug=?", (slug,)).fetchone()
         next_version = int(row["last"]) + 1
 
     rel_path = Path("documents") / slug / f"v{next_version:04d}_{safe_name}"
@@ -1155,28 +1273,28 @@ def save_project_document(slug: str, filename: str, mime_type: str, b64_content:
     with db() as conn:
         conn.execute(
             """
-            INSERT INTO document_versions (project_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at)
+            INSERT INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (slug, next_version, safe_name, mime_type or "application/octet-stream", p["status"], str(rel_path), commit_hash, checksum, actor, now_iso()),
         )
         conn.execute(
-            "UPDATE projects SET document_status=?, document_name=?, document_mime=?, document_path=?, updated_at=? WHERE slug=?",
+            "UPDATE documents SET document_status=?, document_name=?, document_mime=?, document_path=?, updated_at=? WHERE slug=?",
             (p["status"], safe_name, mime_type or "application/octet-stream", str(abs_path), now_iso(), slug),
         )
 
     return True, "ok"
 
 
-def list_deleted_projects() -> list[dict]:
+def list_deleted_documents() -> list[dict]:
     with db() as conn:
         rows = conn.execute(
-            "SELECT id, slug, name, deleted_at, deleted_by, trash_path FROM deleted_projects ORDER BY deleted_at DESC"
+            "SELECT id, slug, name, deleted_at, deleted_by, trash_path FROM deleted_documents ORDER BY deleted_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
 
 
-def _purge_deleted_project_record(record: sqlite3.Row | dict) -> tuple[bool, str]:
+def _purge_deleted_document_record(record: sqlite3.Row | dict) -> tuple[bool, str]:
     rec = dict(record)
     trash_path = Path(rec.get("trash_path") or "")
     if trash_path.exists() and trash_path.is_dir():
@@ -1197,11 +1315,11 @@ def _purge_deleted_project_record(record: sqlite3.Row | dict) -> tuple[bool, str
                 pass
 
     with db() as conn:
-        conn.execute("DELETE FROM deleted_projects WHERE id=?", (int(rec["id"]),))
+        conn.execute("DELETE FROM deleted_documents WHERE id=?", (int(rec["id"]),))
     return True, "ok"
 
 
-def purge_expired_deleted_projects(actor: str = "system") -> tuple[int, int]:
+def purge_expired_deleted_documents(actor: str = "system") -> tuple[int, int]:
     settings = get_admin_settings()
     try:
         retention_days = int(_setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30"))
@@ -1213,38 +1331,38 @@ def purge_expired_deleted_projects(actor: str = "system") -> tuple[int, int]:
     purged = 0
     with db() as conn:
         rows = conn.execute(
-            "SELECT * FROM deleted_projects WHERE deleted_at < ? ORDER BY deleted_at ASC",
+            "SELECT * FROM deleted_documents WHERE deleted_at < ? ORDER BY deleted_at ASC",
             (cutoff.replace(microsecond=0).isoformat() + "Z",),
         ).fetchall()
     for r in rows:
-        ok, _ = _purge_deleted_project_record(r)
+        ok, _ = _purge_deleted_document_record(r)
         if ok:
             purged += 1
     if purged:
-        audit(actor, "project.deleted.purge", "deleted_projects", f"purged={purged} retention_days={retention_days}")
+        audit(actor, "document.deleted.purge", "deleted_documents", f"purged={purged} retention_days={retention_days}")
     return purged, retention_days
 
 
-def restore_deleted_project(deleted_id: int, actor: str) -> tuple[bool, str]:
+def restore_deleted_document(deleted_id: int, actor: str) -> tuple[bool, str]:
     with db() as conn:
-        row = conn.execute("SELECT * FROM deleted_projects WHERE id=?", (deleted_id,)).fetchone()
+        row = conn.execute("SELECT * FROM deleted_documents WHERE id=?", (deleted_id,)).fetchone()
     if not row:
         return False, "Registro de documento apagado não encontrado"
 
     rec = dict(row)
     try:
-        project = json.loads(rec.get("project_json") or "{}")
+        document = json.loads(rec.get("document_json") or "{}")
         notes = json.loads(rec.get("review_notes_json") or "[]")
         versions = json.loads(rec.get("document_versions_json") or "[]")
     except Exception:
         return False, "Dados de restauração inválidos"
 
-    slug = str(project.get("slug") or rec.get("slug") or "").strip()
+    slug = str(document.get("slug") or rec.get("slug") or "").strip()
     if not slug:
         return False, "Slug inválido para restauração"
 
     with db() as conn:
-        exists = conn.execute("SELECT 1 FROM projects WHERE slug=?", (slug,)).fetchone()
+        exists = conn.execute("SELECT 1 FROM documents WHERE slug=?", (slug,)).fetchone()
         if exists:
             return False, "Já existe um documento ativo com este slug"
 
@@ -1259,53 +1377,53 @@ def restore_deleted_project(deleted_id: int, actor: str) -> tuple[bool, str]:
         except Exception as e:
             return False, f"Falha ao restaurar pasta do documento: {e}"
 
-    project["path"] = str(target_path)
+    document["path"] = str(target_path)
 
     with db() as conn:
         conn.execute(
-            "INSERT INTO projects (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                project.get("slug", slug), project.get("name", rec.get("name", slug)), project.get("status", "Backlog"),
-                project.get("priority", "Média"), project.get("owner", ""), project.get("dueDate", ""),
-                project.get("description", "Sem descrição"), project.get("path", str(target_path)), project.get("updatedAt", now_iso()),
-                project.get("documentStatus", "aguardando edição"), project.get("documentName", ""), project.get("documentMime", ""),
-                project.get("documentPath", ""), project.get("createdBy", actor), project.get("openedAt", now_iso()), project.get("releasedAt", ""),
+                document.get("slug", slug), document.get("name", rec.get("name", slug)), document.get("status", "Backlog"),
+                document.get("priority", "Média"), document.get("owner", ""), document.get("dueDate", ""),
+                document.get("description", "Sem descrição"), document.get("path", str(target_path)), document.get("updatedAt", now_iso()),
+                document.get("documentStatus", "aguardando edição"), document.get("documentName", ""), document.get("documentMime", ""),
+                document.get("documentPath", ""), document.get("createdBy", actor), document.get("openedAt", now_iso()), document.get("releasedAt", ""),
             ),
         )
         for n in notes:
             conn.execute(
-                "INSERT INTO review_notes (project_slug, note, created_by, created_at, resolved_by, resolved_at, is_resolved) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO review_notes (document_slug, note, created_by, created_at, resolved_by, resolved_at, is_resolved) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (slug, n.get("note", ""), n.get("created_by", ""), n.get("created_at", now_iso()), n.get("resolved_by", ""), n.get("resolved_at", ""), int(n.get("is_resolved") or 0)),
             )
         for v in versions:
             conn.execute(
-                "INSERT OR IGNORE INTO document_versions (project_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (slug, int(v.get("version") or 1), v.get("document_name", ""), v.get("document_mime", "application/octet-stream"), v.get("document_status", ""), v.get("file_rel_path", ""), v.get("git_commit", ""), v.get("checksum", ""), v.get("created_by", ""), v.get("created_at", now_iso())),
             )
-        conn.execute("DELETE FROM deleted_projects WHERE id=?", (deleted_id,))
+        conn.execute("DELETE FROM deleted_documents WHERE id=?", (deleted_id,))
 
-    audit(actor, "project.restore", slug, f"deleted_id={deleted_id}")
+    audit(actor, "document.restore", slug, f"deleted_id={deleted_id}")
     return True, "ok"
 
 
-def delete_deleted_project_permanently(deleted_id: int, actor: str) -> tuple[bool, str]:
+def delete_deleted_document_permanently(deleted_id: int, actor: str) -> tuple[bool, str]:
     with db() as conn:
-        row = conn.execute("SELECT * FROM deleted_projects WHERE id=?", (deleted_id,)).fetchone()
+        row = conn.execute("SELECT * FROM deleted_documents WHERE id=?", (deleted_id,)).fetchone()
     if not row:
         return False, "Registro de documento apagado não encontrado"
-    ok, msg = _purge_deleted_project_record(row)
+    ok, msg = _purge_deleted_document_record(row)
     if ok:
-        audit(actor, "project.deleted.purge.manual", str(deleted_id))
+        audit(actor, "document.deleted.purge.manual", str(deleted_id))
     return ok, msg
 
 
-def delete_project(slug: str, actor: str) -> tuple[bool, str]:
-    p = get_project(slug)
+def delete_document(slug: str, actor: str) -> tuple[bool, str]:
+    p = get_document(slug)
     if not p:
         return False, "Documento não encontrado"
 
     proj_path = Path(p.get("path") or "")
-    trash_root = DATA_DIR / "deleted_projects"
+    trash_root = DATA_DIR / "deleted_documents"
     trash_root.mkdir(parents=True, exist_ok=True)
     target = trash_root / f"{slug}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
@@ -1319,11 +1437,11 @@ def delete_project(slug: str, actor: str) -> tuple[bool, str]:
             return False, f"Falha ao remover pasta do documento: {e}"
 
     with db() as conn:
-        notes = conn.execute("SELECT * FROM review_notes WHERE project_slug=?", (slug,)).fetchall()
-        versions = conn.execute("SELECT * FROM document_versions WHERE project_slug=?", (slug,)).fetchall()
+        notes = conn.execute("SELECT * FROM review_notes WHERE document_slug=?", (slug,)).fetchall()
+        versions = conn.execute("SELECT * FROM document_versions WHERE document_slug=?", (slug,)).fetchall()
 
         conn.execute(
-            "INSERT INTO deleted_projects (slug, name, deleted_at, deleted_by, trash_path, project_json, review_notes_json, document_versions_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO deleted_documents (slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 p.get("slug", slug), p.get("name", slug), now_iso(), actor, str(target),
                 json.dumps(p, ensure_ascii=False),
@@ -1332,9 +1450,9 @@ def delete_project(slug: str, actor: str) -> tuple[bool, str]:
             ),
         )
 
-        conn.execute("DELETE FROM review_notes WHERE project_slug=?", (slug,))
-        conn.execute("DELETE FROM document_versions WHERE project_slug=?", (slug,))
-        conn.execute("DELETE FROM projects WHERE slug=?", (slug,))
+        conn.execute("DELETE FROM review_notes WHERE document_slug=?", (slug,))
+        conn.execute("DELETE FROM document_versions WHERE document_slug=?", (slug,))
+        conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
     return True, "ok"
 
 
@@ -1490,28 +1608,28 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"ok": False, "error": "Usuário não encontrado"})
             return self._json(200, {"ok": True, "profile": profile})
 
-        if p == "/api/projects":
+        if p == "/api/documents":
             if not self._require_auth(): return
-            return self._json(200, {"projects": list_projects(), "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
+            return self._json(200, {"documents": list_documents(), "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
 
-        if p.startswith("/api/projects/") and p.endswith("/document/versions"):
+        if p.startswith("/api/documents/") and p.endswith("/document/versions"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            proj = get_project(slug)
+            proj = get_document(slug)
             if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             return self._json(200, {"ok": True, "versions": list_document_versions(slug)})
 
-        if p.startswith("/api/projects/") and p.endswith("/review-notes"):
+        if p.startswith("/api/documents/") and p.endswith("/review-notes"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            proj = get_project(slug)
+            proj = get_document(slug)
             if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             return self._json(200, {"ok": True, "notes": list_review_notes(slug)})
 
-        if p.startswith("/api/projects/") and p.endswith("/document"):
+        if p.startswith("/api/documents/") and p.endswith("/document"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            proj = get_project(slug)
+            proj = get_document(slug)
             if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
 
             version = None
@@ -1542,10 +1660,10 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(content)
             return
 
-        if p.startswith("/api/projects/"):
+        if p.startswith("/api/documents/"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            proj = get_project(slug)
+            proj = get_document(slug)
             if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             return self._json(200, {"ok": True, "project": proj, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
 
@@ -1556,7 +1674,7 @@ class Handler(BaseHTTPRequestHandler):
                 users = []
                 for r in user_rows:
                     task_count = conn.execute(
-                        "SELECT COUNT(*) AS c FROM projects WHERE owner = ?",
+                        "SELECT COUNT(*) AS c FROM documents WHERE owner = ?",
                         (r["username"],),
                     ).fetchone()["c"]
                     users.append({
@@ -1579,11 +1697,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin(): return
             return self._json(200, {"ok": True, "logs": list_audit_logs(300)})
 
-        if p == "/api/admin/deleted-projects":
+        if p == "/api/admin/deleted-documents":
             if not self._require_admin(): return
             settings = get_admin_settings()
             retention_days = _setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30")
-            return self._json(200, {"ok": True, "retention_days": retention_days, "deleted_projects": list_deleted_projects()})
+            return self._json(200, {"ok": True, "retention_days": retention_days, "deleted_documents": list_deleted_documents()})
 
         if p == "/api/admin/system/diagnostics":
             if not self._require_admin(): return
@@ -1622,30 +1740,30 @@ class Handler(BaseHTTPRequestHandler):
                 audit(user["username"], "user.password.change", user["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
-        if p == "/api/projects":
+        if p == "/api/documents":
             user = self._require_auth()
             if not user: return
-            if not can_create_project(user["role"]):
+            if not can_create_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para criar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            done, msg = create_project(body, user["username"])
+            done, msg = create_document(body, user["username"])
             if done:
-                audit(user["username"], "project.create", body.get("name", ""), f"status={body.get('status','Backlog')}")
+                audit(user["username"], "document.create", body.get("name", ""), f"status={body.get('status','Backlog')}")
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
-        if p.startswith("/api/projects/") and p.endswith("/document"):
+        if p.startswith("/api/documents/") and p.endswith("/document"):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = get_project(slug)
+            proj = get_document(slug)
             if not proj:
                 return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             if not can_upload_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para anexar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            done, msg = save_project_document(
+            done, msg = save_document_file(
                 slug,
                 body.get("fileName") or "documento.bin",
                 body.get("mimeType") or "application/octet-stream",
@@ -1653,14 +1771,14 @@ class Handler(BaseHTTPRequestHandler):
                 user["username"],
             )
             if done:
-                audit(user["username"], "project.document.upload", slug, json.dumps({"file": body.get("fileName", "")}, ensure_ascii=False))
+                audit(user["username"], "document.file.upload", slug, json.dumps({"file": body.get("fileName", "")}, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
-        if p.startswith("/api/projects/") and p.endswith("/review-notes"):
+        if p.startswith("/api/documents/") and p.endswith("/review-notes"):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = get_project(slug)
+            proj = get_document(slug)
             if not proj:
                 return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             if not can_add_review_note(user["role"]):
@@ -1669,7 +1787,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = add_review_note(slug, body.get("note") or "", user["username"])
             if done:
-                audit(user["username"], "project.review_note.create", slug, "note_added")
+                audit(user["username"], "document.review_note.create", slug, "note_added")
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/settings/test-smtp":
@@ -1696,7 +1814,7 @@ class Handler(BaseHTTPRequestHandler):
             done, msg = run_system_backup(admin["username"])
             return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
 
-        if p.startswith("/api/admin/deleted-projects/") and p.endswith("/restore"):
+        if p.startswith("/api/admin/deleted-documents/") and p.endswith("/restore"):
             admin = self._require_admin()
             if not admin: return
             parts = p.strip("/").split("/")
@@ -1706,7 +1824,7 @@ class Handler(BaseHTTPRequestHandler):
                 deleted_id = int(parts[3])
             except Exception:
                 return self._json(400, {"ok": False, "error": "id inválido"})
-            done, msg = restore_deleted_project(deleted_id, admin["username"])
+            done, msg = restore_deleted_document(deleted_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/reports":
@@ -1859,12 +1977,12 @@ class Handler(BaseHTTPRequestHandler):
                 audit(admin["username"], "admin.settings.update", "app_settings", json.dumps({k: ("***" if "pass" in k else v) for k, v in body.items()}, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
-        if p.startswith("/api/projects/") and "/review-notes/" in p:
+        if p.startswith("/api/documents/") and "/review-notes/" in p:
             user = self._require_auth()
             if not user: return
             parts = p.strip("/").split("/")
-            # /api/projects/{slug}/review-notes/{id}
-            if len(parts) != 5 or parts[0] != "api" or parts[1] != "projects" or parts[3] != "review-notes":
+            # /api/documents/{slug}/review-notes/{id}
+            if len(parts) != 5 or parts[0] != "api" or parts[1] != "documents" or parts[3] != "review-notes":
                 return self._json(404, {"ok": False, "error": "not found"})
             slug = parts[2]
             try:
@@ -1883,21 +2001,21 @@ class Handler(BaseHTTPRequestHandler):
 
             done, msg = set_review_note_resolution(slug, note_id, user["username"], bool(body.get("resolved")))
             if done:
-                audit(user["username"], "project.review_note.status", slug, json.dumps({"note_id": note_id, "resolved": bool(body.get("resolved"))}, ensure_ascii=False))
+                audit(user["username"], "document.review_note.status", slug, json.dumps({"note_id": note_id, "resolved": bool(body.get("resolved"))}, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
-        if p.startswith("/api/projects/"):
+        if p.startswith("/api/documents/"):
             user = self._require_auth()
             if not user: return
-            if not can_edit_project(user["role"]):
+            if not can_edit_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para editar documento"})
             slug = p.split("/")[3]
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
 
-            done, msg = patch_project(slug, body)
+            done, msg = patch_document(slug, body)
             if done:
-                audit(user["username"], "project.update", slug, json.dumps(body, ensure_ascii=False))
+                audit(user["username"], "document.update", slug, json.dumps(body, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/"):
@@ -1961,21 +2079,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         p = urlparse(self.path).path
-        if p.startswith("/api/projects/"):
+        if p.startswith("/api/documents/"):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = get_project(slug)
+            proj = get_document(slug)
             if not proj:
                 return self._json(404, {"ok": False, "error": "Documento não encontrado"})
-            if not can_delete_project(user["role"], user["username"], proj):
+            if not can_delete_document(user["role"], user["username"], proj):
                 return self._json(403, {"ok": False, "error": "Sem permissão para apagar documento"})
-            done, msg = delete_project(slug, user["username"])
+            done, msg = delete_document(slug, user["username"])
             if done:
-                audit(user["username"], "project.delete", slug)
+                audit(user["username"], "document.delete", slug)
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
-        if p.startswith("/api/admin/deleted-projects/"):
+        if p.startswith("/api/admin/deleted-documents/"):
             admin = self._require_admin()
             if not admin: return
             parts = p.strip("/").split("/")
@@ -1985,7 +2103,7 @@ class Handler(BaseHTTPRequestHandler):
                 deleted_id = int(parts[3])
             except Exception:
                 return self._json(400, {"ok": False, "error": "id inválido"})
-            done, msg = delete_deleted_project_permanently(deleted_id, admin["username"])
+            done, msg = delete_deleted_document_permanently(deleted_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/"):
@@ -2024,7 +2142,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     init_db()
-    migrate_existing_projects()
+    migrate_existing_documents()
     ok_repo, repo_msg = ensure_docs_repo()
     if not ok_repo:
         print("[ProjectDashboard] Aviso: falha ao inicializar docs_repo:", repo_msg)

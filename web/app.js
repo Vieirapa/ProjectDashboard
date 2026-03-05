@@ -12,8 +12,8 @@ const priorityFilter = document.getElementById('priorityFilter');
 const ownerFilter = document.getElementById('ownerFilter');
 const sortOrderFilter = document.getElementById('sortOrderFilter');
 
-const dialog = document.getElementById('projectDialog');
-const form = document.getElementById('projectForm');
+const dialog = document.getElementById('documentDialog');
+const form = document.getElementById('documentForm');
 const cancelDialogBtn = document.getElementById('cancelDialogBtn');
 
 const pName = document.getElementById('pName');
@@ -25,7 +25,7 @@ const pDueDate = document.getElementById('pDueDate');
 const ownersList = document.getElementById('ownersList');
 
 let me = null;
-let state = { projects: [], statuses: [], priorities: [] };
+let state = { documents: [], statuses: [], priorities: [] };
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -55,11 +55,11 @@ function currentFilters() {
   };
 }
 
-function passesFilters(project, f) {
-  if (f.status && project.status !== f.status) return false;
-  if (f.priority && project.priority !== f.priority) return false;
-  if (f.owner && !(project.owner || '').toLowerCase().includes(f.owner)) return false;
-  const hay = `${project.name} ${project.description}`.toLowerCase();
+function passesFilters(document, f) {
+  if (f.status && document.status !== f.status) return false;
+  if (f.priority && document.priority !== f.priority) return false;
+  if (f.owner && !(document.owner || '').toLowerCase().includes(f.owner)) return false;
+  const hay = `${document.name} ${document.description}`.toLowerCase();
   if (f.q && !hay.includes(f.q)) return false;
   return true;
 }
@@ -69,7 +69,7 @@ function toTimestamp(value) {
   return Number.isFinite(t) ? t : 0;
 }
 
-function compareProjects(a, b, sortBy, sortDir) {
+function compareDocuments(a, b, sortBy, sortDir) {
   const dir = sortDir === 'asc' ? 1 : -1;
   const priorityWeight = { Urgente: 4, Alta: 3, 'Média': 2, Baixa: 1 };
 
@@ -134,12 +134,12 @@ function makeCard(p, statuses, priorities) {
   const st = document.createElement('select');
   statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; if (s === p.status) o.selected = true; st.appendChild(o); });
   st.disabled = !canEditCard();
-  st.onchange = async () => { await api(`/api/projects/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})}); render(); };
+  st.onchange = async () => { await api(`/api/documents/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})}); render(); };
 
   const pr = document.createElement('select');
   priorities.forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = `Prioridade: ${x}`; if (x === p.priority) o.selected = true; pr.appendChild(o); });
   pr.disabled = !canEditCard();
-  pr.onchange = async () => { await api(`/api/projects/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
+  pr.onchange = async () => { await api(`/api/documents/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
 
   const controls = document.createElement('div');
   controls.className = 'card-controls';
@@ -160,7 +160,7 @@ function makeCard(p, statuses, priorities) {
   docBtn.innerHTML = `<span class="doc-main">📄</span><span class="doc-state">${docMeta.icon}</span>`;
   docBtn.onclick = () => {
     if (!p.hasDocument) return alert('Este documento ainda não tem anexo.');
-    window.open(`/api/projects/${encodeURIComponent(p.slug)}/document`, '_blank');
+    window.open(`/api/documents/${encodeURIComponent(p.slug)}/document`, '_blank');
   };
   if (!p.hasDocument) {
     docBtn.disabled = true;
@@ -185,16 +185,16 @@ function fillFilters(statuses, priorities, users=[]) {
 }
 
 async function render() {
-  state = await api('/api/projects');
+  state = await api('/api/documents');
   fillFilters(state.statuses, state.priorities, state.users || []);
   const filters = currentFilters();
-  const filtered = state.projects.filter(p => passesFilters(p, filters));
+  const filtered = state.documents.filter(p => passesFilters(p, filters));
   board.innerHTML = '';
   const cols = new Map(state.statuses.map(s => [s, makeColumn(s)]));
   cols.forEach(c => board.appendChild(c));
 
   filtered.sort((a, b) => {
-    const cmp = compareProjects(a, b, filters.sortBy, filters.sortDir);
+    const cmp = compareDocuments(a, b, filters.sortBy, filters.sortDir);
     if (cmp !== 0) return cmp;
     return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
   });
@@ -215,7 +215,7 @@ form.onsubmit = async (e) => {
       alert('Responsável inválido. Selecione um usuário existente.');
       return;
     }
-    await api('/api/projects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value })});
+    await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value })});
     dialog.close();
     render();
   } catch (e) { alert(e.message); }

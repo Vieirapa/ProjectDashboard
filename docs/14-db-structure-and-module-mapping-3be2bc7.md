@@ -52,20 +52,20 @@ Document version metadata/history.
 
 Columns:
 - `id` (PK)
-- `project_slug`, `version`
+- `document_slug`, `version`
 - `document_name`, `document_mime`, `document_status`
 - `file_rel_path`, `git_commit`, `checksum`
 - `created_by`, `created_at`
 
 Constraint:
-- `UNIQUE(project_slug, version)`
+- `UNIQUE(document_slug, version)`
 
 ### `review_notes`
 Review notes and resolution state.
 
 Columns:
 - `id` (PK)
-- `project_slug`, `note`, `created_by`, `created_at`
+- `document_slug`, `note`, `created_by`, `created_at`
 - `resolved_by`, `resolved_at`, `is_resolved`
 
 ### `app_settings`
@@ -83,7 +83,7 @@ Columns:
 - `run_time`, `message`, `active`, `last_run_key`
 - `created_by`, `created_at`, `updated_by`, `updated_at`
 
-### `deleted_projects`
+### `deleted_documents`
 Soft-delete archive for deleted cards/documents.
 
 Columns:
@@ -108,7 +108,7 @@ Frontend:
 
 Backend/API:
 - `/api/projects` (GET/POST)
-- `/api/projects/{slug}` (GET/PATCH/DELETE)
+- `/api/documents/{slug}` (GET/PATCH/DELETE)
 
 Tables:
 - `projects`, `audit_logs`
@@ -118,8 +118,8 @@ Frontend:
 - Edit screen (document upload + version list)
 
 Backend/API:
-- `/api/projects/{slug}/document` (POST/GET)
-- `/api/projects/{slug}/document/versions`
+- `/api/documents/{slug}/document` (POST/GET)
+- `/api/documents/{slug}/document/versions`
 
 Tables:
 - `projects`, `document_versions`
@@ -132,8 +132,8 @@ Frontend:
 - Edit screen review panel
 
 Backend/API:
-- `/api/projects/{slug}/review-notes` (GET/POST)
-- `/api/projects/{slug}/review-notes/{id}` (PATCH)
+- `/api/documents/{slug}/review-notes` (GET/POST)
+- `/api/documents/{slug}/review-notes/{id}` (PATCH)
 
 Tables:
 - `review_notes`, `projects`, `audit_logs`
@@ -182,10 +182,10 @@ Backend/API:
 - permanent delete
 
 Tables:
-- `deleted_projects`, `projects`, `review_notes`, `document_versions`, `audit_logs`
+- `deleted_documents`, `projects`, `review_notes`, `document_versions`, `audit_logs`
 
 Storage:
-- `data/deleted_projects/...`
+- `data/deleted_documents/...`
 
 ## 4) Quick ER diagram (Mermaid)
 
@@ -204,7 +204,7 @@ erDiagram
         string notes
     }
 
-    PROJECTS {
+    DOCUMENTS {
         int id PK
         string slug UK
         string name
@@ -226,7 +226,7 @@ erDiagram
 
     DOCUMENT_VERSIONS {
         int id PK
-        string project_slug
+        string document_slug
         int version
         string document_name
         string document_mime
@@ -240,7 +240,7 @@ erDiagram
 
     REVIEW_NOTES {
         int id PK
-        string project_slug
+        string document_slug
         string note
         string created_by
         string created_at
@@ -292,7 +292,7 @@ erDiagram
         string updated_at
     }
 
-    DELETED_PROJECTS {
+    DELETED_DOCUMENTS {
         int id PK
         string slug
         string name
@@ -304,8 +304,8 @@ erDiagram
         string document_versions_json
     }
 
-    PROJECTS ||--o{ DOCUMENT_VERSIONS : "slug -> project_slug"
-    PROJECTS ||--o{ REVIEW_NOTES : "slug -> project_slug"
+    PROJECTS ||--o{ DOCUMENT_VERSIONS : "slug -> document_slug"
+    PROJECTS ||--o{ REVIEW_NOTES : "slug -> document_slug"
 ```
 
 ## 5) Compact ER diagram (meeting view)
@@ -318,7 +318,7 @@ erDiagram
         string role
     }
 
-    PROJECTS {
+    DOCUMENTS {
         int id PK
         string slug UK
         string name
@@ -329,13 +329,13 @@ erDiagram
 
     DOCUMENT_VERSIONS {
         int id PK
-        string project_slug
+        string document_slug
         int version
     }
 
     REVIEW_NOTES {
         int id PK
-        string project_slug
+        string document_slug
         int is_resolved
     }
 
@@ -350,7 +350,7 @@ erDiagram
         int active
     }
 
-    DELETED_PROJECTS {
+    DELETED_DOCUMENTS {
         int id PK
         string slug
         string deleted_at
@@ -362,8 +362,8 @@ erDiagram
 
 ## 6) Logical relations
 
-- `projects.slug` ↔ `review_notes.project_slug`
-- `projects.slug` ↔ `document_versions.project_slug`
-- `deleted_projects` stores serialized snapshot data for restore.
+- `projects.slug` ↔ `review_notes.document_slug`
+- `projects.slug` ↔ `document_versions.document_slug`
+- `deleted_documents` stores serialized snapshot data for restore.
 
 Note: consistency is primarily enforced by application logic (not strict SQL foreign keys).
