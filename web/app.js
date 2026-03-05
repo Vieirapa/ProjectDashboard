@@ -8,6 +8,12 @@ const priorityFilter = document.getElementById('priorityFilter');
 const ownerFilter = document.getElementById('ownerFilter');
 const sortOrderFilter = document.getElementById('sortOrderFilter');
 const projectSelect = document.getElementById('sidebarProjectSelect');
+const projectStartDateEl = document.getElementById('projectStartDate');
+const projectCollaboratorsEl = document.getElementById('projectCollaborators');
+const sumBacklogEl = document.getElementById('sumBacklog');
+const sumProgressEl = document.getElementById('sumProgress');
+const sumReviewEl = document.getElementById('sumReview');
+const sumDoneEl = document.getElementById('sumDone');
 
 const dialog = document.getElementById('documentDialog');
 const form = document.getElementById('documentForm');
@@ -23,6 +29,22 @@ const ownersList = document.getElementById('ownersList');
 
 let me = null;
 let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1 };
+
+function projectIdFromUrlOrNull() {
+  const rawPid = new URLSearchParams(window.location.search).get('project_id');
+  const pid = Number(rawPid);
+  return Number.isFinite(pid) && pid > 0 ? pid : null;
+}
+
+function currentProjectIdFromUrl() {
+  return projectIdFromUrlOrNull() || Number(state.selectedProjectId || 1) || 1;
+}
+
+function withProjectId(url) {
+  const pid = currentProjectIdFromUrl();
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}project_id=${encodeURIComponent(String(pid))}`;
+}
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -128,12 +150,12 @@ function makeCard(p, statuses, priorities) {
   const st = document.createElement('select');
   statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; if (s === p.status) o.selected = true; st.appendChild(o); });
   st.disabled = !canEditCard();
-  st.onchange = async () => { await api(`/api/documents/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})}); render(); };
+  st.onchange = async () => { await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})}); render(); };
 
   const pr = document.createElement('select');
   priorities.forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = `Prioridade: ${x}`; if (x === p.priority) o.selected = true; pr.appendChild(o); });
   pr.disabled = !canEditCard();
-  pr.onchange = async () => { await api(`/api/documents/${encodeURIComponent(p.slug)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
+  pr.onchange = async () => { await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
 
   const controls = document.createElement('div');
   controls.className = 'card-controls';
@@ -144,7 +166,7 @@ function makeCard(p, statuses, priorities) {
   const detailsBtn = document.createElement('button');
   detailsBtn.className = 'secondary details-btn';
   detailsBtn.textContent = 'Detalhes';
-  detailsBtn.onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}`;
+  detailsBtn.onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}&project_id=${encodeURIComponent(String(currentProjectIdFromUrl()))}`;
 
   selectsWrap.append(st, pr, detailsBtn);
 
@@ -154,7 +176,7 @@ function makeCard(p, statuses, priorities) {
   docBtn.innerHTML = `<span class="doc-main">📄</span><span class="doc-state">${docMeta.icon}</span>`;
   docBtn.onclick = () => {
     if (!p.hasDocument) return alert('Este documento ainda não tem anexo.');
-    window.open(`/api/documents/${encodeURIComponent(p.slug)}/document`, '_blank');
+    window.open(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}/document`), '_blank');
   };
   if (!p.hasDocument) {
     docBtn.disabled = true;
@@ -189,12 +211,67 @@ function syncProjectSelect() {
   });
 }
 
+function formatPtDate(raw) {
+  if (!raw) return '-';
+  const s = String(raw).trim();
+
+  // Evita bug de fuso em datas sem horário (YYYY-MM-DD),
+  // que podem "voltar um dia" ao usar new Date(raw) em UTC-3.
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const [, y, mo, d] = m;
+    return `${d}/${mo}/${y}`;
+  }
+
+  const dt = new Date(s);
+  if (Number.isNaN(dt.getTime())) return s;
+  return dt.toLocaleDateString('pt-BR');
+}
+
+function pct(part, total) {
+  if (!total) return '0%';
+  return `${Math.round((part / total) * 100)}%`;
+}
+
+function updateProjectSummary() {
+  const selected = Number(state.selectedProjectId || 1);
+  const project = (state.projects || []).find((p) => Number(p.project_id) === selected);
+  const docs = state.documents || [];
+  const total = docs.length;
+
+  const backlog = docs.filter((d) => d.status === 'Backlog').length;
+  const progress = docs.filter((d) => d.status === 'Em andamento').length;
+  const review = docs.filter((d) => d.status === 'Em revisão').length;
+  const done = docs.filter((d) => d.status === 'Concluído').length;
+
+  const collaborators = new Set(
+    docs
+      .map((d) => String(d.owner || '').trim())
+      .filter((x) => !!x)
+      .map((x) => x.toLowerCase())
+  ).size;
+
+  if (projectStartDateEl) projectStartDateEl.textContent = formatPtDate(project?.start_date || '');
+  if (projectCollaboratorsEl) projectCollaboratorsEl.textContent = String(collaborators);
+  if (sumBacklogEl) sumBacklogEl.textContent = `${backlog} (${pct(backlog, total)})`;
+  if (sumProgressEl) sumProgressEl.textContent = `${progress} (${pct(progress, total)})`;
+  if (sumReviewEl) sumReviewEl.textContent = `${review} (${pct(review, total)})`;
+  if (sumDoneEl) sumDoneEl.textContent = `${done} (${pct(done, total)})`;
+}
+
 async function render() {
-  const rawPid = new URLSearchParams(window.location.search).get('project_id');
-  const pid = Number(rawPid);
-  const query = Number.isFinite(pid) && pid > 0 ? `?project_id=${encodeURIComponent(String(pid))}` : '';
+  const pidInUrl = projectIdFromUrlOrNull();
+  const query = pidInUrl ? `?project_id=${encodeURIComponent(String(pidInUrl))}` : '';
   state = await api(`/api/documents${query}`);
+
+  if (!pidInUrl && Number(state.selectedProjectId || 0) > 0) {
+    const u = new URL(window.location.href);
+    u.searchParams.set('project_id', String(state.selectedProjectId));
+    window.history.replaceState({}, '', `${u.pathname}?${u.searchParams.toString()}`);
+  }
+
   syncProjectSelect();
+  updateProjectSummary();
   fillFilters(state.statuses, state.priorities, state.users || []);
   const filters = currentFilters();
   const filtered = state.documents.filter(p => passesFilters(p, filters));
@@ -232,9 +309,8 @@ form.onsubmit = async (e) => {
       alert('Responsável inválido. Selecione um usuário existente.');
       return;
     }
-    const rawPid = new URLSearchParams(window.location.search).get('project_id');
-    const pid = Number(rawPid);
-    await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: (Number.isFinite(pid) && pid > 0 ? pid : 1) })});
+    const pid = currentProjectIdFromUrl();
+    await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid })});
     dialog.close();
     render();
   } catch (e) { alert(e.message); }

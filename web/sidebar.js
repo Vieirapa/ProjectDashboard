@@ -29,7 +29,7 @@
     const canAdminTools = user.role === 'admin';
 
     root.innerHTML = `
-      <h2>DocumentDashboard</h2>
+      <h2>ProjectDashbord</h2>
 
       <div class="side-group">Área de trabalho</div>
       <a class="side-link ${active === 'projects' ? 'active' : ''}" href="/projects.html?project_id=${projectId}">Projetos</a>

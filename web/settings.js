@@ -131,7 +131,7 @@ async function loadSettings() {
   f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
   f.backupPath.value = getSetting(s, 'backup.path', '/opt/documentdashboard/data/backups');
   f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
-  f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/DocumentDashboard.git');
+  f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
   f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'main');
   f.deletedRetentionDays.value = getSetting(s, 'deleted.retention_days', '30');
 

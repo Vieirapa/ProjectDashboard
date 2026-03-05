@@ -521,9 +521,12 @@ def list_documents(project_id: int | None = None) -> list[dict]:
     } for r in rows]
 
 
-def get_document(slug: str) -> dict | None:
+def get_document(slug: str, project_id: int | None = None) -> dict | None:
     with db() as conn:
-        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE slug=?", (slug,)).fetchone()
+        if project_id is None:
+            r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE slug=?", (slug,)).fetchone()
+        else:
+            r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE slug=? AND project_id=?", (slug, project_id)).fetchone()
     if not r:
         return None
     age_label, age_days = _project_age_fields(r["opened_at"], r["status"], r["released_at"])
@@ -691,8 +694,8 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str]:
     return True, "ok"
 
 
-def patch_document(slug: str, payload: dict) -> tuple[bool, str]:
-    p = get_document(slug)
+def patch_document(slug: str, payload: dict, project_id: int | None = None) -> tuple[bool, str]:
+    p = get_document(slug, project_id)
     if not p:
         return False, "Documento não encontrado"
     old_status = p.get("status")
@@ -1669,6 +1672,48 @@ class Handler(BaseHTTPRequestHandler):
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
+    def _selected_project_id(self, qs: dict | None = None) -> int:
+        try:
+            if qs is not None and qs.get("project_id"):
+                raw = qs.get("project_id")[0]
+            elif qs is None:
+                parsed = urlparse(self.path)
+                parsed_qs = parse_qs(parsed.query)
+                if parsed_qs.get("project_id"):
+                    raw = parsed_qs.get("project_id")[0]
+                else:
+                    first = list_projects_registry()
+                    return int(first[0]["project_id"]) if first else 1
+            else:
+                first = list_projects_registry()
+                return int(first[0]["project_id"]) if first else 1
+
+            pid = int(raw)
+            if pid > 0:
+                return pid
+        except Exception:
+            pass
+
+        first = list_projects_registry()
+        return int(first[0]["project_id"]) if first else 1
+
+    def _get_document_in_scope(self, slug: str, qs: dict | None = None) -> dict | None:
+        project_id = self._selected_project_id(qs)
+        scoped = get_document(slug, project_id)
+        if scoped:
+            return scoped
+        any_scope = get_document(slug)
+        if any_scope:
+            print(f"[scope] blocked slug={slug} requested_project_id={project_id} real_project_id={any_scope.get('projectId')}")
+        return None
+
+    def _reply_document_scope_error(self, slug: str, qs: dict | None = None):
+        project_id = self._selected_project_id(qs)
+        any_scope = get_document(slug)
+        if any_scope:
+            return self._json(409, {"ok": False, "error": f"Escopo inválido: documento pertence ao projeto {any_scope.get('projectId')}, mas o contexto atual é {project_id}."})
+        return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+
     def do_GET(self):
         parsed = urlparse(self.path)
         p = parsed.path
@@ -1706,10 +1751,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/documents":
             if not self._require_auth(): return
-            try:
-                selected_project_id = int((qs.get("project_id") or [1])[0])
-            except Exception:
-                selected_project_id = 1
+            selected_project_id = self._selected_project_id(qs)
             return self._json(200, {
                 "documents": list_documents(selected_project_id),
                 "statuses": STATUSES,
@@ -1722,22 +1764,22 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/documents/") and p.endswith("/document/versions"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            proj = get_document(slug)
-            if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+            proj = self._get_document_in_scope(slug, qs)
+            if not proj: return self._reply_document_scope_error(slug, qs)
             return self._json(200, {"ok": True, "versions": list_document_versions(slug)})
 
         if p.startswith("/api/documents/") and p.endswith("/review-notes"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            proj = get_document(slug)
-            if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+            proj = self._get_document_in_scope(slug, qs)
+            if not proj: return self._reply_document_scope_error(slug, qs)
             return self._json(200, {"ok": True, "notes": list_review_notes(slug)})
 
         if p.startswith("/api/documents/") and p.endswith("/document"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            proj = get_document(slug)
-            if not proj: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+            proj = self._get_document_in_scope(slug, qs)
+            if not proj: return self._reply_document_scope_error(slug, qs)
 
             version = None
             if "version" in qs and qs["version"]:
@@ -1770,8 +1812,8 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/documents/"):
             if not self._require_auth(): return
             slug = p.split("/")[3]
-            doc = get_document(slug)
-            if not doc: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+            doc = self._get_document_in_scope(slug, qs)
+            if not doc: return self._reply_document_scope_error(slug, qs)
             return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
 
         if p == "/api/projects-registry":
@@ -1825,7 +1867,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
-        p = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        p = parsed.path
+        qs = parse_qs(parsed.query)
 
         if p == "/api/login":
             ok, body = self._read_json()
@@ -1871,9 +1915,9 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = get_document(slug)
+            proj = self._get_document_in_scope(slug, qs)
             if not proj:
-                return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+                return self._reply_document_scope_error(slug, qs)
             if not can_upload_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para anexar documento"})
             ok, body = self._read_json()
@@ -1893,9 +1937,9 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = get_document(slug)
+            proj = self._get_document_in_scope(slug, qs)
             if not proj:
-                return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+                return self._reply_document_scope_error(slug, qs)
             if not can_add_review_note(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para adicionar nota de revisão"})
             ok, body = self._read_json()
@@ -2080,7 +2124,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_PATCH(self):
-        p = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        p = parsed.path
+        qs = parse_qs(parsed.query)
 
         if p == "/api/me/profile":
             user = self._require_auth()
@@ -2115,6 +2161,9 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self._json(400, {"ok": False, "error": "invalid note id"})
 
+            if not self._get_document_in_scope(slug, qs):
+                return self._reply_document_scope_error(slug, qs)
+
             if not can_resolve_review_note(user["role"]):
                 return self._json(403, {"ok": False, "error": "Apenas desenhista ou admin pode alterar status da revisão"})
 
@@ -2135,10 +2184,12 @@ class Handler(BaseHTTPRequestHandler):
             if not can_edit_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para editar documento"})
             slug = p.split("/")[3]
+            if not self._get_document_in_scope(slug, qs):
+                return self._reply_document_scope_error(slug, qs)
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
 
-            done, msg = patch_document(slug, body)
+            done, msg = patch_document(slug, body, self._selected_project_id(qs))
             if done:
                 audit(user["username"], "document.update", slug, json.dumps(body, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
@@ -2218,14 +2269,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_DELETE(self):
-        p = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        p = parsed.path
+        qs = parse_qs(parsed.query)
         if p.startswith("/api/documents/"):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = get_document(slug)
+            proj = self._get_document_in_scope(slug, qs)
             if not proj:
-                return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+                return self._reply_document_scope_error(slug, qs)
             if not can_delete_document(user["role"], user["username"], proj):
                 return self._json(403, {"ok": False, "error": "Sem permissão para apagar documento"})
             done, msg = delete_document(slug, user["username"])

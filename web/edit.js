@@ -1,4 +1,15 @@
-const slug = new URLSearchParams(location.search).get('slug');
+const params = new URLSearchParams(location.search);
+const slug = params.get('slug');
+
+function currentProjectId() {
+  const pid = Number(new URLSearchParams(location.search).get('project_id'));
+  return Number.isFinite(pid) && pid > 0 ? pid : 1;
+}
+
+function withProjectId(url) {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}project_id=${encodeURIComponent(String(currentProjectId()))}`;
+}
 const backBtn = document.getElementById('backBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const deleteBtn = document.getElementById('deleteBtn');
@@ -26,6 +37,7 @@ let me = null;
 let doc = null;
 let isDirty = false;
 let isSaving = false;
+let scopeBlocked = false;
 saveBtn.disabled = true;
 
 async function api(url, opts={}) {
@@ -60,7 +72,18 @@ function canDeleteCard() {
 
 function setDirty(v) {
   isDirty = !!v;
-  saveBtn.disabled = !isDirty || isSaving || !canEditCard();
+  saveBtn.disabled = scopeBlocked || !isDirty || isSaving || !canEditCard();
+}
+
+function setScopeBlocked(message) {
+  scopeBlocked = true;
+  isSaving = false;
+  isDirty = false;
+  [f.name, f.description, f.status, f.priority, f.owner, f.dueDate, f.documentFile, reviewNoteInput, addReviewNoteBtn, deleteBtn, saveBtn].forEach((el) => {
+    if (!el) return;
+    el.disabled = true;
+  });
+  feedback.textContent = message || 'Escopo inválido para este documento.';
 }
 
 async function initMe() {
@@ -87,7 +110,7 @@ function updateReviewNotesAvailability() {
 }
 
 async function loadReviewNotes() {
-  const d = await api(`/api/documents/${encodeURIComponent(slug)}/review-notes`);
+  const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/review-notes`));
   if (!d.notes?.length) {
     reviewNotesHistory.textContent = 'Sem notas registradas.';
     return;
@@ -116,7 +139,7 @@ async function loadReviewNotes() {
       const input = e.currentTarget;
       const nextResolved = !!input.checked;
       try {
-        await api(`/api/documents/${encodeURIComponent(slug)}/review-notes/${encodeURIComponent(input.dataset.noteId)}`, {
+        await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/review-notes/${encodeURIComponent(input.dataset.noteId)}`), {
           method: 'PATCH',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ resolved: nextResolved })
@@ -135,12 +158,12 @@ async function loadReviewNotes() {
 
 async function loadVersions() {
   try {
-    const d = await api(`/api/documents/${encodeURIComponent(slug)}/document/versions`);
+    const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/document/versions`));
     if (!d.versions?.length) {
       f.documentVersions.textContent = 'Sem revisões ainda.';
       return;
     }
-    const items = d.versions.map(v => `<li><a href="/api/documents/${encodeURIComponent(slug)}/document?version=${v.version}" target="_blank">r${v.version}</a> · ${v.document_status} · ${v.document_name} · usuário: ${v.created_by || '-'} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
+    const items = d.versions.map(v => `<li><a href="/api/documents/${encodeURIComponent(slug)}/document?version=${v.version}&project_id=${encodeURIComponent(String(currentProjectId()))}" target="_blank">r${v.version}</a> · ${v.document_status} · ${v.document_name} · usuário: ${v.created_by || '-'} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
     f.documentVersions.innerHTML = `<ul>${items}</ul>`;
   } catch (e) {
     if (e?.status === 404) {
@@ -152,9 +175,13 @@ async function loadVersions() {
 }
 
 async function loadDocument() {
-  const d = await api(`/api/documents/${encodeURIComponent(slug)}`);
+  const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`));
   const p = d.document;
   doc = p;
+  if (Number(p.projectId || 0) !== Number(currentProjectId())) {
+    setScopeBlocked(`Escopo inválido: documento pertence ao projeto ${p.projectId}, mas a URL está no projeto ${currentProjectId()}.`);
+    return;
+  }
   f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate;
   f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
@@ -203,7 +230,7 @@ backBtn.onclick = () => {
     const leave = confirm('Você fez alterações que ainda não foram salvas. Se sair agora, elas serão perdidas. Deseja continuar?');
     if (!leave) return;
   }
-  location.href = '/';
+  location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
 };
 
 logoutBtn.onclick = async () => {
@@ -226,7 +253,7 @@ addReviewNoteBtn.onclick = async () => {
       feedback.textContent = 'Digite uma nota antes de adicionar.';
       return;
     }
-    await api(`/api/documents/${encodeURIComponent(slug)}/review-notes`, {
+    await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/review-notes`), {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ note })
@@ -240,6 +267,10 @@ addReviewNoteBtn.onclick = async () => {
 };
 
 async function handleSave() {
+  if (scopeBlocked) {
+    feedback.textContent = 'Bloqueado por escopo inválido. Volte ao Kanban e abra o card no projeto correto.';
+    return;
+  }
   if (!canEditCard()) return;
   if (!isDirty) return;
   isSaving = true;
@@ -254,14 +285,14 @@ async function handleSave() {
       return;
     }
 
-    await api(`/api/documents/${encodeURIComponent(slug)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value,
     })});
 
     const file = f.documentFile.files?.[0];
     if (file) {
       const b64 = await fileToBase64(file);
-      await api(`/api/documents/${encodeURIComponent(slug)}/document`, {
+      await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/document`), {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
@@ -277,7 +308,7 @@ async function handleSave() {
     await loadVersions();
     setDirty(false);
     feedback.textContent = 'Salvo com sucesso ✅';
-    location.href = '/';
+    location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
   } catch (e) {
     feedback.textContent = e.message;
     isSaving = false;
@@ -294,8 +325,8 @@ saveBtn.onclick = handleSave;
 deleteBtn.onclick = async () => {
   if (!confirm('Apagar este documento do dashboard? (somente admin)')) return;
   try {
-    await api(`/api/documents/${encodeURIComponent(slug)}`, {method:'DELETE'});
-    location.href = '/';
+    await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'DELETE'});
+    location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
   } catch (e) { feedback.textContent = e.message; }
 };
 
@@ -308,6 +339,11 @@ deleteBtn.onclick = async () => {
       location.href = '/login.html';
       return;
     }
-    feedback.textContent = `Falha ao abrir edição: ${e.message || 'erro inesperado'}`;
+    const msg = `Falha ao abrir edição: ${e.message || 'erro inesperado'}`;
+    if (e?.status === 409 || String(e?.message || '').toLowerCase().includes('escopo inválido')) {
+      setScopeBlocked(msg);
+      return;
+    }
+    feedback.textContent = msg;
   }
 })();

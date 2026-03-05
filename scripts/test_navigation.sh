@@ -12,7 +12,7 @@ for p in "${pages[@]}"; do
   grep -q 'id="sidebar-root"' "$f" || { echo "[nav-test] FAIL: $p missing sidebar-root"; exit 1; }
   grep -q 'data-active=' "$f" || { echo "[nav-test] FAIL: $p missing data-active"; exit 1; }
   grep -q '/sidebar.js' "$f" || { echo "[nav-test] FAIL: $p missing sidebar.js include"; exit 1; }
-  grep -q 'Área de trabalho\|DocumentDashboard\|<aside class="sidebar"' "$f" || true
+  grep -q 'Área de trabalho\|ProjectDashbord\|ProjectDashboard\|<aside class="sidebar"' "$f" || true
   echo "[nav-test] OK: $p"
 done
 

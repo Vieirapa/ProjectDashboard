@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DocumentDashboard</title>
+  <title>ProjectDashbord</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -11,14 +11,30 @@
     <aside class="sidebar" id="sidebar-root" data-active="kanban"></aside>
 
     <main class="content">
-      <header>
+      <section id="projectSummary" class="project-summary">
+        <div class="project-summary-left">
+          <select id="sidebarProjectSelect" class="header-project-select"></select>
+          <div class="project-summary-line">Data de início do projeto: <b id="projectStartDate">-</b></div>
+          <div class="project-summary-line">Colaboradores envolvidos: <b id="projectCollaborators">0</b></div>
+        </div>
+        <div class="project-summary-right">
+          <div class="project-summary-head">
+            <h2>Status do projeto</h2>
+          </div>
+          <div class="project-summary-line">Documentos em Baklog: <b id="sumBacklog">0 (0%)</b></div>
+          <div class="project-summary-line">Documentos em Andamento: <b id="sumProgress">0 (0%)</b></div>
+          <div class="project-summary-line">Documentos em Revisão: <b id="sumReview">0 (0%)</b></div>
+          <div class="project-summary-line">Documentos em Concluídos: <b id="sumDone">0 (0%)</b></div>
+        </div>
+      </section>
+
+      <section class="board-title-row">
         <h1>📋 Kanban</h1>
         <div class="header-actions">
-          <select id="sidebarProjectSelect" class="header-project-select"></select>
           <button id="newBtn">+ Novo documento</button>
           <button id="refreshBtn">Atualizar</button>
         </div>
-      </header>
+      </section>
 
       <section id="filters">
         <input id="searchInput" placeholder="Buscar por nome/descrição" />
