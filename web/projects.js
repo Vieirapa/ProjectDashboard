@@ -98,7 +98,6 @@ saveBtn.onclick = async () => {
       feedback.textContent = 'Projeto criado ✅';
     }
     await refresh();
-    setForm(null);
   } catch (e) {
     feedback.textContent = e.message;
   }
