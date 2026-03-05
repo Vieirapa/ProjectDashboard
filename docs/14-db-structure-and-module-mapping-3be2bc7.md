@@ -187,7 +187,128 @@ Tables:
 Storage:
 - `data/deleted_projects/...`
 
-## 4) Logical relations
+## 4) Quick ER diagram (Mermaid)
+
+```mermaid
+erDiagram
+    USERS {
+        int id PK
+        string username UK
+        string password_hash
+        string role
+        string created_at
+        string email
+        string phone
+        string extension
+        string work_area
+        string notes
+    }
+
+    PROJECTS {
+        int id PK
+        string slug UK
+        string name
+        string status
+        string priority
+        string owner
+        string due_date
+        string description
+        string path
+        string updated_at
+        string document_status
+        string document_name
+        string document_mime
+        string document_path
+        string created_by
+        string opened_at
+        string released_at
+    }
+
+    DOCUMENT_VERSIONS {
+        int id PK
+        string project_slug
+        int version
+        string document_name
+        string document_mime
+        string document_status
+        string file_rel_path
+        string git_commit
+        string checksum
+        string created_by
+        string created_at
+    }
+
+    REVIEW_NOTES {
+        int id PK
+        string project_slug
+        string note
+        string created_by
+        string created_at
+        string resolved_by
+        string resolved_at
+        int is_resolved
+    }
+
+    INVITES {
+        int id PK
+        string token UK
+        string role
+        string created_by
+        string used_by
+        string expires_at
+        string created_at
+    }
+
+    AUDIT_LOGS {
+        int id PK
+        string actor
+        string action
+        string target
+        string details
+        string created_at
+    }
+
+    APP_SETTINGS {
+        string key PK
+        string value
+        string updated_by
+        string updated_at
+    }
+
+    PERIODIC_REPORTS {
+        int id PK
+        string name
+        string statuses_json
+        string priorities_json
+        string roles_json
+        string weekdays_json
+        string run_time
+        string message
+        int active
+        string last_run_key
+        string created_by
+        string created_at
+        string updated_by
+        string updated_at
+    }
+
+    DELETED_PROJECTS {
+        int id PK
+        string slug
+        string name
+        string deleted_at
+        string deleted_by
+        string trash_path
+        string project_json
+        string review_notes_json
+        string document_versions_json
+    }
+
+    PROJECTS ||--o{ DOCUMENT_VERSIONS : "slug -> project_slug"
+    PROJECTS ||--o{ REVIEW_NOTES : "slug -> project_slug"
+```
+
+## 5) Logical relations
 
 - `projects.slug` ↔ `review_notes.project_slug`
 - `projects.slug` ↔ `document_versions.project_slug`
