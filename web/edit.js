@@ -26,7 +26,7 @@ const f = {
 };
 
 let me = null;
-let document = null;
+let doc = null;
 let isDirty = false;
 let isSaving = false;
 saveBtn.disabled = true;
@@ -55,9 +55,9 @@ function canAddReviewNotes() {
 }
 
 function canDeleteCard() {
-  if (!document || !me) return false;
+  if (!doc || !me) return false;
   if (me.role === 'admin') return true;
-  if (me.role === 'member') return (document.createdBy || '').toLowerCase() === (me.username || '').toLowerCase();
+  if (me.role === 'member') return (doc.createdBy || '').toLowerCase() === (me.username || '').toLowerCase();
   return false;
 }
 
@@ -160,7 +160,7 @@ async function loadVersions() {
 async function loadDocument() {
   const d = await api(`/api/documents/${encodeURIComponent(slug)}`);
   const p = d.document;
-  document = p;
+  doc = p;
   f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate;
   f.documentName.value = p.documentName || 'Sem anexo';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
