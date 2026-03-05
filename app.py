@@ -384,6 +384,7 @@ def init_db():
         ensure_column(conn, "documents", "created_by", "created_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "opened_at", "opened_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "released_at", "released_at TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "documents", "project_id", "project_id INTEGER NOT NULL DEFAULT 1")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
@@ -402,11 +403,18 @@ def init_db():
             )
             print("[ProjectDashboard] Initial user: admin / password:", pwd)
 
+        if conn.execute("SELECT COUNT(*) AS c FROM projects").fetchone()["c"] == 0:
+            conn.execute(
+                "INSERT INTO projects (project_name, start_date, notes) VALUES (?, ?, ?)",
+                ("Projeto padrão", now_iso(), "Projeto inicial automático"),
+            )
+
         migrate_projects_to_documents(conn)
 
         # Ensure admin user keeps admin role after upgrades/migrations
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE documents SET status='Em revisão' WHERE status='Bloqueado'")
+        conn.execute("UPDATE documents SET project_id=1 WHERE project_id IS NULL OR project_id<=0")
         conn.execute("UPDATE documents SET document_status=status")
         conn.execute("UPDATE documents SET created_by=owner WHERE created_by='' AND owner<>''")
         conn.execute("UPDATE documents SET opened_at=updated_at WHERE opened_at='' AND updated_at<>''")
