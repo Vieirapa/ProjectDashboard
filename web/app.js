@@ -1,7 +1,7 @@
 const board = document.getElementById('board');
 const refreshBtn = document.getElementById('refreshBtn');
 const newBtn = document.getElementById('newBtn');
-const logoutBtn = document.getElementById('logoutBtn');
+const logoutLink = document.getElementById('logoutLink');
 const usersLink = document.getElementById('usersLink');
 const settingsLink = document.getElementById('settingsLink');
 const whoami = document.getElementById('whoami');
@@ -226,7 +226,13 @@ form.onsubmit = async (e) => {
   } catch (e) { alert(e.message); }
 };
 
-logoutBtn.onclick = async () => { await api('/api/logout', {method:'POST'}); window.location.href = '/login.html'; };
+if (logoutLink) {
+  logoutLink.onclick = async (e) => {
+    e.preventDefault();
+    await api('/api/logout', {method:'POST'});
+    window.location.href = '/login.html';
+  };
+}
 
 (async () => {
   try { await loadMe(); await render(); } catch { window.location.href = '/login.html'; }
