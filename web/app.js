@@ -7,6 +7,7 @@ const statusFilter = document.getElementById('statusFilter');
 const priorityFilter = document.getElementById('priorityFilter');
 const ownerFilter = document.getElementById('ownerFilter');
 const sortOrderFilter = document.getElementById('sortOrderFilter');
+const projectSelect = document.getElementById('sidebarProjectSelect');
 
 const dialog = document.getElementById('documentDialog');
 const form = document.getElementById('documentForm');
@@ -21,7 +22,7 @@ const pDueDate = document.getElementById('pDueDate');
 const ownersList = document.getElementById('ownersList');
 
 let me = null;
-let state = { documents: [], statuses: [], priorities: [] };
+let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1 };
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -177,11 +178,23 @@ function fillFilters(statuses, priorities, users=[]) {
   pStatus.value = 'Backlog'; pPriority.value = 'Média';
 }
 
+function syncProjectSelect() {
+  if (!projectSelect) return;
+  const selected = Number(state.selectedProjectId || 1);
+  projectSelect.innerHTML = '';
+  (state.projects || []).forEach((p) => {
+    const opt = new Option(`${p.project_id} · ${p.project_name}`, String(p.project_id));
+    if (Number(p.project_id) === selected) opt.selected = true;
+    projectSelect.append(opt);
+  });
+}
+
 async function render() {
   const rawPid = new URLSearchParams(window.location.search).get('project_id');
   const pid = Number(rawPid);
   const query = Number.isFinite(pid) && pid > 0 ? `?project_id=${encodeURIComponent(String(pid))}` : '';
   state = await api(`/api/documents${query}`);
+  syncProjectSelect();
   fillFilters(state.statuses, state.priorities, state.users || []);
   const filters = currentFilters();
   const filtered = state.documents.filter(p => passesFilters(p, filters));
@@ -199,6 +212,14 @@ async function render() {
 }
 
 [newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter, sortOrderFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
+
+if (projectSelect) {
+  projectSelect.onchange = () => {
+    const pid = projectSelect.value;
+    if (!pid) return;
+    window.location.href = `/?project_id=${encodeURIComponent(pid)}`;
+  };
+}
 
 newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();

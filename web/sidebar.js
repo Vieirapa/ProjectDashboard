@@ -28,7 +28,6 @@
 
     root.innerHTML = `
       <h2>DocumentDashboard</h2>
-      <select id="sidebarProjectSelect" class="header-project-select"></select>
 
       <div class="side-group">Área de trabalho</div>
       <a class="side-link ${active === 'projects' ? 'active' : ''}" href="/projects.html?project_id=${projectId}">Projetos</a>
@@ -51,26 +50,6 @@
     if (usersLink) usersLink.style.display = user.role === 'admin' ? 'block' : 'none';
     if (settingsLink) settingsLink.style.display = user.role === 'admin' ? 'block' : 'none';
 
-    const select = document.getElementById('sidebarProjectSelect');
-    if (select) {
-      select.innerHTML = '';
-      for (const p of (projects || [])) {
-        const opt = new Option(`${p.project_id} · ${p.project_name}`, String(p.project_id));
-        if (Number(p.project_id) === Number(projectId)) opt.selected = true;
-        select.append(opt);
-      }
-      select.onchange = () => {
-        const pid = select.value;
-        if (!pid) return;
-        const url = new URL(window.location.href);
-        url.searchParams.set('project_id', pid);
-        if (window.location.pathname === '/edit.html') {
-          window.location.href = `/?project_id=${encodeURIComponent(pid)}`;
-          return;
-        }
-        window.location.href = `${url.pathname}?${url.searchParams.toString()}`;
-      };
-    }
 
     const logoutLink = document.getElementById('logoutLink');
     if (logoutLink) {
