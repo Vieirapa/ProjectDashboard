@@ -12,8 +12,9 @@
 - password_hash
 - role
 - created_at
+- email/phone/extension/work_area/notes
 
-### `projects`
+### `documents`
 - slug (unique)
 - name
 - description
@@ -21,14 +22,26 @@
 - priority
 - owner
 - due_date
-- document metadata
-- created_by / updated_at
+- document metadata (document_status, document_name, document_mime, document_path)
+- created_by / updated_at / opened_at / released_at
 
 ### `document_versions`
-Stores immutable document revision metadata per project.
+Stores immutable document revision metadata per document.
 
 ### `review_notes`
-Stores review comments tied to project/revision workflow.
+Stores review comments tied to document/revision workflow.
+
+### `deleted_documents`
+Soft-delete archive for removed documents (restore/purge).
+
+### `app_settings`
+Key-value operational settings.
+
+### `periodic_reports`
+Periodic report schedules and settings.
+
+### `invites`
+User invitation tokens.
 
 ### `audit_logs`
 Stores sensitive action audit records.

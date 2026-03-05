@@ -1,25 +1,27 @@
 # ProjectDashboard
 
-ProjectDashboard is a lightweight Kanban-style web application to track projects, file revisions, and team actions.
+ProjectDashboard is a lightweight Kanban-style web application to track documents, file revisions, and team actions.
 
 ## Current highlights
 
 - Sidebar-based UI with workspace/admin sections
 - User login and role-based access control (RBAC)
-- Dedicated details page for full card editing (`/edit.html?slug=...`)
-- Card creation and quick status/priority updates
+- Dedicated details page for full document editing (`/edit.html?slug=...`)
+- Document creation and quick status/priority updates
 - Filters (text, status, priority, owner)
 - Audit logging for critical operations
 - User administration (`/admin-users.html`)
 - Document upload with revision history (`r1`, `r2`, `r3`...)
 - Review notes workflow
+- Deleted documents management (restore + permanent purge)
+- Backup + diagnostics in admin settings
 
 ## Roles
 
 - `admin`
   - Full access, user management, sensitive deletions
 - `member`
-  - Create/edit cards, no admin panel access
+  - Create/edit documents, no admin panel access
 - Additional roles may exist in UI/backend depending on workflow extensions.
 
 ## Data layer
@@ -76,7 +78,7 @@ sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 ### Useful installer variables
 
 - `PORT` (default: `8765`)
-- `PROJECTS_DIR` (default: `/opt/projectdashboard/projects`)
+- `PDASH_DOCUMENTS_DIR` (default: `/opt/projectdashboard/documents`)
 - `ENABLE_NGINX=yes|no`
 - `ENABLE_HTTPS=yes|no`
 - `ENABLE_BACKUP_TIMER=yes|no`

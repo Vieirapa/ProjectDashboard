@@ -1,8 +1,6 @@
-# 14 — Database Structure and Module Mapping (baseline: `3be2bc7`)
+# 14 — Database Structure and Module Mapping (current)
 
-This document describes the **current SQLite data model** and how each ProjectDashboard module interacts with it at the baseline commit:
-
-- `3be2bc75a9c5b8f4e5a9de10f81e9969d02c6b78`
+This document describes the **current SQLite data model** and how each ProjectDashboard module interacts with it.
 
 ## 1) Database overview
 
@@ -24,8 +22,8 @@ Main columns:
 - `created_at`
 - `email`, `phone`, `extension`, `work_area`, `notes`
 
-### `projects`
-Kanban document cards.
+### `documents`
+Kanban documents.
 
 Main columns:
 - `id` (PK)
@@ -84,7 +82,7 @@ Columns:
 - `created_by`, `created_at`, `updated_by`, `updated_at`
 
 ### `deleted_documents`
-Soft-delete archive for deleted cards/documents.
+Soft-delete archive for deleted documents/documents.
 
 Columns:
 - `id` (PK), `slug`, `name`, `deleted_at`, `deleted_by`, `trash_path`
@@ -102,16 +100,16 @@ Backend/API:
 Tables:
 - `users`, `audit_logs`
 
-### B) Kanban (document cards)
+### B) Kanban (documents)
 Frontend:
 - `web/index.html`, `web/app.js`, `web/edit.html`, `web/edit.js`
 
 Backend/API:
-- `/api/projects` (GET/POST)
+- `/api/documents` (GET/POST)
 - `/api/documents/{slug}` (GET/PATCH/DELETE)
 
 Tables:
-- `projects`, `audit_logs`
+- `documents`, `audit_logs`
 
 ### C) Document upload + history
 Frontend:
@@ -122,7 +120,7 @@ Backend/API:
 - `/api/documents/{slug}/document/versions`
 
 Tables:
-- `projects`, `document_versions`
+- `documents`, `document_versions`
 
 Storage:
 - `data/docs_repo/...`
@@ -136,7 +134,7 @@ Backend/API:
 - `/api/documents/{slug}/review-notes/{id}` (PATCH)
 
 Tables:
-- `review_notes`, `projects`, `audit_logs`
+- `review_notes`, `documents`, `audit_logs`
 
 ### E) Admin users + invites
 Frontend:
@@ -170,7 +168,7 @@ Backend/API:
 - `/api/admin/reports` (+ run/update/delete)
 
 Tables:
-- `periodic_reports`, `users`, `projects`, `audit_logs`
+- `periodic_reports`, `users`, `documents`, `audit_logs`
 
 ### H) Deleted documents lifecycle
 Frontend:
@@ -182,7 +180,7 @@ Backend/API:
 - permanent delete
 
 Tables:
-- `deleted_documents`, `projects`, `review_notes`, `document_versions`, `audit_logs`
+- `deleted_documents`, `documents`, `review_notes`, `document_versions`, `audit_logs`
 
 Storage:
 - `data/deleted_documents/...`
@@ -304,8 +302,8 @@ erDiagram
         string document_versions_json
     }
 
-    PROJECTS ||--o{ DOCUMENT_VERSIONS : "slug -> document_slug"
-    PROJECTS ||--o{ REVIEW_NOTES : "slug -> document_slug"
+    DOCUMENTS ||--o{ DOCUMENT_VERSIONS : "slug -> document_slug"
+    DOCUMENTS ||--o{ REVIEW_NOTES : "slug -> document_slug"
 ```
 
 ## 5) Compact ER diagram (meeting view)
@@ -356,14 +354,14 @@ erDiagram
         string deleted_at
     }
 
-    PROJECTS ||--o{ DOCUMENT_VERSIONS : "document history"
-    PROJECTS ||--o{ REVIEW_NOTES : "review flow"
+    DOCUMENTS ||--o{ DOCUMENT_VERSIONS : "document history"
+    DOCUMENTS ||--o{ REVIEW_NOTES : "review flow"
 ```
 
 ## 6) Logical relations
 
-- `projects.slug` ↔ `review_notes.document_slug`
-- `projects.slug` ↔ `document_versions.document_slug`
+- `documents.slug` ↔ `review_notes.document_slug`
+- `documents.slug` ↔ `document_versions.document_slug`
 - `deleted_documents` stores serialized snapshot data for restore.
 
 Note: consistency is primarily enforced by application logic (not strict SQL foreign keys).
