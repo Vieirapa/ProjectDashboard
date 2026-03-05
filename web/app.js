@@ -4,7 +4,7 @@ const newBtn = document.getElementById('newBtn');
 const logoutLink = document.getElementById('logoutLink');
 const usersLink = document.getElementById('usersLink');
 const settingsLink = document.getElementById('settingsLink');
-const whoami = document.getElementById('whoami');
+const whoamiTitle = document.getElementById('whoamiTitle');
 
 const searchInput = document.getElementById('searchInput');
 const statusFilter = document.getElementById('statusFilter');
@@ -37,7 +37,7 @@ async function api(url, opts = {}) {
 async function loadMe() {
   const data = await api('/api/me');
   me = data.user;
-  whoami.textContent = `${me.username} (${me.role})`;
+  if (whoamiTitle) whoamiTitle.textContent = `${me.username} (${me.role})`;
   usersLink.style.display = me.role === 'admin' ? 'block' : 'none';
   settingsLink.style.display = me.role === 'admin' ? 'block' : 'none';
   newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
