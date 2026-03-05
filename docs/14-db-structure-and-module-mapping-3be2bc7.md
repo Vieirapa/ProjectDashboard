@@ -308,7 +308,59 @@ erDiagram
     PROJECTS ||--o{ REVIEW_NOTES : "slug -> project_slug"
 ```
 
-## 5) Logical relations
+## 5) Compact ER diagram (meeting view)
+
+```mermaid
+erDiagram
+    USERS {
+        int id PK
+        string username UK
+        string role
+    }
+
+    PROJECTS {
+        int id PK
+        string slug UK
+        string name
+        string status
+        string priority
+        string owner
+    }
+
+    DOCUMENT_VERSIONS {
+        int id PK
+        string project_slug
+        int version
+    }
+
+    REVIEW_NOTES {
+        int id PK
+        string project_slug
+        int is_resolved
+    }
+
+    APP_SETTINGS {
+        string key PK
+        string value
+    }
+
+    PERIODIC_REPORTS {
+        int id PK
+        string name
+        int active
+    }
+
+    DELETED_PROJECTS {
+        int id PK
+        string slug
+        string deleted_at
+    }
+
+    PROJECTS ||--o{ DOCUMENT_VERSIONS : "document history"
+    PROJECTS ||--o{ REVIEW_NOTES : "review flow"
+```
+
+## 6) Logical relations
 
 - `projects.slug` ↔ `review_notes.project_slug`
 - `projects.slug` ↔ `document_versions.project_slug`
