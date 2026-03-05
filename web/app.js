@@ -25,6 +25,7 @@ const pStatus = document.getElementById('pStatus');
 const pPriority = document.getElementById('pPriority');
 const pOwner = document.getElementById('pOwner');
 const pDueDate = document.getElementById('pDueDate');
+const pDocumentFile = document.getElementById('pDocumentFile');
 const ownersList = document.getElementById('ownersList');
 
 let me = null;
@@ -51,6 +52,18 @@ async function api(url, opts = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Erro na API');
   return data;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const out = String(reader.result || '');
+      resolve(out.includes(',') ? out.split(',')[1] : out);
+    };
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function loadMe() {
@@ -298,7 +311,7 @@ if (projectSelect) {
   };
 }
 
-newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; dialog.showModal(); };
+newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();
 
 form.onsubmit = async (e) => {
@@ -310,7 +323,39 @@ form.onsubmit = async (e) => {
       return;
     }
     const pid = currentProjectIdFromUrl();
-    await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid })});
+    const name = (pName.value || '').trim();
+    const created = await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid })});
+
+    const file = pDocumentFile?.files?.[0];
+    if (file) {
+      let slug = created?.slug || '';
+
+      // fallback para compatibilidade com backend sem retorno de slug
+      if (!slug) {
+        const docsData = await api(`/api/documents?project_id=${encodeURIComponent(String(pid))}`);
+        const candidates = (docsData.documents || []).filter((d) => String(d.name || '').trim() === name);
+        if (candidates.length) {
+          candidates.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+          slug = String(candidates[0].slug || '');
+        }
+      }
+
+      if (!slug) {
+        throw new Error('Documento criado, mas não foi possível identificar o slug para anexar o arquivo.');
+      }
+
+      const b64 = await fileToBase64(file);
+      await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/document`), {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          contentBase64: b64,
+        }),
+      });
+    }
+
     dialog.close();
     render();
   } catch (e) { alert(e.message); }

@@ -285,7 +285,8 @@ def init_db():
                 project_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 project_name TEXT NOT NULL,
                 start_date TEXT NOT NULL DEFAULT '',
-                notes TEXT NOT NULL DEFAULT ''
+                notes TEXT NOT NULL DEFAULT '',
+                allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente'
             )
         """)
         conn.execute("""
@@ -385,6 +386,7 @@ def init_db():
         ensure_column(conn, "documents", "opened_at", "opened_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "released_at", "released_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "project_id", "project_id INTEGER NOT NULL DEFAULT 1")
+        ensure_column(conn, "projects", "allowed_roles", "allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente'")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
@@ -414,6 +416,7 @@ def init_db():
         # Ensure admin user keeps admin role after upgrades/migrations
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE documents SET status='Em revisão' WHERE status='Bloqueado'")
+        conn.execute("UPDATE projects SET allowed_roles='member,desenhista,revisor,cliente' WHERE allowed_roles IS NULL OR TRIM(allowed_roles)=''")
         conn.execute("UPDATE documents SET project_id=1 WHERE project_id IS NULL OR project_id<=0")
         conn.execute("UPDATE documents SET document_status=status")
         conn.execute("UPDATE documents SET created_by=owner WHERE created_by='' AND owner<>''")
@@ -558,24 +561,57 @@ def list_usernames() -> list[str]:
     return [r["username"] for r in rows]
 
 
+def _normalize_allowed_roles(raw: str | list | None) -> str:
+    if isinstance(raw, list):
+        vals = [str(x or '').strip().lower() for x in raw]
+    else:
+        vals = [x.strip().lower() for x in str(raw or '').split(',')]
+    allowed = [r for r in vals if r in ROLES and r != 'admin']
+    # remove duplicados preservando ordem
+    out: list[str] = []
+    for r in allowed:
+        if r not in out:
+            out.append(r)
+    return ','.join(out) if out else 'member,desenhista,revisor,cliente'
+
+
+def parse_allowed_roles(raw: str | None) -> list[str]:
+    return [r for r in _normalize_allowed_roles(raw).split(',') if r]
+
+
+def project_role_allowed(project_row: dict | None, role: str) -> bool:
+    if (role or '').strip().lower() == 'admin':
+        return True
+    if not project_row:
+        return False
+    allowed = parse_allowed_roles(project_row.get('allowed_roles'))
+    return (role or '').strip().lower() in allowed
+
+
 def list_projects_registry() -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT project_id, project_name, start_date, notes FROM projects ORDER BY project_id").fetchall()
-    return [dict(r) for r in rows]
+        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles FROM projects ORDER BY project_id").fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d['allowed_roles'] = _normalize_allowed_roles(d.get('allowed_roles'))
+        out.append(d)
+    return out
 
 
 def create_project_registry(payload: dict) -> tuple[bool, str]:
     name = str(payload.get("project_name") or "").strip()
     start_date = str(payload.get("start_date") or "").strip()
     notes = str(payload.get("notes") or "").strip()
+    allowed_roles = _normalize_allowed_roles(payload.get("allowed_roles") or payload.get("allowedRoles"))
     if not name:
         return False, "Nome do projeto é obrigatório"
     if not start_date:
         start_date = now_iso()
     with db() as conn:
         conn.execute(
-            "INSERT INTO projects (project_name, start_date, notes) VALUES (?, ?, ?)",
-            (name, start_date, notes),
+            "INSERT INTO projects (project_name, start_date, notes, allowed_roles) VALUES (?, ?, ?, ?)",
+            (name, start_date, notes, allowed_roles),
         )
     return True, "ok"
 
@@ -595,6 +631,9 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
     if "notes" in payload:
         fields.append("notes=?")
         vals.append(str(payload.get("notes") or "").strip())
+    if "allowed_roles" in payload or "allowedRoles" in payload:
+        fields.append("allowed_roles=?")
+        vals.append(_normalize_allowed_roles(payload.get("allowed_roles") or payload.get("allowedRoles")))
     if not fields:
         return False, "Nada para atualizar"
     vals.append(project_id)
@@ -638,10 +677,10 @@ def sync_document_meta(document: dict):
     (p / "document.json").write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def create_document(payload: dict, actor: str) -> tuple[bool, str]:
+def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
     name = (payload.get("name") or "").strip()
     if not name:
-        return False, "Nome é obrigatório"
+        return False, "Nome é obrigatório", None
     try:
         project_id = int(payload.get("project_id") or payload.get("projectId") or 1)
     except Exception:
@@ -649,18 +688,18 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str]:
     with db() as conn:
         exists_project = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
     if not exists_project:
-        return False, "Projeto inválido"
+        return False, "Projeto inválido", None
 
     slug = slugify(name)
     proj_dir = BASE_DIR / slug
     if proj_dir.exists():
-        return False, "Documento já existe"
+        return False, "Documento já existe", None
 
     status = payload.get("status") if payload.get("status") in STATUSES else "Backlog"
     opened_at = now_iso()
     owner = (payload.get("owner") or "").strip()
     if not is_valid_owner(owner):
-        return False, "Responsável inválido (usuário não encontrado)"
+        return False, "Responsável inválido (usuário não encontrado)", None
 
     document = {
         "slug": slug,
@@ -691,7 +730,7 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str]:
             (document["slug"], document["name"], document["status"], document["priority"], document["owner"], document["dueDate"], document["description"], document["path"], document["updatedAt"], document["status"], document["documentName"], document["documentMime"], document["documentPath"], document["createdBy"], document["openedAt"], document["releasedAt"], int(document.get("projectId") or 1)),
         )
     sync_document_meta(document)
-    return True, "ok"
+    return True, "ok", slug
 
 
 def patch_document(slug: str, payload: dict, project_id: int | None = None) -> tuple[bool, str]:
@@ -1672,33 +1711,47 @@ class Handler(BaseHTTPRequestHandler):
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
-    def _selected_project_id(self, qs: dict | None = None) -> int:
+    def _projects_for_user(self, user: dict | None) -> list[dict]:
+        all_projects = list_projects_registry()
+        if not user:
+            return all_projects
+        role = (user.get("role") or "").strip().lower()
+        if role == "admin":
+            return all_projects
+        return [p for p in all_projects if project_role_allowed(p, role)]
+
+    def _can_access_project(self, project_id: int, user: dict | None) -> bool:
+        if not user:
+            return False
+        if (user.get("role") or "").strip().lower() == "admin":
+            return True
+        proj = next((p for p in list_projects_registry() if int(p.get("project_id") or 0) == int(project_id)), None)
+        return project_role_allowed(proj, user.get("role") or "")
+
+    def _selected_project_id(self, qs: dict | None = None, user: dict | None = None) -> int:
         try:
             if qs is not None and qs.get("project_id"):
                 raw = qs.get("project_id")[0]
+                pid = int(raw)
+                if pid > 0:
+                    return pid
             elif qs is None:
                 parsed = urlparse(self.path)
                 parsed_qs = parse_qs(parsed.query)
                 if parsed_qs.get("project_id"):
-                    raw = parsed_qs.get("project_id")[0]
-                else:
-                    first = list_projects_registry()
-                    return int(first[0]["project_id"]) if first else 1
-            else:
-                first = list_projects_registry()
-                return int(first[0]["project_id"]) if first else 1
-
-            pid = int(raw)
-            if pid > 0:
-                return pid
+                    pid = int(parsed_qs.get("project_id")[0])
+                    if pid > 0:
+                        return pid
         except Exception:
             pass
 
-        first = list_projects_registry()
+        first = self._projects_for_user(user)
         return int(first[0]["project_id"]) if first else 1
 
-    def _get_document_in_scope(self, slug: str, qs: dict | None = None) -> dict | None:
-        project_id = self._selected_project_id(qs)
+    def _get_document_in_scope(self, slug: str, qs: dict | None = None, user: dict | None = None) -> dict | None:
+        project_id = self._selected_project_id(qs, user)
+        if user and not self._can_access_project(project_id, user):
+            return None
         scoped = get_document(slug, project_id)
         if scoped:
             return scoped
@@ -1707,8 +1760,10 @@ class Handler(BaseHTTPRequestHandler):
             print(f"[scope] blocked slug={slug} requested_project_id={project_id} real_project_id={any_scope.get('projectId')}")
         return None
 
-    def _reply_document_scope_error(self, slug: str, qs: dict | None = None):
-        project_id = self._selected_project_id(qs)
+    def _reply_document_scope_error(self, slug: str, qs: dict | None = None, user: dict | None = None):
+        project_id = self._selected_project_id(qs, user)
+        if user and not self._can_access_project(project_id, user):
+            return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
         any_scope = get_document(slug)
         if any_scope:
             return self._json(409, {"ok": False, "error": f"Escopo inválido: documento pertence ao projeto {any_scope.get('projectId')}, mas o contexto atual é {project_id}."})
@@ -1750,36 +1805,42 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "profile": profile})
 
         if p == "/api/documents":
-            if not self._require_auth(): return
-            selected_project_id = self._selected_project_id(qs)
+            user = self._require_auth()
+            if not user: return
+            selected_project_id = self._selected_project_id(qs, user)
+            if not self._can_access_project(selected_project_id, user):
+                return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
             return self._json(200, {
                 "documents": list_documents(selected_project_id),
                 "statuses": STATUSES,
                 "priorities": PRIORITIES,
                 "users": list_usernames(),
-                "projects": list_projects_registry(),
+                "projects": self._projects_for_user(user),
                 "selectedProjectId": selected_project_id,
             })
 
         if p.startswith("/api/documents/") and p.endswith("/document/versions"):
-            if not self._require_auth(): return
+            user = self._require_auth()
+            if not user: return
             slug = p.split("/")[3]
-            proj = self._get_document_in_scope(slug, qs)
-            if not proj: return self._reply_document_scope_error(slug, qs)
+            proj = self._get_document_in_scope(slug, qs, user)
+            if not proj: return self._reply_document_scope_error(slug, qs, user)
             return self._json(200, {"ok": True, "versions": list_document_versions(slug)})
 
         if p.startswith("/api/documents/") and p.endswith("/review-notes"):
-            if not self._require_auth(): return
+            user = self._require_auth()
+            if not user: return
             slug = p.split("/")[3]
-            proj = self._get_document_in_scope(slug, qs)
-            if not proj: return self._reply_document_scope_error(slug, qs)
+            proj = self._get_document_in_scope(slug, qs, user)
+            if not proj: return self._reply_document_scope_error(slug, qs, user)
             return self._json(200, {"ok": True, "notes": list_review_notes(slug)})
 
         if p.startswith("/api/documents/") and p.endswith("/document"):
-            if not self._require_auth(): return
+            user = self._require_auth()
+            if not user: return
             slug = p.split("/")[3]
-            proj = self._get_document_in_scope(slug, qs)
-            if not proj: return self._reply_document_scope_error(slug, qs)
+            proj = self._get_document_in_scope(slug, qs, user)
+            if not proj: return self._reply_document_scope_error(slug, qs, user)
 
             version = None
             if "version" in qs and qs["version"]:
@@ -1810,15 +1871,17 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if p.startswith("/api/documents/"):
-            if not self._require_auth(): return
+            user = self._require_auth()
+            if not user: return
             slug = p.split("/")[3]
-            doc = self._get_document_in_scope(slug, qs)
-            if not doc: return self._reply_document_scope_error(slug, qs)
+            doc = self._get_document_in_scope(slug, qs, user)
+            if not doc: return self._reply_document_scope_error(slug, qs, user)
             return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
 
         if p == "/api/projects-registry":
-            if not self._require_auth(): return
-            return self._json(200, {"ok": True, "projects": list_projects_registry()})
+            user = self._require_auth()
+            if not user: return
+            return self._json(200, {"ok": True, "projects": self._projects_for_user(user)})
 
         if p == "/api/admin/projects":
             if not self._require_admin(): return
@@ -1906,18 +1969,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(403, {"ok": False, "error": "Sem permissão para criar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            done, msg = create_document(body, user["username"])
+            try:
+                pid = int(body.get("project_id") or body.get("projectId") or self._selected_project_id(qs, user))
+            except Exception:
+                pid = self._selected_project_id(qs, user)
+            if not self._can_access_project(pid, user):
+                return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
+            done, msg, slug = create_document(body, user["username"])
             if done:
                 audit(user["username"], "document.create", body.get("name", ""), f"status={body.get('status','Backlog')}")
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+            return self._json(200 if done else 400, {"ok": done, "slug": slug if done else None, "error": None if done else msg})
 
         if p.startswith("/api/documents/") and p.endswith("/document"):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = self._get_document_in_scope(slug, qs)
+            proj = self._get_document_in_scope(slug, qs, user)
             if not proj:
-                return self._reply_document_scope_error(slug, qs)
+                return self._reply_document_scope_error(slug, qs, user)
             if not can_upload_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para anexar documento"})
             ok, body = self._read_json()
@@ -1937,9 +2006,9 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = self._get_document_in_scope(slug, qs)
+            proj = self._get_document_in_scope(slug, qs, user)
             if not proj:
-                return self._reply_document_scope_error(slug, qs)
+                return self._reply_document_scope_error(slug, qs, user)
             if not can_add_review_note(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para adicionar nota de revisão"})
             ok, body = self._read_json()
@@ -2161,8 +2230,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self._json(400, {"ok": False, "error": "invalid note id"})
 
-            if not self._get_document_in_scope(slug, qs):
-                return self._reply_document_scope_error(slug, qs)
+            if not self._get_document_in_scope(slug, qs, user):
+                return self._reply_document_scope_error(slug, qs, user)
 
             if not can_resolve_review_note(user["role"]):
                 return self._json(403, {"ok": False, "error": "Apenas desenhista ou admin pode alterar status da revisão"})
@@ -2184,12 +2253,12 @@ class Handler(BaseHTTPRequestHandler):
             if not can_edit_document(user["role"]):
                 return self._json(403, {"ok": False, "error": "Sem permissão para editar documento"})
             slug = p.split("/")[3]
-            if not self._get_document_in_scope(slug, qs):
-                return self._reply_document_scope_error(slug, qs)
+            if not self._get_document_in_scope(slug, qs, user):
+                return self._reply_document_scope_error(slug, qs, user)
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
 
-            done, msg = patch_document(slug, body, self._selected_project_id(qs))
+            done, msg = patch_document(slug, body, self._selected_project_id(qs, user))
             if done:
                 audit(user["username"], "document.update", slug, json.dumps(body, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
@@ -2276,9 +2345,9 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_auth()
             if not user: return
             slug = p.split("/")[3]
-            proj = self._get_document_in_scope(slug, qs)
+            proj = self._get_document_in_scope(slug, qs, user)
             if not proj:
-                return self._reply_document_scope_error(slug, qs)
+                return self._reply_document_scope_error(slug, qs, user)
             if not can_delete_document(user["role"], user["username"], proj):
                 return self._json(403, {"ok": False, "error": "Sem permissão para apagar documento"})
             done, msg = delete_document(slug, user["username"])

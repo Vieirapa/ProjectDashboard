@@ -148,6 +148,11 @@ dialog form { padding: 16px; display: grid; gap: 8px; }
 .auth-card form { display: grid; gap: 8px; }
 .edit-wrap { padding: 16px; }
 .edit-two-cols { max-width: 1320px; margin: 0 auto; display: grid; grid-template-columns: minmax(420px, 1fr) minmax(320px, 1fr); gap: 14px; align-items: start; }
+.projects-page-wrap { max-width: 1320px; margin: 0 auto; }
+.projects-top-cols { grid-template-columns: 1fr 1fr; max-width: none; margin: 0; align-items: stretch; }
+.projects-top-cols .edit-form,
+.projects-top-cols .review-panel { height: 100%; }
+.projects-cards-panel { margin: 0; width: 100%; }
 .edit-form { width: 100%; background: #fff; border-radius: 12px; padding: 16px; display: grid; gap: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
 .review-panel { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.08); display: grid; gap: 8px; }
 .review-panel h3 { margin: 0 0 6px; font-size: 16px; }
@@ -161,6 +166,7 @@ dialog form { padding: 16px; display: grid; gap: 8px; }
 .form-grid { display: grid; gap: 8px; }
 .inline-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .inline-check input[type="checkbox"] { width: auto !important; padding: 0; margin: 0; }
+.allowed-roles-box { display: flex; flex-wrap: wrap; gap: 18px; margin: 4px 0 2px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
 

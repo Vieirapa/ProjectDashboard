@@ -18,8 +18,8 @@
         </div>
       </header>
 
-      <section class="edit-wrap">
-        <div class="edit-two-cols">
+      <section class="edit-wrap projects-page-wrap">
+        <div class="edit-two-cols projects-top-cols">
           <form id="projectForm" class="edit-form">
             <label>ID do Projeto</label>
             <input id="projectId" type="number" readonly placeholder="(auto)" />
@@ -29,6 +29,13 @@
             <input id="startDate" type="date" />
             <label>Notas</label>
             <textarea id="notes" rows="6"></textarea>
+            <label>Acessível por (além de admin):</label>
+            <div id="allowedRolesBox" class="allowed-roles-box">
+              <label class="inline-check"><input type="checkbox" class="allowed-role" value="member" checked /> member</label>
+              <label class="inline-check"><input type="checkbox" class="allowed-role" value="desenhista" checked /> desenhista</label>
+              <label class="inline-check"><input type="checkbox" class="allowed-role" value="revisor" checked /> revisor</label>
+              <label class="inline-check"><input type="checkbox" class="allowed-role" value="cliente" checked /> cliente</label>
+            </div>
             <div class="dialog-actions" style="justify-content:flex-start;">
               <button type="button" id="newBtn" class="secondary">Novo</button>
               <button type="button" id="saveBtn">Salvar</button>
@@ -42,6 +49,11 @@
             <div id="projectsList" class="small">Carregando...</div>
           </section>
         </div>
+
+        <section class="panel projects-cards-panel" style="margin-top: 14px;">
+          <h3>Lista de Cards</h3>
+          <div id="projectCardsList" class="small">Selecione um projeto para listar os cards.</div>
+        </section>
       </section>
     </main>
   </div>
