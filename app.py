@@ -502,16 +502,19 @@ def migrate_existing_documents():
             )
 
 
-def list_documents() -> list[dict]:
+def list_documents(project_id: int | None = None) -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM documents ORDER BY name").fetchall()
+        if project_id is None:
+            rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents ORDER BY name").fetchall()
+        else:
+            rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE project_id=? ORDER BY name", (project_id,)).fetchall()
     return [{
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"],
         "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
         "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
-        "createdBy": r["created_by"],
+        "createdBy": r["created_by"], "projectId": int(r["project_id"] or 1),
         "openedAt": r["opened_at"], "releasedAt": r["released_at"],
         "ageLabel": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[0],
         "ageDays": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[1],
@@ -520,7 +523,7 @@ def list_documents() -> list[dict]:
 
 def get_document(slug: str) -> dict | None:
     with db() as conn:
-        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at FROM documents WHERE slug=?", (slug,)).fetchone()
+        r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE slug=?", (slug,)).fetchone()
     if not r:
         return None
     age_label, age_days = _project_age_fields(r["opened_at"], r["status"], r["released_at"])
@@ -530,7 +533,7 @@ def get_document(slug: str) -> dict | None:
         "path": r["path"], "updatedAt": r["updated_at"],
         "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
         "documentMime": r["document_mime"], "documentPath": r["document_path"],
-        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"],
+        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"], "projectId": int(r["project_id"] or 1),
         "openedAt": r["opened_at"], "releasedAt": r["released_at"],
         "ageLabel": age_label, "ageDays": age_days,
     }
@@ -636,6 +639,15 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str]:
     name = (payload.get("name") or "").strip()
     if not name:
         return False, "Nome é obrigatório"
+    try:
+        project_id = int(payload.get("project_id") or payload.get("projectId") or 1)
+    except Exception:
+        project_id = 1
+    with db() as conn:
+        exists_project = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
+    if not exists_project:
+        return False, "Projeto inválido"
+
     slug = slugify(name)
     proj_dir = BASE_DIR / slug
     if proj_dir.exists():
@@ -663,6 +675,7 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str]:
         "createdBy": actor,
         "openedAt": opened_at,
         "releasedAt": opened_at if status == "Concluído" else "",
+        "projectId": project_id,
     }
 
     proj_dir.mkdir(parents=True, exist_ok=False)
@@ -671,8 +684,8 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str]:
 
     with db() as conn:
         conn.execute(
-            "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (document["slug"], document["name"], document["status"], document["priority"], document["owner"], document["dueDate"], document["description"], document["path"], document["updatedAt"], document["status"], document["documentName"], document["documentMime"], document["documentPath"], document["createdBy"], document["openedAt"], document["releasedAt"]),
+            "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (document["slug"], document["name"], document["status"], document["priority"], document["owner"], document["dueDate"], document["description"], document["path"], document["updatedAt"], document["status"], document["documentName"], document["documentMime"], document["documentPath"], document["createdBy"], document["openedAt"], document["releasedAt"], int(document.get("projectId") or 1)),
         )
     sync_document_meta(document)
     return True, "ok"
@@ -1675,7 +1688,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             return self._serve(WEB_DIR / "settings.html", "text/html; charset=utf-8")
-        if p in ["/app.js", "/edit.js", "/projects.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
+        if p in ["/app.js", "/edit.js", "/projects.js", "/sidebar-project-select.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
             ctype = "application/javascript; charset=utf-8" if p.endswith(".js") else "text/css; charset=utf-8"
             return self._serve(WEB_DIR / p.lstrip("/"), ctype)
 
@@ -1693,7 +1706,18 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/documents":
             if not self._require_auth(): return
-            return self._json(200, {"documents": list_documents(), "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
+            try:
+                selected_project_id = int((qs.get("project_id") or [1])[0])
+            except Exception:
+                selected_project_id = 1
+            return self._json(200, {
+                "documents": list_documents(selected_project_id),
+                "statuses": STATUSES,
+                "priorities": PRIORITIES,
+                "users": list_usernames(),
+                "projects": list_projects_registry(),
+                "selectedProjectId": selected_project_id,
+            })
 
         if p.startswith("/api/documents/") and p.endswith("/document/versions"):
             if not self._require_auth(): return
@@ -1749,6 +1773,10 @@ class Handler(BaseHTTPRequestHandler):
             doc = get_document(slug)
             if not doc: return self._json(404, {"ok": False, "error": "Documento não encontrado"})
             return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
+
+        if p == "/api/projects-registry":
+            if not self._require_auth(): return
+            return self._json(200, {"ok": True, "projects": list_projects_registry()})
 
         if p == "/api/admin/projects":
             if not self._require_admin(): return

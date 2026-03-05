@@ -185,7 +185,10 @@ function fillFilters(statuses, priorities, users=[]) {
 }
 
 async function render() {
-  state = await api('/api/documents');
+  const rawPid = new URLSearchParams(window.location.search).get('project_id');
+  const pid = Number(rawPid);
+  const query = Number.isFinite(pid) && pid > 0 ? `?project_id=${encodeURIComponent(String(pid))}` : '';
+  state = await api(`/api/documents${query}`);
   fillFilters(state.statuses, state.priorities, state.users || []);
   const filters = currentFilters();
   const filtered = state.documents.filter(p => passesFilters(p, filters));
@@ -215,7 +218,9 @@ form.onsubmit = async (e) => {
       alert('Responsável inválido. Selecione um usuário existente.');
       return;
     }
-    await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value })});
+    const rawPid = new URLSearchParams(window.location.search).get('project_id');
+    const pid = Number(rawPid);
+    await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:pName.value, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: (Number.isFinite(pid) && pid > 0 ? pid : 1) })});
     dialog.close();
     render();
   } catch (e) { alert(e.message); }
