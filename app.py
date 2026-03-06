@@ -286,7 +286,8 @@ def init_db():
                 project_name TEXT NOT NULL,
                 start_date TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
-                allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente'
+                allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente',
+                is_template INTEGER NOT NULL DEFAULT 0
             )
         """)
         conn.execute("""
@@ -387,6 +388,7 @@ def init_db():
         ensure_column(conn, "documents", "released_at", "released_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "project_id", "project_id INTEGER NOT NULL DEFAULT 1")
         ensure_column(conn, "projects", "allowed_roles", "allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente'")
+        ensure_column(conn, "projects", "is_template", "is_template INTEGER NOT NULL DEFAULT 0")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
@@ -417,6 +419,7 @@ def init_db():
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE documents SET status='Em revisão' WHERE status='Bloqueado'")
         conn.execute("UPDATE projects SET allowed_roles='member,desenhista,revisor,cliente' WHERE allowed_roles IS NULL OR TRIM(allowed_roles)=''")
+        conn.execute("UPDATE projects SET is_template=0 WHERE is_template IS NULL")
         conn.execute("UPDATE documents SET project_id=1 WHERE project_id IS NULL OR project_id<=0")
         conn.execute("UPDATE documents SET document_status=status")
         conn.execute("UPDATE documents SET created_by=owner WHERE created_by='' AND owner<>''")
