@@ -5,6 +5,7 @@ APP_USER="${APP_USER:-projectdashboard}"
 APP_GROUP="${APP_GROUP:-projectdashboard}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/projectdashboard}"
 PROJECTS_DIR="${PROJECTS_DIR:-${INSTALL_DIR}/projects}"
+DOCUMENTS_DIR="${DOCUMENTS_DIR:-${INSTALL_DIR}/documents}"
 PORT="${PORT:-8765}"
 DOMAIN="${DOMAIN:-}"                 # ex.: dashboard.seudominio.com
 LE_EMAIL="${LE_EMAIL:-}"             # e-mail para Let's Encrypt
@@ -70,6 +71,9 @@ fi
 if [[ "${PROJECTS_DIR}" != /* ]]; then
   PROJECTS_DIR="${INSTALL_DIR}/${PROJECTS_DIR}"
 fi
+if [[ "${DOCUMENTS_DIR}" != /* ]]; then
+  DOCUMENTS_DIR="${INSTALL_DIR}/${DOCUMENTS_DIR}"
+fi
 
 echo "[1/10] Installing dependencies..."
 apt-get update -y
@@ -105,13 +109,24 @@ APP_DATA_DIR="${INSTALL_DIR}/data"
 APP_UPLOADS_DIR="${APP_DATA_DIR}/uploads"
 APP_DOCS_REPO_DIR="${APP_DATA_DIR}/docs_repo"
 
-mkdir -p "${APP_DATA_DIR}" "${APP_UPLOADS_DIR}" "${APP_DOCS_REPO_DIR}" "${PROJECTS_DIR}"
-chown -R "${APP_USER}:${APP_GROUP}" "${INSTALL_DIR}" "${PROJECTS_DIR}"
-chmod 750 "${INSTALL_DIR}" "${APP_DATA_DIR}" "${PROJECTS_DIR}" || true
+mkdir -p "${APP_DATA_DIR}" "${APP_UPLOADS_DIR}" "${APP_DOCS_REPO_DIR}" "${PROJECTS_DIR}" "${DOCUMENTS_DIR}"
+chown -R "${APP_USER}:${APP_GROUP}" "${INSTALL_DIR}" "${PROJECTS_DIR}" "${DOCUMENTS_DIR}"
+chmod 750 "${INSTALL_DIR}" "${APP_DATA_DIR}" "${PROJECTS_DIR}" "${DOCUMENTS_DIR}" || true
 
 echo "[4/9] Criando ambiente virtual..."
+PYTHON_BIN="$(command -v python3)"
+PYTHON_OK="$(${PYTHON_BIN} - <<'PY'
+import sys
+print("ok" if sys.version_info >= (3, 10) else "no")
+PY
+)"
+if [[ "${PYTHON_OK}" != "ok" ]]; then
+  echo "ERROR: Python 3.10+ is required. Detected: $(${PYTHON_BIN} --version 2>&1)"
+  echo "Use Ubuntu 22.04+ (or install python3.10+) and rerun install."
+  exit 1
+fi
 if [[ ! -d "${INSTALL_DIR}/.venv" ]]; then
-  sudo -u "${APP_USER}" python3 -m venv "${INSTALL_DIR}/.venv"
+  sudo -u "${APP_USER}" "${PYTHON_BIN}" -m venv "${INSTALL_DIR}/.venv"
 fi
 
 APP_HOST="0.0.0.0"
@@ -124,6 +139,7 @@ touch "$ENV_FILE"
 set_or_replace_env "$ENV_FILE" "PDASH_HOST" "${APP_HOST}"
 set_or_replace_env "$ENV_FILE" "PDASH_PORT" "${PORT}"
 set_or_replace_env "$ENV_FILE" "PDASH_PROJECTS_DIR" "${PROJECTS_DIR}"
+set_or_replace_env "$ENV_FILE" "PDASH_DOCUMENTS_DIR" "${DOCUMENTS_DIR}"
 set_or_replace_env "$ENV_FILE" "PDASH_INITIAL_PASSWORD" "${ADMIN_PASSWORD}"
 
 # Preserve existing SMTP settings if already configured; seed empty keys when missing.
@@ -253,12 +269,18 @@ set -euo pipefail
 STAMP=\$(date +%F_%H%M%S)
 OUT_DIR="${BACKUP_DIR}"
 SRC_DIR="${INSTALL_DIR}/data"
+DOCS_DIR="${DOCUMENTS_DIR}"
 mkdir -p "\$OUT_DIR"
 if [[ -f "\$SRC_DIR/projectdashboard.db" ]]; then
   cp "\$SRC_DIR/projectdashboard.db" "\$OUT_DIR/projectdashboard-db-\$STAMP.sqlite3"
 fi
 if [[ -d "\$SRC_DIR/docs_repo" ]]; then
-  tar -czf "\$OUT_DIR/projectdashboard-docs-\$STAMP.tar.gz" -C "\$SRC_DIR" docs_repo
+  tar -czf "\$OUT_DIR/projectdashboard-docs-repo-\$STAMP.tar.gz" -C "\$SRC_DIR" docs_repo
+fi
+if [[ -d "\$DOCS_DIR" ]]; then
+  DOCS_PARENT="$(dirname "${DOCUMENTS_DIR}")"
+  DOCS_NAME="$(basename "${DOCUMENTS_DIR}")"
+  tar -czf "\$OUT_DIR/projectdashboard-documents-\$STAMP.tar.gz" -C "\$DOCS_PARENT" "\$DOCS_NAME"
 fi
 find "\$OUT_DIR" -type f -mtime +${BACKUP_RETENTION_DAYS} -delete
 EOF

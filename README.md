@@ -78,7 +78,7 @@ sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 ### Useful installer variables
 
 - `PORT` (default: `8765`)
-- `PDASH_DOCUMENTS_DIR` (default: `/opt/projectdashboard/documents`)
+- `DOCUMENTS_DIR` (default: `/opt/projectdashboard/documents`)
 - `ENABLE_NGINX=yes|no`
 - `ENABLE_HTTPS=yes|no`
 - `ENABLE_BACKUP_TIMER=yes|no`
