@@ -1,27 +1,27 @@
-# Checklist de Aceitação — Ubuntu + Ubuntu Server
+# Acceptance Checklist — Ubuntu + Ubuntu Server
 
-> Projeto: **ProjectDashboard**
+> Project: **ProjectDashboard**
 
-## Metadados da execução
+## Run Metadata
 
-- Data:
+- Date:
 - Executor:
-- Ambiente(s): Ubuntu Desktop / Ubuntu Server
-- Versão(ões) Ubuntu: 22.04 / 24.04 (preencher)
-- Commit testado:
+- Environment(s): Ubuntu Desktop / Ubuntu Server
+- Ubuntu version(s): 22.04 / 24.04 (fill in)
+- Tested commit:
 - Branch:
-- Resultado final: `PASS` / `FAIL`
+- Final result: `PASS` / `FAIL`
 
 ---
 
-## 1) Pré-requisitos
+## 1) Prerequisites
 
-- [ ] `apt-get update` executado com sucesso
-- [ ] `git` e `curl` instalados
-- [ ] Repositório clonado com sucesso
-- [ ] Diretório do projeto acessível
+- [ ] `apt-get update` completed successfully
+- [ ] `git` and `curl` installed
+- [ ] Repository cloned successfully
+- [ ] Project directory accessible
 
-Comandos base:
+Base commands:
 
 ```bash
 sudo apt-get update
@@ -32,61 +32,61 @@ cd ProjectDashboard
 
 ---
 
-## 2) Instalação cenário A (sem domínio/HTTPS)
+## 2) Installation Scenario A (no domain/HTTPS)
 
-- [ ] Instalador executado: `sudo ENABLE_NGINX=yes ENABLE_HTTPS=no ./install.sh`
-- [ ] `projectdashboard` habilitado no boot
-- [ ] `projectdashboard` ativo
-- [ ] `nginx` habilitado no boot
-- [ ] `nginx` ativo
-- [ ] `curl -I http://127.0.0.1/login.html` retornou 200/302
+- [ ] Installer executed: `sudo ENABLE_NGINX=yes ENABLE_HTTPS=no ./install.sh`
+- [ ] `projectdashboard` enabled at boot
+- [ ] `projectdashboard` active
+- [ ] `nginx` enabled at boot
+- [ ] `nginx` active
+- [ ] `curl -I http://127.0.0.1/login.html` returned 200/302
 
 ---
 
-## 3) Instalação cenário B (com domínio + HTTPS)
+## 3) Installation Scenario B (domain + HTTPS)
 
-- [ ] Instalador executado com `DOMAIN` e `LE_EMAIL`
-- [ ] `projectdashboard` ativo
-- [ ] `nginx` ativo
-- [ ] certificado presente em `certbot certificates`
-- [ ] acesso HTTPS válido em `/login.html`
+- [ ] Installer executed with `DOMAIN` and `LE_EMAIL`
+- [ ] `projectdashboard` active
+- [ ] `nginx` active
+- [ ] Certificate present in `certbot certificates`
+- [ ] HTTPS access to `/login.html` is valid
 
-Comando base:
+Base command:
 
 ```bash
-sudo DOMAIN=dashboard.seudominio.com LE_EMAIL=voce@dominio.com ./install.sh
+sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 ```
 
 ---
 
-## 4) Aceite funcional da aplicação
+## 4) Functional Acceptance
 
-- [ ] Login com `admin/admin`
-- [ ] Troca de senha admin realizada
-- [ ] Projeto criado em `projects.html`
-- [ ] Card criado no Kanban
-- [ ] Status/prioridade do card alterados
-- [ ] RBAC validado (admin total + bloqueio por role sem permissão)
+- [ ] Login with `admin/admin`
+- [ ] Admin password changed
+- [ ] Project created in `projects.html`
+- [ ] Kanban card created
+- [ ] Card status/priority updated
+- [ ] RBAC validated (admin full access + role-based restriction)
 
 ---
 
-## 5) Backup e restauração
+## 5) Backup and Restore
 
 ### 5.1 Backup
 
-- [ ] `projectdashboard-backup.timer` ativo
-- [ ] `projectdashboard-backup.service` executado manualmente
-- [ ] backup do DB gerado (`projectdashboard-db-*.sqlite3`)
-- [ ] backup do docs_repo gerado (`projectdashboard-docs-repo-*.tar.gz`)
-- [ ] backup de documents gerado (`projectdashboard-documents-*.tar.gz`)
+- [ ] `projectdashboard-backup.timer` is active
+- [ ] `projectdashboard-backup.service` executed manually
+- [ ] DB backup generated (`projectdashboard-db-*.sqlite3`)
+- [ ] docs_repo backup generated (`projectdashboard-docs-repo-*.tar.gz`)
+- [ ] documents backup generated (`projectdashboard-documents-*.tar.gz`)
 
 ### 5.2 Restore
 
-- [ ] `restore_backup.sh` executado com arquivos de DB + docs_repo + documents
-- [ ] Serviço voltou ativo após restore
-- [ ] Dados restaurados validados
+- [ ] `restore_backup.sh` executed with DB + docs_repo + documents backups
+- [ ] Service returned active after restore
+- [ ] Restored data validated
 
-Comando base:
+Base command:
 
 ```bash
 sudo ./scripts/restore_backup.sh \
@@ -97,36 +97,36 @@ sudo ./scripts/restore_backup.sh \
 
 ---
 
-## 6) Teste de reboot
+## 6) Reboot Test
 
-- [ ] Máquina reiniciada
-- [ ] `projectdashboard` voltou ativo automaticamente
-- [ ] `nginx` voltou ativo automaticamente
-- [ ] App acessível após reboot
-
----
-
-## 7) Validação Ubuntu Desktop
-
-- [ ] Acesso local em navegador (`http://127.0.0.1/login.html`)
-- [ ] Fluxo de uso básico funcional
-
-## 8) Validação Ubuntu Server
-
-- [ ] Acesso remoto por IP/DNS funcional
-- [ ] UFW com regras corretas (`OpenSSH`, `Nginx Full`)
-- [ ] Sem intervenção manual pós-boot
+- [ ] Machine rebooted
+- [ ] `projectdashboard` auto-started after reboot
+- [ ] `nginx` auto-started after reboot
+- [ ] App accessible after reboot
 
 ---
 
-## Evidências
+## 7) Ubuntu Desktop Validation
 
-- Logs/comandos:
-- Prints/URLs:
-- Observações:
+- [ ] Local browser access works (`http://127.0.0.1/login.html`)
+- [ ] Basic user flow works
 
-## Pendências abertas
+## 8) Ubuntu Server Validation
+
+- [ ] Remote access via IP/DNS works
+- [ ] UFW rules are correct (`OpenSSH`, `Nginx Full` or explicit app ports)
+- [ ] No manual intervention needed after reboot
+
+---
+
+## Evidence
+
+- Logs/commands:
+- Screenshots/URLs:
+- Notes:
+
+## Open Issues
 
 - Item:
-- Responsável:
-- Prazo:
+- Owner:
+- Due date:

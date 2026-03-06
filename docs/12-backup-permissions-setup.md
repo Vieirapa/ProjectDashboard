@@ -1,14 +1,12 @@
-# 12 — Backup Permissions Setup (Ubuntu)
+# 12 — Backup and Restore Setup (Ubuntu)
 
-This guide explains how to configure backup folder permissions for ProjectDashboard on Ubuntu.
+This guide covers backup path permissions and restore procedures for ProjectDashboard on Ubuntu.
 
 ## Why this matters
 
-If backup execution returns `Permission denied` (for example on `/var/backups/projectdashboard`), the service user probably cannot write to that path.
+If backup or restore operations fail with `Permission denied`, ownership or parent-directory permissions are usually misconfigured.
 
-## 1) Discover the service user and group
-
-Use systemd to check which Linux user/group is running ProjectDashboard:
+## 1) Check service runtime identity
 
 ```bash
 systemctl show -p User,Group projectdashboard
@@ -21,120 +19,101 @@ User=projectdashboard
 Group=projectdashboard
 ```
 
-Use these exact values in the `chown` command.
+Use these values when fixing ownership for `/opt/projectdashboard/data` and `/opt/projectdashboard/documents`.
 
-## 2) Create and configure the backup directory
+## 2) Create and protect backup directory
 
-Create the backup directory (if it does not exist), assign ownership to the service account, and lock down permissions:
+Installer default backup path:
+- `/var/backups/projectdashboard`
+
+Recommended baseline:
 
 ```bash
 sudo mkdir -p /var/backups/projectdashboard
-sudo chown -R projectdashboard:projectdashboard /var/backups/projectdashboard
+sudo chown root:root /var/backups/projectdashboard
 sudo chmod 750 /var/backups/projectdashboard
 ```
 
-> If your service user/group differs from `projectdashboard:projectdashboard`, replace it with the values returned by `systemctl show -p User,Group projectdashboard`.
+> The installer-generated backup timer runs through a root-owned oneshot service, so root ownership is expected for the backup output path.
 
-## 3) Configure the same path in ProjectDashboard
-
-In **Settings → System Backup**:
-
-- Set backup output path to:
-  - `/var/backups/projectdashboard`
-- Save policy
-- Click **Run backup now** to validate
-
-## 4) Optional verification commands
-
-Check directory ownership and permissions:
+## 3) Trigger and verify backup
 
 ```bash
-ls -ld /var/backups/projectdashboard
+sudo systemctl start projectdashboard-backup.service
+sudo systemctl status projectdashboard-backup.service --no-pager
+sudo ls -lh /var/backups/projectdashboard
 ```
 
-Expected pattern (example):
+Expected files:
 
-```text
-drwxr-x--- 2 projectdashboard projectdashboard ... /var/backups/projectdashboard
-```
+- `projectdashboard-db-YYYY-MM-DD_HHMMSS.sqlite3`
+- `projectdashboard-docs-repo-YYYY-MM-DD_HHMMSS.tar.gz`
+- `projectdashboard-documents-YYYY-MM-DD_HHMMSS.tar.gz`
 
-Check service runtime identity again:
+## 4) Manual restore (step-by-step)
 
-```bash
-systemctl show -p User,Group projectdashboard
-```
-
-## 5) Restore a specific backup (manual step-by-step)
-
-Use this procedure when you need to recover a specific backup set.
-
-### A. Identify backup files
-
-Typical files are:
-
-- Database backup: `projectdashboard-db-YYYYMMDD-HHMMSS.sqlite3`
-- Documents backup: `projectdashboard-docs-YYYYMMDD-HHMMSS.tar.gz`
-
-Example listing:
-
-```bash
-ls -lh /var/backups/projectdashboard
-```
-
-### B. Stop the service
+### A) Stop service
 
 ```bash
 sudo systemctl stop projectdashboard
 ```
 
-### C. (Recommended) Snapshot current data before restore
+### B) Optional safety snapshot
 
 ```bash
 sudo mkdir -p /opt/projectdashboard/data/restore-snapshots
 sudo cp -a /opt/projectdashboard/data/projectdashboard.db /opt/projectdashboard/data/restore-snapshots/projectdashboard.db.pre-restore
 sudo tar -czf /opt/projectdashboard/data/restore-snapshots/docs_repo.pre-restore.tar.gz -C /opt/projectdashboard/data docs_repo
+sudo tar -czf /opt/projectdashboard/data/restore-snapshots/documents.pre-restore.tar.gz -C /opt/projectdashboard documents
 ```
 
-### D. Restore database file
+### C) Restore DB
 
 ```bash
-sudo cp -a /var/backups/projectdashboard/projectdashboard-db-YYYYMMDD-HHMMSS.sqlite3 /opt/projectdashboard/data/projectdashboard.db
+sudo cp -a /var/backups/projectdashboard/projectdashboard-db-YYYY-MM-DD_HHMMSS.sqlite3 /opt/projectdashboard/data/projectdashboard.db
 ```
 
-### E. Restore docs repository (optional, if you have the archive)
+### D) Restore docs_repo (optional)
 
 ```bash
 sudo rm -rf /opt/projectdashboard/data/docs_repo
-sudo tar -xzf /var/backups/projectdashboard/projectdashboard-docs-YYYYMMDD-HHMMSS.tar.gz -C /opt/projectdashboard/data
+sudo tar -xzf /var/backups/projectdashboard/projectdashboard-docs-repo-YYYY-MM-DD_HHMMSS.tar.gz -C /opt/projectdashboard/data
 ```
 
-### F. Re-apply ownership and start service
+### E) Restore documents (optional)
 
 ```bash
-sudo chown -R projectdashboard:projectdashboard /opt/projectdashboard/data
+sudo rm -rf /opt/projectdashboard/documents
+sudo tar -xzf /var/backups/projectdashboard/projectdashboard-documents-YYYY-MM-DD_HHMMSS.tar.gz -C /opt/projectdashboard
+```
+
+### F) Re-apply ownership and start service
+
+```bash
+sudo chown -R projectdashboard:projectdashboard /opt/projectdashboard/data /opt/projectdashboard/documents
 sudo systemctl start projectdashboard
 sudo systemctl status projectdashboard --no-pager
 ```
 
-## 6) Automatic restore script
+## 5) Automated restore script
 
-A helper script is available:
-
+Script:
 - `scripts/restore_backup.sh`
 
-### Basic usage
+### Full restore
 
 ```bash
 sudo ./scripts/restore_backup.sh \
-  --db-backup /var/backups/projectdashboard/projectdashboard-db-YYYYMMDD-HHMMSS.sqlite3 \
-  --docs-backup /var/backups/projectdashboard/projectdashboard-docs-YYYYMMDD-HHMMSS.tar.gz
+  --db-backup /var/backups/projectdashboard/projectdashboard-db-YYYY-MM-DD_HHMMSS.sqlite3 \
+  --docs-repo-backup /var/backups/projectdashboard/projectdashboard-docs-repo-YYYY-MM-DD_HHMMSS.tar.gz \
+  --documents-backup /var/backups/projectdashboard/projectdashboard-documents-YYYY-MM-DD_HHMMSS.tar.gz
 ```
 
-### Restore only database
+### DB-only restore
 
 ```bash
 sudo ./scripts/restore_backup.sh \
-  --db-backup /var/backups/projectdashboard/projectdashboard-db-YYYYMMDD-HHMMSS.sqlite3
+  --db-backup /var/backups/projectdashboard/projectdashboard-db-YYYY-MM-DD_HHMMSS.sqlite3
 ```
 
 ### Useful options
@@ -145,7 +124,7 @@ sudo ./scripts/restore_backup.sh \
 - `--app-group <group>` (default: `projectdashboard`)
 - `--no-snapshot` (skip pre-restore safety snapshot)
 
-Get full help:
+Help:
 
 ```bash
 ./scripts/restore_backup.sh --help
@@ -153,10 +132,11 @@ Get full help:
 
 ## Troubleshooting
 
-- If permission errors persist, confirm:
-  - the path is absolute
-  - ownership matches the active service user/group
-  - parent directories are accessible
-- If needed, temporarily test with an app-local writable path:
-  - `/opt/projectdashboard/data/backups`
+- Confirm backup files exist and match expected naming.
+- Confirm parent folders are accessible (`/opt/projectdashboard`, `/var/backups/projectdashboard`).
+- Confirm service user/group ownership on runtime folders (`data`, `documents`).
+- Review service logs:
 
+```bash
+sudo journalctl -u projectdashboard -n 120 --no-pager
+```

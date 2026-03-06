@@ -54,6 +54,14 @@ Open:
 
 ## Server installer (v2)
 
+For customer-facing installation and validation docs, use:
+
+- `docs/08-operacao-deploy.md` (installation and deployment)
+- `docs/12-backup-permissions-setup.md` (backup/restore and permissions)
+- `docs/tests/checklists/ubuntu-ubuntu-server-acceptance-checklist.md` (acceptance checklist)
+- `docs/tests/runs/` (test execution history)
+
+
 ```bash
 cd /path/to/ProjectDashboard
 sudo ./install.sh

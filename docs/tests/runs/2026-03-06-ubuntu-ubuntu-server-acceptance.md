@@ -1,57 +1,57 @@
-# Run de Teste — Ubuntu + Ubuntu Server (2026-03-06)
+# Test Run — Ubuntu + Ubuntu Server (2026-03-06)
 
-- Data: 2026-03-06
+- Date: 2026-03-06
 - Executor: Alexandre Panosso Vieira / Minion
-- Commit testado: `570e647`
+- Tested commit: `570e647`
 - Branch: `main`
-- Resultado final: `EM ANDAMENTO`
+- Final result: `IN PROGRESS`
 
-Referência de checklist base:
+Checklist reference:
 - `docs/tests/checklists/ubuntu-ubuntu-server-acceptance-checklist.md`
 
 ---
 
-## Ambiente 1 — Ubuntu Desktop
+## Environment 1 — Ubuntu Desktop
 
-- Versão:
-- Tipo de instalação (VM/local/cloud):
+- Version:
+- Install type (VM/local/cloud):
 
-### Resultado por bloco
-- Pré-requisitos: [ ]
-- Instalação cenário A: [ ]
-- Instalação cenário B: [ ]
-- Funcional: [ ]
+### Block results
+- Prerequisites: [ ]
+- Installation scenario A: [ ]
+- Installation scenario B: [ ]
+- Functional: [ ]
 - Backup/Restore: [ ]
 - Reboot: [ ]
 
-### Evidências
+### Evidence
 - 
 
 ---
 
-## Ambiente 2 — Ubuntu Server
+## Environment 2 — Ubuntu Server
 
-- Versão:
-- Provedor/host:
+- Version:
+- Provider/host:
 
-### Resultado por bloco
-- Pré-requisitos: [ ]
-- Instalação cenário A: [ ]
-- Instalação cenário B: [ ]
-- Funcional: [ ]
+### Block results
+- Prerequisites: [ ]
+- Installation scenario A: [ ]
+- Installation scenario B: [ ]
+- Functional: [ ]
 - Backup/Restore: [ ]
 - Reboot: [ ]
 
-### Evidências
+### Evidence
 - 
 
 ---
 
-## Pendências
+## Open Issues
 
 - 
 
-## Decisão final desta execução
+## Final decision for this run
 
 - [ ] PASS
 - [ ] FAIL

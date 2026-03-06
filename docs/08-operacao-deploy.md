@@ -1,6 +1,6 @@
 # 08 — Operations and Deployment
 
-## Automated server installation
+## Automated Server Installation
 
 Script:
 - `install.sh` (v2)
@@ -18,26 +18,47 @@ Domain + HTTPS example:
 sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 ```
 
-Installer output includes:
+## Installer Behavior (Current)
 
-- deployment to `/opt/projectdashboard`
-- runtime folders fixed under install path (`/opt/projectdashboard/data`, `/opt/projectdashboard/data/docs_repo`, `/opt/projectdashboard/documents`)
+The installer configures:
+
+- deployment into `/opt/projectdashboard`
+- runtime folders under install path:
+  - `/opt/projectdashboard/data`
+  - `/opt/projectdashboard/data/docs_repo`
+  - `/opt/projectdashboard/documents`
+  - `/opt/projectdashboard/projects`
 - `projectdashboard.service` enabled at boot
-- environment file at `/etc/projectdashboard.env` (preserves SMTP keys on reinstall)
-- dedicated documents directory (`PDASH_DOCUMENTS_DIR`, default `/opt/projectdashboard/documents`)
+- environment file `/etc/projectdashboard.env`
+- environment keys:
+  - `PDASH_HOST`
+  - `PDASH_PORT`
+  - `PDASH_PROJECTS_DIR`
+  - `PDASH_DOCUMENTS_DIR`
+  - `PDASH_INITIAL_PASSWORD`
 - optional Nginx reverse proxy
 - optional Let's Encrypt HTTPS
 - daily backup timer (`projectdashboard-backup.timer`)
-- optional Ubuntu UFW setup (`ENABLE_UFW=yes`, default)
+- optional Ubuntu firewall setup via UFW (`ENABLE_UFW=yes`, default)
 - bootstrap admin account: `admin` / `admin`
 
-After first login as admin, configure operational settings in `/settings.html` (SMTP, defaults, periodic reports, backup policy, diagnostics).
+After first login as admin, configure `/settings.html` (SMTP, defaults, periodic reports, backup policy, diagnostics).
 
-## Next installer enhancement (scheduled)
+## Installer Variables
 
-- Add `--dry-run` mode to `install.sh` (planned for next installer update) to simulate changes without applying them.
+- `PORT` (default: `8765`)
+- `PROJECTS_DIR` (default: `/opt/projectdashboard/projects`)
+- `DOCUMENTS_DIR` (default: `/opt/projectdashboard/documents`)
+- `ENABLE_NGINX=yes|no`
+- `ENABLE_HTTPS=yes|no`
+- `ENABLE_BACKUP_TIMER=yes|no`
+- `ENABLE_UFW=yes|no`
+- `BACKUP_DIR` (default: `/var/backups/projectdashboard`)
+- `BACKUP_RETENTION_DAYS` (default: `14`)
+- `DOMAIN` (optional)
+- `LE_EMAIL` (required for automatic cert issuance)
 
-## Manual execution
+## Manual Execution (Development)
 
 ```bash
 cd /path/to/ProjectDashboard
@@ -50,17 +71,23 @@ Access:
 ## Dependencies
 
 - Python 3.10+
-- SQLite (bundled in Python)
+- SQLite (bundled with Python)
 
-## Backup
+## Backup Artifacts
 
-Essential artifacts:
+Expected backup files:
 
-- `data/projectdashboard.db`
-- `data/docs_repo/` (if document git storage is enabled)
+- `projectdashboard-db-YYYY-MM-DD_HHMMSS.sqlite3`
+- `projectdashboard-docs-repo-YYYY-MM-DD_HHMMSS.tar.gz`
+- `projectdashboard-documents-YYYY-MM-DD_HHMMSS.tar.gz`
 
-## Restore
+## Restore Summary
 
-1. restore data files/directories
-2. restart service
-3. validate login and key endpoints
+1. stop service
+2. restore DB and optional archives
+3. re-apply ownership
+4. start service
+5. validate login and key endpoints
+
+Use:
+- `scripts/restore_backup.sh --help`

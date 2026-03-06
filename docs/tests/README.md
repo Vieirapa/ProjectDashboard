@@ -1,24 +1,24 @@
-# Testes de Aceitação — ProjectDashboard
+# Acceptance Tests — ProjectDashboard
 
-Esta pasta centraliza os testes funcionais/operacionais para manter histórico auditável.
+This folder centralizes functional and operational tests to keep an auditable history.
 
-## Estrutura
+## Structure
 
-- `checklists/`: checklists base reutilizáveis (templates oficiais)
-- `runs/`: execuções realizadas (histórico com evidências e resultado)
+- `checklists/`: reusable base checklists (official templates)
+- `runs/`: completed executions (history with evidence and outcomes)
 
-## Como usar
+## How to use
 
-1. Escolha uma checklist em `checklists/`.
-2. Copie para `runs/YYYY-MM-DD-<ambiente>-<objetivo>.md`.
-3. Preencha status (`[x]`, `[ ]`, `N/A`), evidências e observações.
-4. Faça commit do arquivo de run para registrar histórico.
+1. Pick a checklist in `checklists/`.
+2. Copy it to `runs/YYYY-MM-DD-<environment>-<purpose>.md`.
+3. Fill status (`[x]`, `[ ]`, `N/A`), evidence, and notes.
+4. Commit the run file to preserve test history.
 
-## Convenções recomendadas
+## Recommended conventions
 
-- Nome de arquivo de run: `YYYY-MM-DD-ubuntu-ubuntu-server-acceptance.md`
-- Sempre registrar:
-  - commit/branch testado
-  - ambiente (Ubuntu versão, VM/cloud/local)
-  - resultado final (`PASS` ou `FAIL`)
-  - pendências abertas
+- Run filename: `YYYY-MM-DD-ubuntu-ubuntu-server-acceptance.md`
+- Always record:
+  - tested commit/branch
+  - environment (Ubuntu version, VM/cloud/local)
+  - final result (`PASS` or `FAIL`)
+  - open issues
