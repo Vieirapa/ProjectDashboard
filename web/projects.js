@@ -149,7 +149,7 @@ async function loadCardsForSelectedProject() {
   }
 }
 
-async function refresh(preferredId = null) {
+async function refresh(preferredId = null, fallbackToLast = false) {
   const d = await api('/api/admin/projects');
   projects = d.projects || [];
   renderList();
@@ -159,6 +159,10 @@ async function refresh(preferredId = null) {
   const found = projects.find((p) => Number(p.project_id) === Number(targetId));
   if (found) {
     setForm(found);
+  } else if (fallbackToLast && projects.length) {
+    // Fallback for environments still running an older backend response shape
+    // (e.g., POST without project_id in payload): keep the newly created item loaded.
+    setForm(projects[projects.length - 1]);
   } else {
     setForm(null);
   }
@@ -198,7 +202,7 @@ saveBtn.onclick = async () => {
       }
       feedback.textContent = 'Projeto criado ✅';
     }
-    await refresh(Number(projectId.value || selectedProjectId || preserveId || 0) || null);
+    await refresh(Number(projectId.value || selectedProjectId || preserveId || 0) || null, !projectId.value);
   } catch (e) {
     feedback.textContent = e.message;
   }
