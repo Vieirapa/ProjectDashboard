@@ -24,15 +24,17 @@
       api('/api/projects-registry'),
     ]);
 
-    const projectId = currentProjectId(projects || []);
+    const projectItems = projects || [];
+    const projectId = currentProjectId(projectItems);
 
     const canAdminTools = user.role === 'admin';
+    const canAccessProjectArea = projectItems.length > 0;
 
     root.innerHTML = `
       <h2>ProjectDashbord</h2>
 
       <div class="side-group">Área de trabalho</div>
-      <a class="side-link ${active === 'projects' ? 'active' : ''}" href="/projects.html?project_id=${projectId}">Projetos</a>
+      ${canAccessProjectArea ? `<a class="side-link ${active === 'projects' ? 'active' : ''}" href="/projects.html?project_id=${projectId}">Projetos</a>` : ''}
       <a class="side-link ${active === 'kanban' ? 'active' : ''}" href="/?project_id=${projectId}">Kanban</a>
 
       ${canAdminTools ? `
