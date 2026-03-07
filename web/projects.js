@@ -9,6 +9,7 @@ const allowedRolesBox = document.getElementById('allowedRolesBox');
 const feedback = document.getElementById('feedback');
 const projectsList = document.getElementById('projectsList');
 const projectCardsList = document.getElementById('projectCardsList');
+const templateFilter = document.getElementById('templateFilter');
 
 const newBtn = document.getElementById('newBtn');
 const saveBtn = document.getElementById('saveBtn');
@@ -84,14 +85,22 @@ function setForm(p = null) {
   loadCardsForSelectedProject();
 }
 
+function filteredProjects() {
+  const mode = String(templateFilter?.value || 'all');
+  if (mode === 'template') return projects.filter((p) => !!p.is_template);
+  if (mode === 'non-template') return projects.filter((p) => !p.is_template);
+  return projects;
+}
+
 function renderList() {
-  if (!projects.length) {
-    projectsList.textContent = 'Nenhum projeto cadastrado.';
+  const shown = filteredProjects();
+  if (!shown.length) {
+    projectsList.textContent = 'Nenhum projeto para o filtro selecionado.';
     return;
   }
   projectsList.innerHTML = `<table>
     <tr><th class="template-flag-col"></th><th>ID</th><th>Nome</th><th>Início</th><th>Roles</th></tr>
-    ${projects.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
+    ${shown.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
   </table>`;
   projectsList.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.style.cursor = 'pointer';
@@ -221,6 +230,10 @@ deleteBtn.onclick = async () => {
     feedback.textContent = e.message;
   }
 };
+
+if (templateFilter) {
+  templateFilter.onchange = () => renderList();
+}
 
 logoutBtn.onclick = async () => {
   await api('/api/logout', { method: 'POST' });

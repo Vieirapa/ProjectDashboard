@@ -1742,12 +1742,27 @@ class Handler(BaseHTTPRequestHandler):
             return all_projects
         return [p for p in all_projects if project_role_allowed(p, role)]
 
+    def _project_by_id(self, project_id: int) -> dict | None:
+        return next((p for p in list_projects_registry() if int(p.get("project_id") or 0) == int(project_id)), None)
+
+    def _project_access_error(self, project_id: int, user: dict | None) -> str:
+        if not user:
+            return "Autenticação necessária."
+        if (user.get("role") or "").strip().lower() == "admin":
+            return ""
+        proj = self._project_by_id(project_id)
+        if not proj:
+            return "Projeto não encontrado."
+        if bool(proj.get("is_template")):
+            return "Projeto template disponível apenas para administradores."
+        return "Sem acesso ao projeto selecionado para seu role."
+
     def _can_access_project(self, project_id: int, user: dict | None) -> bool:
         if not user:
             return False
         if (user.get("role") or "").strip().lower() == "admin":
             return True
-        proj = next((p for p in list_projects_registry() if int(p.get("project_id") or 0) == int(project_id)), None)
+        proj = self._project_by_id(project_id)
         return project_role_allowed(proj, user.get("role") or "")
 
     def _selected_project_id(self, qs: dict | None = None, user: dict | None = None) -> int:
@@ -1785,7 +1800,7 @@ class Handler(BaseHTTPRequestHandler):
     def _reply_document_scope_error(self, slug: str, qs: dict | None = None, user: dict | None = None):
         project_id = self._selected_project_id(qs, user)
         if user and not self._can_access_project(project_id, user):
-            return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
+            return self._json(403, {"ok": False, "error": self._project_access_error(project_id, user)})
         any_scope = get_document(slug)
         if any_scope:
             return self._json(409, {"ok": False, "error": f"Escopo inválido: documento pertence ao projeto {any_scope.get('projectId')}, mas o contexto atual é {project_id}."})
@@ -1831,7 +1846,7 @@ class Handler(BaseHTTPRequestHandler):
             if not user: return
             selected_project_id = self._selected_project_id(qs, user)
             if not self._can_access_project(selected_project_id, user):
-                return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
+                return self._json(403, {"ok": False, "error": self._project_access_error(selected_project_id, user)})
             return self._json(200, {
                 "documents": list_documents(selected_project_id),
                 "statuses": STATUSES,
@@ -1996,7 +2011,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pid = self._selected_project_id(qs, user)
             if not self._can_access_project(pid, user):
-                return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
+                return self._json(403, {"ok": False, "error": self._project_access_error(pid, user)})
             done, msg, slug = create_document(body, user["username"])
             if done:
                 audit(user["username"], "document.create", body.get("name", ""), f"status={body.get('status','Backlog')}")

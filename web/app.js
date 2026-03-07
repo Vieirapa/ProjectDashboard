@@ -50,7 +50,12 @@ function withProjectId(url) {
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Erro na API');
+  if (!res.ok) {
+    const err = new Error(data.error || 'Erro na API');
+    err.status = res.status;
+    err.payload = data;
+    throw err;
+  }
   return data;
 }
 
@@ -274,32 +279,41 @@ function updateProjectSummary() {
 }
 
 async function render() {
-  const pidInUrl = projectIdFromUrlOrNull();
-  const query = pidInUrl ? `?project_id=${encodeURIComponent(String(pidInUrl))}` : '';
-  state = await api(`/api/documents${query}`);
+  try {
+    const pidInUrl = projectIdFromUrlOrNull();
+    const query = pidInUrl ? `?project_id=${encodeURIComponent(String(pidInUrl))}` : '';
+    state = await api(`/api/documents${query}`);
 
-  if (!pidInUrl && Number(state.selectedProjectId || 0) > 0) {
-    const u = new URL(window.location.href);
-    u.searchParams.set('project_id', String(state.selectedProjectId));
-    window.history.replaceState({}, '', `${u.pathname}?${u.searchParams.toString()}`);
+    if (!pidInUrl && Number(state.selectedProjectId || 0) > 0) {
+      const u = new URL(window.location.href);
+      u.searchParams.set('project_id', String(state.selectedProjectId));
+      window.history.replaceState({}, '', `${u.pathname}?${u.searchParams.toString()}`);
+    }
+
+    syncProjectSelect();
+    updateProjectSummary();
+    fillFilters(state.statuses, state.priorities, state.users || []);
+    const filters = currentFilters();
+    const filtered = state.documents.filter(p => passesFilters(p, filters));
+    board.innerHTML = '';
+    const cols = new Map(state.statuses.map(s => [s, makeColumn(s)]));
+    cols.forEach(c => board.appendChild(c));
+
+    filtered.sort((a, b) => {
+      const cmp = compareDocuments(a, b, filters.sortBy, filters.sortDir);
+      if (cmp !== 0) return cmp;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
+    });
+    filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
+    cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} documento(s)`);
+  } catch (e) {
+    if (e?.status === 401) {
+      window.location.href = '/login.html';
+      return;
+    }
+    const msg = String(e?.message || 'Falha ao carregar dados do kanban.');
+    board.innerHTML = `<div class="panel"><b>Não foi possível carregar este projeto.</b><br/><span class="small">${msg}</span></div>`;
   }
-
-  syncProjectSelect();
-  updateProjectSummary();
-  fillFilters(state.statuses, state.priorities, state.users || []);
-  const filters = currentFilters();
-  const filtered = state.documents.filter(p => passesFilters(p, filters));
-  board.innerHTML = '';
-  const cols = new Map(state.statuses.map(s => [s, makeColumn(s)]));
-  cols.forEach(c => board.appendChild(c));
-
-  filtered.sort((a, b) => {
-    const cmp = compareDocuments(a, b, filters.sortBy, filters.sortDir);
-    if (cmp !== 0) return cmp;
-    return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
-  });
-  filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
-  cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} documento(s)`);
 }
 
 [newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter, sortOrderFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
@@ -364,5 +378,14 @@ form.onsubmit = async (e) => {
 
 
 (async () => {
-  try { await loadMe(); await render(); } catch { window.location.href = '/login.html'; }
+  try {
+    await loadMe();
+    await render();
+  } catch (e) {
+    if (e?.status === 401) {
+      window.location.href = '/login.html';
+      return;
+    }
+    alert(e?.message || 'Falha ao iniciar kanban.');
+  }
 })();
