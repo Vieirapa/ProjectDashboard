@@ -154,8 +154,9 @@ dialog form { padding: 16px; display: grid; gap: 8px; }
 .projects-top-cols .review-panel { height: 100%; }
 .projects-cards-panel { margin: 0; width: 100%; }
 .edit-form { width: 100%; background: #fff; border-radius: 12px; padding: 16px; display: grid; gap: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
-.review-panel { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.08); display: grid; gap: 8px; }
+.review-panel { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.08); display: grid; gap: 8px; align-content: start; }
 .review-panel h3 { margin: 0 0 6px; font-size: 16px; }
+#projectsList { align-self: start; margin-top: 0; }
 #reviewNoteInput { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
 #reviewNotesHistory { border: 1px solid #e5e7eb; border-radius: 8px; min-height: 220px; padding: 10px; background: #fafafa; }
 #reviewNotesHistory .note-item { border-bottom: 1px solid #e5e7eb; padding: 8px 0; }
