@@ -287,7 +287,8 @@ def init_db():
                 start_date TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
                 allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente',
-                is_template INTEGER NOT NULL DEFAULT 0
+                is_template INTEGER NOT NULL DEFAULT 0,
+                template_source_project_id INTEGER
             )
         """)
         conn.execute("""
@@ -389,6 +390,7 @@ def init_db():
         ensure_column(conn, "documents", "project_id", "project_id INTEGER NOT NULL DEFAULT 1")
         ensure_column(conn, "projects", "allowed_roles", "allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente'")
         ensure_column(conn, "projects", "is_template", "is_template INTEGER NOT NULL DEFAULT 0")
+        ensure_column(conn, "projects", "template_source_project_id", "template_source_project_id INTEGER")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
@@ -606,7 +608,7 @@ def _to_bool_int(value) -> int:
 
 def list_projects_registry() -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles, is_template FROM projects ORDER BY project_id").fetchall()
+        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles, is_template, template_source_project_id FROM projects ORDER BY project_id").fetchall()
     out = []
     for r in rows:
         d = dict(r)
@@ -677,6 +679,83 @@ def delete_project_registry(project_id: int) -> tuple[bool, str]:
             return False, "Não é possível apagar projeto com documentos vinculados"
         conn.execute("DELETE FROM projects WHERE project_id=?", (project_id,))
     return True, "ok"
+
+
+def _unique_slug(conn: sqlite3.Connection, base_name: str) -> str:
+    base = slugify(base_name)
+    candidate = base
+    i = 2
+    while conn.execute("SELECT 1 FROM documents WHERE slug=?", (candidate,)).fetchone():
+        candidate = f"{base}-{i}"
+        i += 1
+    return candidate
+
+
+def clone_project_from_template(template_project_id: int, payload: dict, actor: str) -> tuple[bool, str, int | None]:
+    new_name = str(payload.get("project_name") or payload.get("projectName") or "").strip()
+    if not new_name:
+        return False, "Nome do novo projeto é obrigatório", None
+
+    requested_start = str(payload.get("start_date") or payload.get("startDate") or "").strip()
+    new_start_date = requested_start or now_iso()
+
+    with db() as conn:
+        template = conn.execute(
+            "SELECT project_id, project_name, notes, allowed_roles, is_template FROM projects WHERE project_id=?",
+            (template_project_id,),
+        ).fetchone()
+        if not template:
+            return False, "Template não encontrado", None
+        if int(template["is_template"] or 0) != 1:
+            return False, "Projeto selecionado não é template", None
+
+        default_notes = f"Criado a partir do template #{template['project_id']} · {template['project_name']}"
+        new_notes = str(payload.get("notes") or "").strip() or default_notes
+        allowed_roles = _normalize_allowed_roles(template.get("allowed_roles"))
+
+        cur = conn.execute(
+            "INSERT INTO projects (project_name, start_date, notes, allowed_roles, is_template, template_source_project_id) VALUES (?, ?, ?, ?, 0, ?)",
+            (new_name, new_start_date, new_notes, allowed_roles, int(template["project_id"])),
+        )
+        new_project_id = int(cur.lastrowid or 0)
+        if not new_project_id:
+            return False, "Falha ao criar projeto a partir do template", None
+
+        template_docs = conn.execute(
+            "SELECT name, status, priority, description FROM documents WHERE project_id=? ORDER BY id",
+            (template_project_id,),
+        ).fetchall()
+
+        now = now_iso()
+        for d in template_docs:
+            name = str(d.get("name") or "").strip() or "Documento"
+            doc_slug = _unique_slug(conn, name)
+            doc_path = str(BASE_DIR / doc_slug)
+            (BASE_DIR / doc_slug).mkdir(parents=True, exist_ok=True)
+            conn.execute(
+                "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    doc_slug,
+                    name,
+                    str(d.get("status") or "Backlog"),
+                    str(d.get("priority") or "Média"),
+                    "",
+                    "",
+                    str(d.get("description") or "").strip(),
+                    doc_path,
+                    now,
+                    "aguardando edição",
+                    "",
+                    "",
+                    "",
+                    actor,
+                    now,
+                    "",
+                    new_project_id,
+                ),
+            )
+
+    return True, "ok", new_project_id
 
 
 def is_valid_owner(owner: str) -> bool:
@@ -2131,6 +2210,24 @@ class Handler(BaseHTTPRequestHandler):
             done, msg, new_project_id = create_project_registry(body)
             if done:
                 audit(admin["username"], "project.registry.create", body.get("project_name", ""))
+            return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
+
+        if p.startswith("/api/admin/projects/") and p.endswith("/clone"):
+            admin = self._require_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                template_project_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "ID inválido"})
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg, new_project_id = clone_project_from_template(template_project_id, body, admin["username"])
+            if done:
+                audit(admin["username"], "project.registry.clone_from_template", str(template_project_id), f"new_project_id={new_project_id}")
             return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
         if p == "/api/admin/users":

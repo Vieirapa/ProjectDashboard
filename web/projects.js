@@ -13,6 +13,7 @@ const templateFilter = document.getElementById('templateFilter');
 
 const newBtn = document.getElementById('newBtn');
 const saveBtn = document.getElementById('saveBtn');
+const cloneBtn = document.getElementById('cloneBtn');
 const deleteBtn = document.getElementById('deleteBtn');
 
 let me = null;
@@ -75,6 +76,7 @@ function setForm(p = null) {
   notes.value = p?.notes || '';
   setAllowedRolesChecks(p?.allowed_roles || 'member,desenhista,revisor,cliente');
   deleteBtn.disabled = !p;
+  if (cloneBtn) cloneBtn.disabled = !(p && p.is_template);
 
   if (selectedProjectId) {
     const u = new URL(window.location.href);
@@ -230,6 +232,35 @@ deleteBtn.onclick = async () => {
     feedback.textContent = e.message;
   }
 };
+
+if (cloneBtn) {
+  cloneBtn.onclick = async () => {
+    const pid = Number(projectId.value || selectedProjectId || 0);
+    if (!pid) return;
+    const selected = projects.find((p) => Number(p.project_id) === pid);
+    if (!selected?.is_template) {
+      feedback.textContent = 'Selecione um projeto template para clonar.';
+      return;
+    }
+    const suggested = `${selected.project_name} - Cópia`;
+    const newName = window.prompt('Nome do novo projeto criado a partir do template:', suggested);
+    if (!newName || !String(newName).trim()) return;
+
+    feedback.textContent = '';
+    try {
+      const created = await api(`/api/admin/projects/${pid}/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_name: String(newName).trim() }),
+      });
+      const newProjectId = Number(created?.project_id || 0) || null;
+      feedback.textContent = 'Projeto criado a partir do template ✅';
+      await refresh(newProjectId, true);
+    } catch (e) {
+      feedback.textContent = e.message;
+    }
+  };
+}
 
 if (templateFilter) {
   templateFilter.onchange = () => renderList();
