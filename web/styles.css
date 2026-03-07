@@ -149,7 +149,7 @@ dialog form { padding: 16px; display: grid; gap: 8px; }
 .edit-wrap { padding: 16px; }
 .edit-two-cols { max-width: 1320px; margin: 0 auto; display: grid; grid-template-columns: minmax(420px, 1fr) minmax(320px, 1fr); gap: 14px; align-items: start; }
 .projects-page-wrap { max-width: 1320px; margin: 0 auto; }
-.projects-top-cols { grid-template-columns: 1fr 1fr; max-width: none; margin: 0; align-items: stretch; }
+.projects-top-cols { grid-template-columns: 0.85fr 1.15fr; max-width: none; margin: 0; align-items: stretch; }
 .projects-top-cols .edit-form,
 .projects-top-cols .review-panel { height: 100%; }
 .projects-cards-panel { margin: 0; width: 100%; }
