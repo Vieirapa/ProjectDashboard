@@ -91,7 +91,7 @@ function renderList() {
   }
   projectsList.innerHTML = `<table>
     <tr><th>ID</th><th>Nome</th><th>Template</th><th>Início</th><th>Roles</th></tr>
-    ${projects.map(p => `<tr data-id="${p.project_id}"><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${p.is_template ? 'Sim' : 'Não'}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
+    ${projects.map(p => `<tr data-id="${p.project_id}"><td>${p.project_id}</td><td>${esc(p.project_name)}${p.is_template ? ' <span class="template-chip">Template</span>' : ''}</td><td>${p.is_template ? 'Sim' : 'Não'}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
   </table>`;
   projectsList.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.style.cursor = 'pointer';
