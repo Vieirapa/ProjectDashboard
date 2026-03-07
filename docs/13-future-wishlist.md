@@ -28,6 +28,13 @@ This file tracks future ideas and improvements for ProjectDashboard.
 - Add helper script to list available backups with interactive selection
 - Add one-click restore assistant in admin UI (guided validation + warning step)
 
+### Project Governance / Meetings
+
+- Add a dedicated feature for **Project Meeting Minutes Notes**
+  - allow storing a chronological list of meeting notes per project
+  - support date, author, and free-text notes
+  - make historical decision tracking easier for project follow-up
+
 ### Diagnostics / Observability
 
 - Expand diagnostics with disk usage checks
