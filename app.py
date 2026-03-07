@@ -669,16 +669,47 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
-def delete_project_registry(project_id: int) -> tuple[bool, str]:
+def delete_project_registry(project_id: int) -> tuple[bool, str, int]:
+    deleted_cards = 0
     with db() as conn:
         exists = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
         if not exists:
-            return False, "Projeto não encontrado"
-        linked = conn.execute("SELECT 1 FROM documents WHERE project_id=? LIMIT 1", (project_id,)).fetchone()
-        if linked:
-            return False, "Não é possível apagar projeto com documentos vinculados"
+            return False, "Projeto não encontrado", 0
+
+        linked_docs = conn.execute(
+            "SELECT slug, path, document_path FROM documents WHERE project_id=?",
+            (project_id,),
+        ).fetchall()
+
+        # Hard-delete all project cards (and related metadata) before deleting project.
+        for row in linked_docs:
+            d = dict(row)
+            slug = str(d.get("slug") or "").strip()
+            if not slug:
+                continue
+            conn.execute("DELETE FROM review_notes WHERE document_slug=?", (slug,))
+            conn.execute("DELETE FROM document_versions WHERE document_slug=?", (slug,))
+
+            for candidate in [d.get("path"), d.get("document_path")]:
+                p = str(candidate or "").strip()
+                if not p:
+                    continue
+                try:
+                    rp = Path(p)
+                    if rp.exists():
+                        if rp.is_file():
+                            rp.unlink(missing_ok=True)
+                        elif rp.is_dir():
+                            shutil.rmtree(rp, ignore_errors=True)
+                except Exception:
+                    pass
+
+            conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
+            deleted_cards += 1
+
         conn.execute("DELETE FROM projects WHERE project_id=?", (project_id,))
-    return True, "ok"
+
+    return True, "ok", deleted_cards
 
 
 def _unique_slug(conn: sqlite3.Connection, base_name: str) -> str:
@@ -2526,10 +2557,10 @@ class Handler(BaseHTTPRequestHandler):
                 project_id = int(p.split("/")[4])
             except Exception:
                 return self._json(400, {"ok": False, "error": "ID inválido"})
-            done, msg = delete_project_registry(project_id)
+            done, msg, deleted_cards = delete_project_registry(project_id)
             if done:
-                audit(admin["username"], "project.registry.delete", str(project_id))
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+                audit(admin["username"], "project.registry.delete", str(project_id), f"deleted_cards={deleted_cards}")
+            return self._json(200 if done else 400, {"ok": done, "deleted_cards": deleted_cards if done else 0, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):
             admin = self._require_admin()

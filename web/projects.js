@@ -221,11 +221,26 @@ saveBtn.onclick = async () => {
 
 deleteBtn.onclick = async () => {
   if (!projectId.value) return;
-  if (!confirm('Apagar este projeto?')) return;
-  feedback.textContent = '';
+
+  const pid = Number(projectId.value || 0);
+  const pname = String(projectName.value || '').trim() || `ID ${pid}`;
+
   try {
-    await api(`/api/admin/projects/${projectId.value}`, { method: 'DELETE' });
-    feedback.textContent = 'Projeto apagado ✅';
+    const docsData = await api(`/api/documents?project_id=${encodeURIComponent(String(pid))}`);
+    const cardCount = Array.isArray(docsData?.documents) ? docsData.documents.length : 0;
+
+    const msg = cardCount > 0
+      ? `ATENÇÃO: o projeto "${pname}" possui ${cardCount} card(s)/documento(s) anexado(s).\n\nSe você confirmar, todos esses cards serão excluídos permanentemente junto com o projeto, e não poderão ser restaurados.\n\nDeseja continuar?`
+      : `Apagar o projeto "${pname}"?`;
+
+    if (!confirm(msg)) return;
+
+    feedback.textContent = '';
+    const del = await api(`/api/admin/projects/${pid}`, { method: 'DELETE' });
+    const deletedCards = Number(del?.deleted_cards || 0);
+    feedback.textContent = deletedCards > 0
+      ? `Projeto apagado ✅ (${deletedCards} card(s) excluído(s))`
+      : 'Projeto apagado ✅';
     setForm(null);
     await refresh();
   } catch (e) {
