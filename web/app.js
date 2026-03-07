@@ -218,7 +218,8 @@ function syncProjectSelect() {
   const selected = Number(state.selectedProjectId || 1);
   projectSelect.innerHTML = '';
   (state.projects || []).forEach((p) => {
-    const opt = new Option(`${p.project_id} · ${p.project_name}`, String(p.project_id));
+    const templateLabel = p.is_template ? ' [Template]' : '';
+    const opt = new Option(`${p.project_id} · ${p.project_name}${templateLabel}`, String(p.project_id));
     if (Number(p.project_id) === selected) opt.selected = true;
     projectSelect.append(opt);
   });

@@ -583,12 +583,16 @@ def parse_allowed_roles(raw: str | None) -> list[str]:
 
 
 def project_role_allowed(project_row: dict | None, role: str) -> bool:
-    if (role or '').strip().lower() == 'admin':
+    normalized_role = (role or '').strip().lower()
+    if normalized_role == 'admin':
         return True
     if not project_row:
         return False
+    # Template projects are restricted to admin only.
+    if bool(project_row.get('is_template')):
+        return False
     allowed = parse_allowed_roles(project_row.get('allowed_roles'))
-    return (role or '').strip().lower() in allowed
+    return normalized_role in allowed
 
 
 def _to_bool_int(value) -> int:

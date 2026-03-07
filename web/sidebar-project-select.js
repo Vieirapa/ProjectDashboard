@@ -27,7 +27,8 @@
 
     const selected = currentProjectId() || items[0].project_id;
     items.forEach((p) => {
-      const opt = new Option(`${p.project_id} · ${p.project_name}`, String(p.project_id));
+      const templateLabel = p.is_template ? ' [Template]' : '';
+      const opt = new Option(`${p.project_id} · ${p.project_name}${templateLabel}`, String(p.project_id));
       if (Number(p.project_id) === Number(selected)) opt.selected = true;
       sel.append(opt);
     });
