@@ -709,13 +709,14 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
         if int(template["is_template"] or 0) != 1:
             return False, "Projeto selecionado não é template", None
 
-        default_notes = f"Criado a partir do template #{template['project_id']} · {template['project_name']}"
+        template_d = dict(template)
+        default_notes = f"Criado a partir do template #{template_d['project_id']} · {template_d['project_name']}"
         new_notes = str(payload.get("notes") or "").strip() or default_notes
-        allowed_roles = _normalize_allowed_roles(template.get("allowed_roles"))
+        allowed_roles = _normalize_allowed_roles(template_d.get("allowed_roles"))
 
         cur = conn.execute(
             "INSERT INTO projects (project_name, start_date, notes, allowed_roles, is_template, template_source_project_id) VALUES (?, ?, ?, ?, 0, ?)",
-            (new_name, new_start_date, new_notes, allowed_roles, int(template["project_id"])),
+            (new_name, new_start_date, new_notes, allowed_roles, int(template_d["project_id"])),
         )
         new_project_id = int(cur.lastrowid or 0)
         if not new_project_id:
@@ -727,7 +728,8 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
         ).fetchall()
 
         now = now_iso()
-        for d in template_docs:
+        for row in template_docs:
+            d = dict(row)
             name = str(d.get("name") or "").strip() or "Documento"
             doc_slug = _unique_slug(conn, name)
             doc_path = str(BASE_DIR / doc_slug)
