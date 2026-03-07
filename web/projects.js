@@ -2,6 +2,7 @@ const logoutBtn = document.getElementById('logoutBtn');
 
 const projectId = document.getElementById('projectId');
 const projectName = document.getElementById('projectName');
+const isTemplate = document.getElementById('isTemplate');
 const startDate = document.getElementById('startDate');
 const notes = document.getElementById('notes');
 const allowedRolesBox = document.getElementById('allowedRolesBox');
@@ -69,6 +70,7 @@ function setForm(p = null) {
   projectId.value = p?.project_id || '';
   projectName.value = p?.project_name || '';
   startDate.value = p?.start_date?.slice(0, 10) || '';
+  isTemplate.checked = Boolean(p?.is_template);
   notes.value = p?.notes || '';
   setAllowedRolesChecks(p?.allowed_roles || 'member,desenhista,revisor,cliente');
   deleteBtn.disabled = !p;
@@ -88,8 +90,8 @@ function renderList() {
     return;
   }
   projectsList.innerHTML = `<table>
-    <tr><th>ID</th><th>Nome</th><th>Início</th><th>Roles</th></tr>
-    ${projects.map(p => `<tr data-id="${p.project_id}"><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
+    <tr><th>ID</th><th>Nome</th><th>Template</th><th>Início</th><th>Roles</th></tr>
+    ${projects.map(p => `<tr data-id="${p.project_id}"><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${p.is_template ? 'Sim' : 'Não'}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
   </table>`;
   projectsList.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.style.cursor = 'pointer';
@@ -172,6 +174,7 @@ saveBtn.onclick = async () => {
   try {
     const payload = {
       project_name: projectName.value,
+      is_template: isTemplate.checked,
       start_date: startDate.value,
       notes: notes.value,
       allowed_roles: getAllowedRolesFromChecks(),

@@ -591,13 +591,23 @@ def project_role_allowed(project_row: dict | None, role: str) -> bool:
     return (role or '').strip().lower() in allowed
 
 
+def _to_bool_int(value) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, (int, float)):
+        return 1 if int(value) != 0 else 0
+    s = str(value or '').strip().lower()
+    return 1 if s in {'1', 'true', 'yes', 'on'} else 0
+
+
 def list_projects_registry() -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles FROM projects ORDER BY project_id").fetchall()
+        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles, is_template FROM projects ORDER BY project_id").fetchall()
     out = []
     for r in rows:
         d = dict(r)
         d['allowed_roles'] = _normalize_allowed_roles(d.get('allowed_roles'))
+        d['is_template'] = bool(int(d.get('is_template') or 0))
         out.append(d)
     return out
 
@@ -607,14 +617,15 @@ def create_project_registry(payload: dict) -> tuple[bool, str]:
     start_date = str(payload.get("start_date") or "").strip()
     notes = str(payload.get("notes") or "").strip()
     allowed_roles = _normalize_allowed_roles(payload.get("allowed_roles") or payload.get("allowedRoles"))
+    is_template = _to_bool_int(payload.get("is_template") if "is_template" in payload else payload.get("isTemplate"))
     if not name:
         return False, "Nome do projeto é obrigatório"
     if not start_date:
         start_date = now_iso()
     with db() as conn:
         conn.execute(
-            "INSERT INTO projects (project_name, start_date, notes, allowed_roles) VALUES (?, ?, ?, ?)",
-            (name, start_date, notes, allowed_roles),
+            "INSERT INTO projects (project_name, start_date, notes, allowed_roles, is_template) VALUES (?, ?, ?, ?, ?)",
+            (name, start_date, notes, allowed_roles, is_template),
         )
     return True, "ok"
 
@@ -637,6 +648,9 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
     if "allowed_roles" in payload or "allowedRoles" in payload:
         fields.append("allowed_roles=?")
         vals.append(_normalize_allowed_roles(payload.get("allowed_roles") or payload.get("allowedRoles")))
+    if "is_template" in payload or "isTemplate" in payload:
+        fields.append("is_template=?")
+        vals.append(_to_bool_int(payload.get("is_template") if "is_template" in payload else payload.get("isTemplate")))
     if not fields:
         return False, "Nada para atualizar"
     vals.append(project_id)
