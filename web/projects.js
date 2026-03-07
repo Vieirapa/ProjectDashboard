@@ -188,14 +188,17 @@ saveBtn.onclick = async () => {
       });
       feedback.textContent = 'Projeto atualizado ✅';
     } else {
-      await api('/api/admin/projects', {
+      const created = await api('/api/admin/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (Number(created?.project_id) > 0) {
+        selectedProjectId = Number(created.project_id);
+      }
       feedback.textContent = 'Projeto criado ✅';
     }
-    await refresh(preserveId);
+    await refresh(Number(projectId.value || selectedProjectId || preserveId || 0) || null);
   } catch (e) {
     feedback.textContent = e.message;
   }

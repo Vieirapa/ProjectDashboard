@@ -612,22 +612,23 @@ def list_projects_registry() -> list[dict]:
     return out
 
 
-def create_project_registry(payload: dict) -> tuple[bool, str]:
+def create_project_registry(payload: dict) -> tuple[bool, str, int | None]:
     name = str(payload.get("project_name") or "").strip()
     start_date = str(payload.get("start_date") or "").strip()
     notes = str(payload.get("notes") or "").strip()
     allowed_roles = _normalize_allowed_roles(payload.get("allowed_roles") or payload.get("allowedRoles"))
     is_template = _to_bool_int(payload.get("is_template") if "is_template" in payload else payload.get("isTemplate"))
     if not name:
-        return False, "Nome do projeto é obrigatório"
+        return False, "Nome do projeto é obrigatório", None
     if not start_date:
         start_date = now_iso()
     with db() as conn:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO projects (project_name, start_date, notes, allowed_roles, is_template) VALUES (?, ?, ?, ?, ?)",
             (name, start_date, notes, allowed_roles, is_template),
         )
-    return True, "ok"
+        new_id = int(cur.lastrowid or 0) or None
+    return True, "ok", new_id
 
 
 def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
@@ -2108,10 +2109,10 @@ class Handler(BaseHTTPRequestHandler):
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            done, msg = create_project_registry(body)
+            done, msg, new_project_id = create_project_registry(body)
             if done:
                 audit(admin["username"], "project.registry.create", body.get("project_name", ""))
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+            return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
         if p == "/api/admin/users":
             admin = self._require_admin()
