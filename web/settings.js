@@ -152,10 +152,9 @@ async function loadDeletedDocuments() {
   }
 
   deletedDocumentsList.innerHTML = `<table>
-    <tr><th>Nome</th><th>Slug</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr>
+    <tr><th>Nome</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr>
     ${d.deleted_documents.map((p) => `<tr>
       <td>${p.name || '-'}</td>
-      <td>${p.slug || '-'}</td>
       <td>${p.deleted_at || '-'}</td>
       <td>${p.deleted_by || '-'}</td>
       <td>
