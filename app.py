@@ -1390,7 +1390,12 @@ def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> t
     if not script.exists():
         return False, f"Script de restore não encontrado: {script}"
 
-    cmd = [str(script), "--db-backup", db_backup, "--allow-non-root"]
+    cmd = [
+        str(script),
+        "--db-backup", db_backup,
+        "--install-dir", str(APP_DIR),
+        "--allow-non-root",
+    ]
     if docs_backup:
         cmd.extend(["--docs-backup", docs_backup])
 
