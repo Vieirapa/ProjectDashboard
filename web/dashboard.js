@@ -38,7 +38,7 @@ async function loadDashboard() {
     api('/api/projects-registry'),
   ]);
 
-  const projectList = projects || [];
+  const projectList = (projects || []).filter((p) => !p.is_template);
   const perProject = await Promise.all(
     projectList.map(async (p) => {
       const d = await api(`/api/documents?project_id=${encodeURIComponent(String(p.project_id))}`);
