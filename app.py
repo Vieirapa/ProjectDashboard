@@ -1560,11 +1560,58 @@ def save_document_file(slug: str, filename: str, mime_type: str, b64_content: st
     return True, "ok"
 
 
-def list_deleted_documents() -> list[dict]:
+def list_deleted_documents(
+    q: str | None = None,
+    deleted_by: str | None = None,
+    deleted_from: str | None = None,
+    deleted_to: str | None = None,
+) -> list[dict]:
+    query = "SELECT id, slug, name, deleted_at, deleted_by, trash_path FROM deleted_documents"
+    where: list[str] = []
+    params: list[object] = []
+
+    qv = (q or "").strip()
+    if qv:
+        where.append("(name LIKE ? OR slug LIKE ?)")
+        like = f"%{qv}%"
+        params.extend([like, like])
+
+    byv = (deleted_by or "").strip()
+    if byv:
+        where.append("deleted_by LIKE ?")
+        params.append(f"%{byv}%")
+
+    def _normalize_date_start(raw: str | None) -> str | None:
+        v = (raw or "").strip()
+        if not v:
+            return None
+        if len(v) == 10:
+            return f"{v}T00:00:00Z"
+        return v
+
+    def _normalize_date_end(raw: str | None) -> str | None:
+        v = (raw or "").strip()
+        if not v:
+            return None
+        if len(v) == 10:
+            return f"{v}T23:59:59Z"
+        return v
+
+    from_v = _normalize_date_start(deleted_from)
+    to_v = _normalize_date_end(deleted_to)
+    if from_v:
+        where.append("deleted_at >= ?")
+        params.append(from_v)
+    if to_v:
+        where.append("deleted_at <= ?")
+        params.append(to_v)
+
+    if where:
+        query += " WHERE " + " AND ".join(where)
+    query += " ORDER BY deleted_at DESC"
+
     with db() as conn:
-        rows = conn.execute(
-            "SELECT id, slug, name, deleted_at, deleted_by, trash_path FROM deleted_documents ORDER BY deleted_at DESC"
-        ).fetchall()
+        rows = conn.execute(query, tuple(params)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -2132,7 +2179,26 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin(): return
             settings = get_admin_settings()
             retention_days = _setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30")
-            return self._json(200, {"ok": True, "retention_days": retention_days, "deleted_documents": list_deleted_documents()})
+            q = (qs.get("q", [""])[0] or "").strip()
+            deleted_by = (qs.get("deleted_by", [""])[0] or "").strip()
+            deleted_from = (qs.get("deleted_from", [""])[0] or "").strip()
+            deleted_to = (qs.get("deleted_to", [""])[0] or "").strip()
+            return self._json(200, {
+                "ok": True,
+                "retention_days": retention_days,
+                "filters": {
+                    "q": q,
+                    "deleted_by": deleted_by,
+                    "deleted_from": deleted_from,
+                    "deleted_to": deleted_to,
+                },
+                "deleted_documents": list_deleted_documents(
+                    q=q,
+                    deleted_by=deleted_by,
+                    deleted_from=deleted_from,
+                    deleted_to=deleted_to,
+                ),
+            })
 
         if p == "/api/admin/system/diagnostics":
             if not self._require_admin(): return

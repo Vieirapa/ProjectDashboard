@@ -116,6 +116,26 @@
 
         <div style="margin-top:16px;">
           <h4 style="margin:0 0 8px;">Documentos apagados disponíveis para restauração</h4>
+
+          <div class="form-grid" style="max-width:900px; margin-bottom:10px;">
+            <label>Buscar por nome/slug</label>
+            <input id="deleted_filter_q" placeholder="Ex.: desenho-1011" />
+
+            <label>Apagado por</label>
+            <input id="deleted_filter_by" placeholder="Ex.: admin" />
+
+            <label>De (data)</label>
+            <input id="deleted_filter_from" type="date" />
+
+            <label>Até (data)</label>
+            <input id="deleted_filter_to" type="date" />
+
+            <div class="dialog-actions" style="justify-content:flex-start;">
+              <button type="button" id="applyDeletedFiltersBtn" class="secondary">Filtrar</button>
+              <button type="button" id="clearDeletedFiltersBtn" class="secondary">Limpar filtros</button>
+            </div>
+          </div>
+
           <div id="deletedDocumentsList" class="small">Nenhum documento apagado.</div>
         </div>
       </section>

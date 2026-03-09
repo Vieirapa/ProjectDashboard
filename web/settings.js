@@ -19,6 +19,8 @@ const testSmtpBtn = document.getElementById('testSmtpBtn');
 const runBackupNowBtn = document.getElementById('runBackupNowBtn');
 const runDiagBtn = document.getElementById('runDiagBtn');
 const refreshDeletedBtn = document.getElementById('refreshDeletedBtn');
+const applyDeletedFiltersBtn = document.getElementById('applyDeletedFiltersBtn');
+const clearDeletedFiltersBtn = document.getElementById('clearDeletedFiltersBtn');
 
 const f = {
   host: document.getElementById('smtp_host'),
@@ -37,6 +39,10 @@ const f = {
   systemGitRepo: document.getElementById('system_git_repo'),
   systemGitBranch: document.getElementById('system_git_branch'),
   deletedRetentionDays: document.getElementById('deleted_retention_days'),
+  deletedFilterQ: document.getElementById('deleted_filter_q'),
+  deletedFilterBy: document.getElementById('deleted_filter_by'),
+  deletedFilterFrom: document.getElementById('deleted_filter_from'),
+  deletedFilterTo: document.getElementById('deleted_filter_to'),
 
   rName: document.getElementById('r_name'),
   rStatuses: document.getElementById('r_statuses'),
@@ -49,6 +55,12 @@ const f = {
 };
 
 let meta = { statuses: [], roles: [] };
+let deletedFilters = {
+  q: '',
+  deleted_by: '',
+  deleted_from: '',
+  deleted_to: '',
+};
 
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
@@ -144,10 +156,23 @@ async function loadSettings() {
 }
 
 async function loadDeletedDocuments() {
-  const d = await api('/api/admin/deleted-documents');
+  const params = new URLSearchParams();
+  Object.entries(deletedFilters).forEach(([k, v]) => {
+    const val = String(v || '').trim();
+    if (val) params.set(k, val);
+  });
+
+  const d = await api(`/api/admin/deleted-documents${params.toString() ? `?${params.toString()}` : ''}`);
+
+  if (d.filters) {
+    deletedFilters = { ...deletedFilters, ...d.filters };
+  }
 
   if (!d.deleted_documents?.length) {
-    deletedDocumentsList.textContent = 'Nenhum documento apagado.';
+    const hasFilter = Object.values(deletedFilters).some((x) => String(x || '').trim());
+    deletedDocumentsList.textContent = hasFilter
+      ? 'Nenhum documento apagado encontrado para os filtros informados.'
+      : 'Nenhum documento apagado.';
     return;
   }
 
@@ -412,6 +437,37 @@ refreshDeletedBtn.onclick = async () => {
   try {
     await loadDeletedDocuments();
     deletedPolicyFeedback.textContent = 'Lista de documentos apagados atualizada.';
+  } catch (err) {
+    deletedPolicyFeedback.textContent = err.message;
+  }
+};
+
+applyDeletedFiltersBtn.onclick = async () => {
+  deletedPolicyFeedback.textContent = '';
+  deletedFilters = {
+    q: f.deletedFilterQ.value,
+    deleted_by: f.deletedFilterBy.value,
+    deleted_from: f.deletedFilterFrom.value,
+    deleted_to: f.deletedFilterTo.value,
+  };
+  try {
+    await loadDeletedDocuments();
+    deletedPolicyFeedback.textContent = 'Filtros aplicados.';
+  } catch (err) {
+    deletedPolicyFeedback.textContent = err.message;
+  }
+};
+
+clearDeletedFiltersBtn.onclick = async () => {
+  deletedPolicyFeedback.textContent = '';
+  deletedFilters = { q: '', deleted_by: '', deleted_from: '', deleted_to: '' };
+  f.deletedFilterQ.value = '';
+  f.deletedFilterBy.value = '';
+  f.deletedFilterFrom.value = '';
+  f.deletedFilterTo.value = '';
+  try {
+    await loadDeletedDocuments();
+    deletedPolicyFeedback.textContent = 'Filtros limpos.';
   } catch (err) {
     deletedPolicyFeedback.textContent = err.message;
   }
