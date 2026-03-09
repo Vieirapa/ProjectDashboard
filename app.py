@@ -1566,7 +1566,7 @@ def list_deleted_documents(
     deleted_from: str | None = None,
     deleted_to: str | None = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = 10,
 ) -> dict:
     base_query = "FROM deleted_documents"
     where: list[str] = []
@@ -1611,7 +1611,7 @@ def list_deleted_documents(
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
 
     safe_page = max(1, int(page or 1))
-    safe_page_size = max(1, min(int(page_size or 20), 100))
+    safe_page_size = max(1, min(int(page_size or 10), 100))
 
     with db() as conn:
         total = int(conn.execute(f"SELECT COUNT(*) AS c {base_query}{where_sql}", tuple(params)).fetchone()["c"])
@@ -2220,9 +2220,9 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 page = 1
             try:
-                page_size = int((qs.get("page_size", ["20"])[0] or "20").strip())
+                page_size = int((qs.get("page_size", ["10"])[0] or "10").strip())
             except Exception:
-                page_size = 20
+                page_size = 10
 
             data = list_deleted_documents(
                 q=q,
