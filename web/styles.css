@@ -170,6 +170,10 @@ dialog form { padding: 16px; display: grid; gap: 8px; }
 
 .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; }
 .panel { margin: 14px; padding: 14px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.home-kpi-grid { grid-template-columns: repeat(4, minmax(180px, 1fr)); }
+.home-kpi-card { margin: 0; }
+.home-kpi-card h3 { margin: 0 0 8px; font-size: 14px; color: #475569; }
+.home-kpi-value { font-size: 30px; font-weight: 800; color: #0f172a; }
 .form-grid { display: grid; gap: 8px; }
 .inline-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .inline-check input[type="checkbox"] { width: auto !important; padding: 0; margin: 0; }
@@ -209,6 +213,7 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e5e7eb; font-
   #board { grid-template-columns: 1fr 1fr; }
   #filters { grid-template-columns: 1fr 1fr; }
   .panel-grid { grid-template-columns: 1fr; }
+  .home-kpi-grid { grid-template-columns: 1fr 1fr; }
   .edit-two-cols { grid-template-columns: 1fr; }
   .project-summary { grid-template-columns: 1fr; }
   .project-summary-line { font-size: 14px; }

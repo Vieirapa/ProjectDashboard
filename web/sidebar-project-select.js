@@ -39,7 +39,7 @@
       const u = new URL(window.location.href);
       u.searchParams.set('project_id', pid);
       if (u.pathname === '/edit.html' || u.pathname === '/profile.html' || u.pathname === '/admin-users.html' || u.pathname === '/settings.html' || u.pathname === '/projects.html') {
-        window.location.href = `/?project_id=${encodeURIComponent(pid)}`;
+        window.location.href = `/kanban.html?project_id=${encodeURIComponent(pid)}`;
       } else {
         window.location.href = u.pathname + '?' + u.searchParams.toString();
       }

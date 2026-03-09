@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ProjectDashbord</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar-root" data-active="kanban"></aside>
+
+    <main class="content">
+      <section id="projectSummary" class="project-summary">
+        <div class="project-summary-left">
+          <select id="sidebarProjectSelect" class="header-project-select"></select>
+          <div class="project-summary-line">Data de início do projeto: <b id="projectStartDate">-</b></div>
+          <div class="project-summary-line">Colaboradores envolvidos: <b id="projectCollaborators">0</b></div>
+        </div>
+        <div class="project-summary-right">
+          <div class="project-summary-head">
+            <h2>Status do projeto</h2>
+          </div>
+          <div class="project-summary-line">Documentos em Baklog: <b id="sumBacklog">0 (0%)</b></div>
+          <div class="project-summary-line">Documentos em Andamento: <b id="sumProgress">0 (0%)</b></div>
+          <div class="project-summary-line">Documentos em Revisão: <b id="sumReview">0 (0%)</b></div>
+          <div class="project-summary-line">Documentos em Concluídos: <b id="sumDone">0 (0%)</b></div>
+        </div>
+      </section>
+
+      <section class="board-title-row">
+        <h1>📋 Kanban</h1>
+        <div class="header-actions">
+          <button id="newBtn">+ Novo documento</button>
+          <button id="refreshBtn">Atualizar</button>
+        </div>
+      </section>
+
+      <section id="filters">
+        <input id="searchInput" placeholder="Buscar por nome/descrição" />
+        <select id="statusFilter"><option value="">Todos os status</option></select>
+        <select id="priorityFilter"><option value="">Todas prioridades</option></select>
+        <input id="ownerFilter" placeholder="Filtrar por responsável" />
+        <select id="sortOrderFilter">
+          <option value="priority_desc">Ordenação: Prioridade (maior → menor)</option>
+          <option value="priority_asc">Ordenação: Prioridade (menor → maior)</option>
+          <option value="openedAt_desc">Ordenação: Data de abertura (mais novo → mais antigo)</option>
+          <option value="openedAt_asc">Ordenação: Data de abertura (mais antigo → mais novo)</option>
+          <option value="ageDays_desc">Ordenação: Tempo de ticket (maior → menor)</option>
+          <option value="ageDays_asc">Ordenação: Tempo de ticket (menor → maior)</option>
+          <option value="name_asc">Ordenação: Alfabética (A → Z)</option>
+          <option value="name_desc">Ordenação: Alfabética (Z → A)</option>
+          <option value="dueDate_asc">Ordenação: Prazo (mais próximo → mais distante)</option>
+          <option value="dueDate_desc">Ordenação: Prazo (mais distante → mais próximo)</option>
+          <option value="updatedAt_desc">Ordenação: Última atualização (mais recente → mais antiga)</option>
+          <option value="updatedAt_asc">Ordenação: Última atualização (mais antiga → mais recente)</option>
+        </select>
+      </section>
+
+      <main id="board"></main>
+    </main>
+  </div>
+
+  <dialog id="documentDialog">
+    <form method="dialog" id="documentForm">
+      <h3>Novo documento</h3>
+      <label>Nome</label><input id="pName" required />
+      <label>Descrição</label><textarea id="pDescription" rows="3"></textarea>
+      <label>Status</label><select id="pStatus"></select>
+      <label>Prioridade</label><select id="pPriority"></select>
+      <label>Responsável</label><input id="pOwner" list="ownersList" />
+      <datalist id="ownersList"></datalist>
+      <label>Prazo</label><input id="pDueDate" type="date" />
+      <label>Anexar um arquivo</label><input id="pDocumentFile" type="file" />
+      <div class="dialog-actions">
+        <button type="button" class="secondary" id="cancelDialogBtn">Cancelar</button>
+        <button type="submit">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/sidebar.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

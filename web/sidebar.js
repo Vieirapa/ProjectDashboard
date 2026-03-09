@@ -35,8 +35,9 @@
       <h2>ProjectDashbord</h2>
 
       <div class="side-group">Área de trabalho</div>
+      <a class="side-link ${active === 'home' ? 'active' : ''}" href="/">Início</a>
       ${canAccessProjectArea ? `<a class="side-link ${active === 'projects' ? 'active' : ''}" href="/projects.html?project_id=${projectId}">Projetos</a>` : ''}
-      <a class="side-link ${active === 'kanban' ? 'active' : ''}" href="/?project_id=${projectId}">Kanban</a>
+      <a class="side-link ${active === 'kanban' ? 'active' : ''}" href="/kanban.html?project_id=${projectId}">Kanban</a>
 
       ${canAdminTools ? `
       <div class="side-group">Administração</div>

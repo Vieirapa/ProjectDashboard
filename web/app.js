@@ -322,7 +322,7 @@ if (projectSelect) {
   projectSelect.onchange = () => {
     const pid = projectSelect.value;
     if (!pid) return;
-    window.location.href = `/?project_id=${encodeURIComponent(pid)}`;
+    window.location.href = `/kanban.html?project_id=${encodeURIComponent(pid)}`;
   };
 }
 

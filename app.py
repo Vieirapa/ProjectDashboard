@@ -1925,6 +1925,7 @@ class Handler(BaseHTTPRequestHandler):
         if p in ["/", "/index.html"]: return self._serve(WEB_DIR / "index.html", "text/html; charset=utf-8")
         if p == "/login.html": return self._serve(WEB_DIR / "login.html", "text/html; charset=utf-8")
         if p == "/signup.html": return self._serve(WEB_DIR / "signup.html", "text/html; charset=utf-8")
+        if p == "/kanban.html": return self._serve(WEB_DIR / "kanban.html", "text/html; charset=utf-8")
         if p == "/edit.html": return self._serve(WEB_DIR / "edit.html", "text/html; charset=utf-8")
         if p == "/projects.html": return self._serve(WEB_DIR / "projects.html", "text/html; charset=utf-8")
         if p == "/admin-users.html": return self._serve(WEB_DIR / "admin-users.html", "text/html; charset=utf-8")
@@ -1937,7 +1938,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             return self._serve(WEB_DIR / "settings.html", "text/html; charset=utf-8")
-        if p in ["/app.js", "/edit.js", "/projects.js", "/sidebar.js", "/sidebar-project-select.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
+        if p in ["/app.js", "/dashboard.js", "/edit.js", "/projects.js", "/sidebar.js", "/sidebar-project-select.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
             ctype = "application/javascript; charset=utf-8" if p.endswith(".js") else "text/css; charset=utf-8"
             return self._serve(WEB_DIR / p.lstrip("/"), ctype)
 

@@ -230,7 +230,7 @@ backBtn.onclick = () => {
     const leave = confirm('Você fez alterações que ainda não foram salvas. Se sair agora, elas serão perdidas. Deseja continuar?');
     if (!leave) return;
   }
-  location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
+  location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
 };
 
 logoutBtn.onclick = async () => {
@@ -308,7 +308,7 @@ async function handleSave() {
     await loadVersions();
     setDirty(false);
     feedback.textContent = 'Salvo com sucesso ✅';
-    location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
+    location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
   } catch (e) {
     feedback.textContent = e.message;
     isSaving = false;
@@ -326,7 +326,7 @@ deleteBtn.onclick = async () => {
   if (!confirm('Apagar este documento do dashboard? (somente admin)')) return;
   try {
     await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'DELETE'});
-    location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
+    location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
   } catch (e) { feedback.textContent = e.message; }
 };
 
