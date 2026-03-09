@@ -20,7 +20,8 @@ This directory contains the current technical and operational documentation for 
 14. [14-db-structure-and-module-mapping-3be2bc7.md](./14-db-structure-and-module-mapping-3be2bc7.md)
 15. [15-known-bugs.md](./15-known-bugs.md)
 16. [16-release-readiness-2026-03-05.md](./16-release-readiness-2026-03-05.md)
-17. [tests/README.md](./tests/README.md)
+17. [17-manual-do-usuario-v0.9.0-beta.2.md](./17-manual-do-usuario-v0.9.0-beta.2.md)
+18. [tests/README.md](./tests/README.md)
 
 ## Scope
 
