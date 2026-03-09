@@ -47,6 +47,7 @@ async function loadDashboard() {
       return {
         project_id: p.project_id,
         project_name: p.project_name,
+        is_template: !!p.is_template,
         total: docs.length,
         owned: docs.filter((x) => String(x.owner || '').toLowerCase() === String(user.username || '').toLowerCase()).length,
         done: doneDocs.length,
@@ -72,10 +73,11 @@ async function loadDashboard() {
   }
 
   projectsSummaryTable.innerHTML = `<table>
-    <tr><th>ID</th><th>Projeto</th><th>Total de cards</th><th>Seus cards</th><th>Concluídos</th><th>Média resolução</th><th>Ação</th></tr>
+    <tr><th>ID</th><th class="template-flag-col"></th><th>Projeto</th><th>Total de cards</th><th>Seus cards</th><th>Concluídos</th><th>Média resolução</th><th>Ação</th></tr>
     ${perProject.map((p) => `
       <tr>
         <td>${esc(p.project_id)}</td>
+        <td class="template-flag-col">${p.is_template ? '<span class="template-chip" title="Projeto template">TPL</span>' : ''}</td>
         <td>${esc(p.project_name)}</td>
         <td>${esc(p.total)}</td>
         <td>${esc(p.owned)}</td>
