@@ -15,7 +15,7 @@ async function api(url, opts={}) {
 
 async function ensureAdmin() {
   const d = await api('/api/me');
-  if (!d.user || !['admin', 'lider_projeto'].includes(d.user.role)) throw new Error('Acesso restrito a admin/líder de projeto');
+  if (!d.user || d.user.role !== 'admin') throw new Error('Acesso restrito a admin');
   me = d.user;
 }
 

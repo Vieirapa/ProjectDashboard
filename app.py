@@ -1892,6 +1892,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
+    def _require_root_admin(self):
+        u = self._require_auth()
+        if not u: return None
+        if (u.get("role") or "").strip().lower() != "admin":
+            self._json(403, {"ok": False, "error": "forbidden"}); return None
+        return u
+
     def _projects_for_user(self, user: dict | None) -> list[dict]:
         all_projects = list_projects_registry()
         if not user:
@@ -1975,11 +1982,18 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/kanban.html": return self._serve(WEB_DIR / "kanban.html", "text/html; charset=utf-8")
         if p == "/edit.html": return self._serve(WEB_DIR / "edit.html", "text/html; charset=utf-8")
         if p == "/projects.html": return self._serve(WEB_DIR / "projects.html", "text/html; charset=utf-8")
-        if p == "/admin-users.html": return self._serve(WEB_DIR / "admin-users.html", "text/html; charset=utf-8")
+        if p == "/admin-users.html":
+            u = self._user()
+            if not u or (u.get("role") or "").strip().lower() != "admin":
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            return self._serve(WEB_DIR / "admin-users.html", "text/html; charset=utf-8")
         if p == "/profile.html": return self._serve(WEB_DIR / "profile.html", "text/html; charset=utf-8")
         if p == "/settings.html":
             u = self._user()
-            if not u or (u.get("role") or "").strip().lower() not in ADMIN_EQUIV_ROLES:
+            if not u or (u.get("role") or "").strip().lower() != "admin":
                 self.send_response(302)
                 self.send_header("Location", "/")
                 self.end_headers()
@@ -2085,7 +2099,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "projects": list_projects_registry()})
 
         if p == "/api/admin/users":
-            if not self._require_admin(): return
+            if not self._require_root_admin(): return
             with db() as conn:
                 user_rows = conn.execute("SELECT username, role, created_at FROM users ORDER BY username").fetchall()
                 users = []
@@ -2103,7 +2117,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "users": users, "roles": ROLES})
 
         if p == "/api/admin/settings":
-            if not self._require_admin(): return
+            if not self._require_root_admin(): return
             return self._json(200, {"ok": True, "settings": get_admin_settings()})
 
         if p == "/api/admin/reports":
@@ -2216,7 +2230,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/settings/test-smtp":
-            admin = self._require_admin()
+            admin = self._require_root_admin()
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -2312,7 +2326,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
         if p == "/api/admin/users":
-            admin = self._require_admin()
+            admin = self._require_root_admin()
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -2331,7 +2345,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if p == "/api/admin/invites":
-            admin = self._require_admin()
+            admin = self._require_root_admin()
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -2423,7 +2437,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/settings":
-            admin = self._require_admin()
+            admin = self._require_root_admin()
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -2511,7 +2525,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):
-            admin = self._require_admin()
+            admin = self._require_root_admin()
             if not admin: return
             username = p.split("/")[4]
             ok, body = self._read_json()
@@ -2611,7 +2625,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "deleted_cards": deleted_cards if done else 0, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):
-            admin = self._require_admin()
+            admin = self._require_root_admin()
             if not admin: return
             username = p.split("/")[4]
             if username == admin["username"]:
