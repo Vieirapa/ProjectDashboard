@@ -22,7 +22,8 @@ This directory contains the current technical and operational documentation for 
 16. [16-release-readiness-2026-03-05.md](./16-release-readiness-2026-03-05.md)
 17. [17-manual-do-usuario-v0.9.0-beta.2.md](./17-manual-do-usuario-v0.9.0-beta.2.md)
 18. [18-manual-pratico-usuarios-v0.9.0-beta.2.md](./18-manual-pratico-usuarios-v0.9.0-beta.2.md)
-19. [tests/README.md](./tests/README.md)
+19. [19-backlog-executavel-sprint-proxima.md](./19-backlog-executavel-sprint-proxima.md)
+20. [tests/README.md](./tests/README.md)
 
 ## Scope
 
