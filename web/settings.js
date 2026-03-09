@@ -13,6 +13,7 @@ const diagFeedback = document.getElementById('diagFeedback');
 const deletedPolicyFeedback = document.getElementById('deletedPolicyFeedback');
 const reportsList = document.getElementById('reportsList');
 const deletedDocumentsList = document.getElementById('deletedDocumentsList');
+const deletedFiltersState = document.getElementById('deletedFiltersState');
 const reportPreview = document.getElementById('reportPreview');
 const diagOutput = document.getElementById('diagOutput');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
@@ -91,6 +92,18 @@ function renderReportMeta() {
   f.rRoles.innerHTML = meta.roles.map((r) => `<label class="inline-check"><input type="checkbox" value="${r}" /> <span>${r}</span></label>`).join('');
 }
 
+function renderDeletedFiltersState() {
+  if (!deletedFiltersState) return;
+  const labels = [];
+  if (String(deletedFilters.q || '').trim()) labels.push(`nome/slug: "${deletedFilters.q}"`);
+  if (String(deletedFilters.deleted_by || '').trim()) labels.push(`apagado por: "${deletedFilters.deleted_by}"`);
+  if (String(deletedFilters.deleted_from || '').trim()) labels.push(`de: ${deletedFilters.deleted_from}`);
+  if (String(deletedFilters.deleted_to || '').trim()) labels.push(`até: ${deletedFilters.deleted_to}`);
+  deletedFiltersState.textContent = labels.length
+    ? `Filtros ativos → ${labels.join(' | ')}`
+    : 'Filtros ativos → nenhum';
+}
+
 function weekdayLabel(v) {
   const m = {
     '0': 'segunda',
@@ -167,6 +180,11 @@ async function loadDeletedDocuments() {
   if (d.filters) {
     deletedFilters = { ...deletedFilters, ...d.filters };
   }
+  f.deletedFilterQ.value = deletedFilters.q || '';
+  f.deletedFilterBy.value = deletedFilters.deleted_by || '';
+  f.deletedFilterFrom.value = deletedFilters.deleted_from || '';
+  f.deletedFilterTo.value = deletedFilters.deleted_to || '';
+  renderDeletedFiltersState();
 
   if (!d.deleted_documents?.length) {
     const hasFilter = Object.values(deletedFilters).some((x) => String(x || '').trim());
