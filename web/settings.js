@@ -687,15 +687,27 @@ logoutBtn.onclick = async () => {
 (async () => {
   try {
     await ensureAdmin();
-    await Promise.all([loadSettings(), loadReports(), loadDeletedDocuments()]);
-    await loadBackupSnapshots();
-    try {
-      const d = await api('/api/admin/system/diagnostics');
-      renderDiagnostics(d.diagnostics || {});
-    } catch (_) {
-      // diagnóstico pode falhar sem bloquear tela
-    }
   } catch {
     location.href = '/';
+    return;
+  }
+
+  try {
+    await Promise.all([loadSettings(), loadReports(), loadDeletedDocuments()]);
+  } catch (e) {
+    backupFeedback.textContent = e?.message || 'Falha ao carregar configurações iniciais.';
+  }
+
+  try {
+    await loadBackupSnapshots();
+  } catch (e) {
+    backupRestoreList.textContent = 'Não foi possível carregar a lista de backups nesta instância (endpoint indisponível ou serviço desatualizado).';
+  }
+
+  try {
+    const d = await api('/api/admin/system/diagnostics');
+    renderDiagnostics(d.diagnostics || {});
+  } catch (_) {
+    // diagnóstico pode falhar sem bloquear tela
   }
 })();
