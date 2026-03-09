@@ -168,6 +168,34 @@ async function loadSettings() {
   });
 }
 
+function applyDeletedFiltersLocal(rows) {
+  const q = String(deletedFilters.q || '').trim().toLowerCase();
+  const by = String(deletedFilters.deleted_by || '').trim().toLowerCase();
+  const from = String(deletedFilters.deleted_from || '').trim();
+  const to = String(deletedFilters.deleted_to || '').trim();
+
+  return (rows || []).filter((r) => {
+    const name = String(r?.name || '').toLowerCase();
+    const slug = String(r?.slug || '').toLowerCase();
+    const deletedBy = String(r?.deleted_by || '').trim().toLowerCase();
+    const deletedAt = String(r?.deleted_at || '').trim();
+
+    if (q && !name.includes(q) && !slug.includes(q)) return false;
+    if (by && !deletedBy.includes(by)) return false;
+
+    if (from) {
+      const fromIso = from.length === 10 ? `${from}T00:00:00Z` : from;
+      if (deletedAt && deletedAt < fromIso) return false;
+    }
+    if (to) {
+      const toIso = to.length === 10 ? `${to}T23:59:59Z` : to;
+      if (deletedAt && deletedAt > toIso) return false;
+    }
+
+    return true;
+  });
+}
+
 async function loadDeletedDocuments() {
   const params = new URLSearchParams();
   Object.entries(deletedFilters).forEach(([k, v]) => {
@@ -186,7 +214,9 @@ async function loadDeletedDocuments() {
   f.deletedFilterTo.value = deletedFilters.deleted_to || '';
   renderDeletedFiltersState();
 
-  if (!d.deleted_documents?.length) {
+  const filteredRows = applyDeletedFiltersLocal(d.deleted_documents || []);
+
+  if (!filteredRows.length) {
     const hasFilter = Object.values(deletedFilters).some((x) => String(x || '').trim());
     deletedDocumentsList.textContent = hasFilter
       ? 'Nenhum documento apagado encontrado para os filtros informados.'
@@ -196,7 +226,7 @@ async function loadDeletedDocuments() {
 
   deletedDocumentsList.innerHTML = `<table>
     <tr><th>Nome</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr>
-    ${d.deleted_documents.map((p) => `<tr>
+    ${filteredRows.map((p) => `<tr>
       <td>${p.name || '-'}</td>
       <td>${p.deleted_at || '-'}</td>
       <td>${p.deleted_by || '-'}</td>
