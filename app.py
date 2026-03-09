@@ -1565,8 +1565,10 @@ def list_deleted_documents(
     deleted_by: str | None = None,
     deleted_from: str | None = None,
     deleted_to: str | None = None,
-) -> list[dict]:
-    query = "SELECT id, slug, name, deleted_at, deleted_by, trash_path FROM deleted_documents"
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    base_query = "FROM deleted_documents"
     where: list[str] = []
     params: list[object] = []
 
@@ -1606,13 +1608,29 @@ def list_deleted_documents(
         where.append("deleted_at <= ?")
         params.append(to_v)
 
-    if where:
-        query += " WHERE " + " AND ".join(where)
-    query += " ORDER BY deleted_at DESC"
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    safe_page = max(1, int(page or 1))
+    safe_page_size = max(1, min(int(page_size or 20), 100))
 
     with db() as conn:
-        rows = conn.execute(query, tuple(params)).fetchall()
-    return [dict(r) for r in rows]
+        total = int(conn.execute(f"SELECT COUNT(*) AS c {base_query}{where_sql}", tuple(params)).fetchone()["c"])
+        total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+        safe_page = min(safe_page, total_pages)
+        offset = (safe_page - 1) * safe_page_size
+
+        rows = conn.execute(
+            f"SELECT id, slug, name, deleted_at, deleted_by, trash_path {base_query}{where_sql} ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
+            tuple(params) + (safe_page_size, offset),
+        ).fetchall()
+
+    return {
+        "items": [dict(r) for r in rows],
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "total_pages": total_pages,
+    }
 
 
 def _purge_deleted_document_record(record: sqlite3.Row | dict) -> tuple[bool, str]:
@@ -2197,6 +2215,24 @@ class Handler(BaseHTTPRequestHandler):
                 (qs.get("deleted_to", [""])[0] or "").strip()
                 or (qs.get("deletedTo", [""])[0] or "").strip()
             )
+            try:
+                page = int((qs.get("page", ["1"])[0] or "1").strip())
+            except Exception:
+                page = 1
+            try:
+                page_size = int((qs.get("page_size", ["20"])[0] or "20").strip())
+            except Exception:
+                page_size = 20
+
+            data = list_deleted_documents(
+                q=q,
+                deleted_by=deleted_by,
+                deleted_from=deleted_from,
+                deleted_to=deleted_to,
+                page=page,
+                page_size=page_size,
+            )
+
             return self._json(200, {
                 "ok": True,
                 "retention_days": retention_days,
@@ -2206,12 +2242,11 @@ class Handler(BaseHTTPRequestHandler):
                     "deleted_from": deleted_from,
                     "deleted_to": deleted_to,
                 },
-                "deleted_documents": list_deleted_documents(
-                    q=q,
-                    deleted_by=deleted_by,
-                    deleted_from=deleted_from,
-                    deleted_to=deleted_to,
-                ),
+                "deleted_documents": data["items"],
+                "total": data["total"],
+                "page": data["page"],
+                "page_size": data["page_size"],
+                "total_pages": data["total_pages"],
             })
 
         if p == "/api/admin/system/diagnostics":

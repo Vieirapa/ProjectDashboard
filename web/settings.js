@@ -13,6 +13,7 @@ const diagFeedback = document.getElementById('diagFeedback');
 const deletedPolicyFeedback = document.getElementById('deletedPolicyFeedback');
 const reportsList = document.getElementById('reportsList');
 const deletedDocumentsList = document.getElementById('deletedDocumentsList');
+const deletedDocumentsPager = document.getElementById('deletedDocumentsPager');
 const deletedFiltersState = document.getElementById('deletedFiltersState');
 const reportPreview = document.getElementById('reportPreview');
 const diagOutput = document.getElementById('diagOutput');
@@ -61,6 +62,12 @@ let deletedFilters = {
   deleted_by: '',
   deleted_from: '',
   deleted_to: '',
+};
+let deletedPager = {
+  page: 1,
+  page_size: 10,
+  total: 0,
+  total_pages: 1,
 };
 
 async function api(url, opts = {}) {
@@ -196,18 +203,45 @@ function applyDeletedFiltersLocal(rows) {
   });
 }
 
+function renderDeletedPager() {
+  if (!deletedDocumentsPager) return;
+  const { page, total_pages, total } = deletedPager;
+  if (!total) {
+    deletedDocumentsPager.textContent = '';
+    return;
+  }
+  deletedDocumentsPager.innerHTML = `
+    <div style="display:flex; gap:8px; align-items:center; justify-content:flex-start; flex-wrap:wrap;">
+      <button type="button" class="secondary" id="deletedPrevPageBtn" ${page <= 1 ? 'disabled' : ''}>Anterior</button>
+      <button type="button" class="secondary" id="deletedNextPageBtn" ${page >= total_pages ? 'disabled' : ''}>Próxima</button>
+      <span>Página ${page} de ${total_pages} · Total: ${total}</span>
+    </div>
+  `;
+  const prev = document.getElementById('deletedPrevPageBtn');
+  const next = document.getElementById('deletedNextPageBtn');
+  if (prev) prev.onclick = async () => { deletedPager.page = Math.max(1, deletedPager.page - 1); await loadDeletedDocuments(); };
+  if (next) next.onclick = async () => { deletedPager.page = Math.min(deletedPager.total_pages, deletedPager.page + 1); await loadDeletedDocuments(); };
+}
+
 async function loadDeletedDocuments() {
   const params = new URLSearchParams();
   Object.entries(deletedFilters).forEach(([k, v]) => {
     const val = String(v || '').trim();
     if (val) params.set(k, val);
   });
+  params.set('page', String(deletedPager.page || 1));
+  params.set('page_size', String(deletedPager.page_size || 10));
 
-  const d = await api(`/api/admin/deleted-documents${params.toString() ? `?${params.toString()}` : ''}`);
+  const d = await api(`/api/admin/deleted-documents?${params.toString()}`);
 
   if (d.filters) {
     deletedFilters = { ...deletedFilters, ...d.filters };
   }
+  deletedPager.page = Number(d.page || 1);
+  deletedPager.page_size = Number(d.page_size || 10);
+  deletedPager.total = Number(d.total || 0);
+  deletedPager.total_pages = Number(d.total_pages || 1);
+
   f.deletedFilterQ.value = deletedFilters.q || '';
   f.deletedFilterBy.value = deletedFilters.deleted_by || '';
   f.deletedFilterFrom.value = deletedFilters.deleted_from || '';
@@ -221,6 +255,7 @@ async function loadDeletedDocuments() {
     deletedDocumentsList.textContent = hasFilter
       ? 'Nenhum documento apagado encontrado para os filtros informados.'
       : 'Nenhum documento apagado.';
+    renderDeletedPager();
     return;
   }
 
@@ -236,6 +271,7 @@ async function loadDeletedDocuments() {
       </td>
     </tr>`).join('')}
   </table>`;
+  renderDeletedPager();
 
   deletedDocumentsList.querySelectorAll('[data-restore]').forEach((btn) => {
     btn.onclick = async () => {
@@ -498,6 +534,7 @@ applyDeletedFiltersBtn.onclick = async () => {
     deleted_from: f.deletedFilterFrom.value,
     deleted_to: f.deletedFilterTo.value,
   };
+  deletedPager.page = 1;
   try {
     await loadDeletedDocuments();
     deletedPolicyFeedback.textContent = 'Filtros aplicados.';
@@ -509,6 +546,7 @@ applyDeletedFiltersBtn.onclick = async () => {
 clearDeletedFiltersBtn.onclick = async () => {
   deletedPolicyFeedback.textContent = '';
   deletedFilters = { q: '', deleted_by: '', deleted_from: '', deleted_to: '' };
+  deletedPager.page = 1;
   f.deletedFilterQ.value = '';
   f.deletedFilterBy.value = '';
   f.deletedFilterFrom.value = '';
