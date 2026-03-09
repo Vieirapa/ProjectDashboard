@@ -10,12 +10,24 @@ const fields = {
   extension: document.getElementById('extension'),
   work_area: document.getElementById('work_area'),
   notes: document.getElementById('notes'),
+  priorityColorEnabled: document.getElementById('priorityColorEnabled'),
+  colorBaixa: document.getElementById('colorBaixa'),
+  colorMedia: document.getElementById('colorMedia'),
+  colorAlta: document.getElementById('colorAlta'),
+  colorUrgente: document.getElementById('colorUrgente'),
   currentPassword: document.getElementById('currentPassword'),
   newPassword: document.getElementById('newPassword'),
   confirmPassword: document.getElementById('confirmPassword'),
 };
 
 let me = null;
+
+function updateBehaviorUiState() {
+  const enabled = !!fields.priorityColorEnabled?.checked;
+  ['colorBaixa', 'colorMedia', 'colorAlta', 'colorUrgente'].forEach((k) => {
+    if (fields[k]) fields[k].disabled = !enabled;
+  });
+}
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -38,6 +50,15 @@ async function loadProfile() {
   ['email', 'phone', 'extension', 'work_area', 'notes'].forEach((k) => {
     fields[k].value = d.profile?.[k] || '';
   });
+
+  const colors = d.profile?.priority_colors || {};
+  fields.priorityColorEnabled.checked = !!d.profile?.priority_color_enabled;
+  fields.colorBaixa.value = colors['Baixa'] || '#dbeafe';
+  fields.colorMedia.value = colors['Média'] || '#fef3c7';
+  fields.colorAlta.value = colors['Alta'] || '#fed7aa';
+  fields.colorUrgente.value = colors['Urgente'] || '#fecaca';
+  updateBehaviorUiState();
+
   fields.currentPassword.value = '';
   fields.newPassword.value = '';
   fields.confirmPassword.value = '';
@@ -57,6 +78,13 @@ form.onsubmit = async (e) => {
         extension: fields.extension.value,
         work_area: fields.work_area.value,
         notes: fields.notes.value,
+        priority_color_enabled: !!fields.priorityColorEnabled.checked,
+        priority_colors: {
+          Baixa: fields.colorBaixa.value,
+          'Média': fields.colorMedia.value,
+          Alta: fields.colorAlta.value,
+          Urgente: fields.colorUrgente.value,
+        },
       }),
     });
     feedback.textContent = 'Perfil atualizado com sucesso ✅';
@@ -99,6 +127,10 @@ changePasswordBtn.onclick = async () => {
     changePasswordBtn.disabled = false;
   }
 };
+
+if (fields.priorityColorEnabled) {
+  fields.priorityColorEnabled.addEventListener('change', updateBehaviorUiState);
+}
 
 logoutBtn.onclick = async () => {
   await api('/api/logout', { method: 'POST' });

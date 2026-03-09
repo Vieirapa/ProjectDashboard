@@ -30,6 +30,15 @@ const ownersList = document.getElementById('ownersList');
 
 let me = null;
 let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1 };
+let behavior = {
+  priorityColorEnabled: false,
+  priorityColors: {
+    'Baixa': '#dbeafe',
+    'Média': '#fef3c7',
+    'Alta': '#fed7aa',
+    'Urgente': '#fecaca',
+  },
+};
 
 function projectIdFromUrlOrNull() {
   const rawPid = new URLSearchParams(window.location.search).get('project_id');
@@ -75,6 +84,21 @@ async function loadMe() {
   const data = await api('/api/me');
   me = data.user;
   newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
+
+  try {
+    const prof = await api('/api/me/profile');
+    const p = prof?.profile || {};
+    const colors = p.priority_colors || {};
+    behavior.priorityColorEnabled = !!p.priority_color_enabled;
+    behavior.priorityColors = {
+      'Baixa': colors['Baixa'] || '#dbeafe',
+      'Média': colors['Média'] || '#fef3c7',
+      'Alta': colors['Alta'] || '#fed7aa',
+      'Urgente': colors['Urgente'] || '#fecaca',
+    };
+  } catch {
+    // fallback silencioso para defaults
+  }
 }
 
 function currentFilters() {
@@ -164,6 +188,14 @@ function makeCard(p, statuses, priorities) {
     <p>${p.description || 'Sem descrição'}</p>
     <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>${ageLabel}: <b>${p.ageDays ?? '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
   `;
+
+  if (behavior.priorityColorEnabled) {
+    const bg = behavior.priorityColors?.[p.priority];
+    if (bg) {
+      card.style.background = bg;
+      card.style.border = '1px solid rgba(15,23,42,.12)';
+    }
+  }
 
   const st = document.createElement('select');
   statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; if (s === p.status) o.selected = true; st.appendChild(o); });

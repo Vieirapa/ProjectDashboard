@@ -36,6 +36,28 @@
           <label>Notas</label>
           <textarea id="notes" rows="6" placeholder="Observações úteis para o time..."></textarea>
 
+          <div style="margin-top:16px; padding-top:12px; border-top:1px solid #e5e7eb;">
+            <h4 style="margin:0 0 8px;">Comportamento</h4>
+            <label class="inline-check" style="margin-bottom:8px;">
+              <input id="priorityColorEnabled" type="checkbox" />
+              <span>Habilitar cores de fundo no card por prioridade</span>
+            </label>
+
+            <div id="priorityColorsBox" class="priority-colors-grid">
+              <label>Baixa (azul claro)</label>
+              <input id="colorBaixa" type="color" value="#dbeafe" />
+
+              <label>Média (amarelo claro)</label>
+              <input id="colorMedia" type="color" value="#fef3c7" />
+
+              <label>Alta (laranja claro)</label>
+              <input id="colorAlta" type="color" value="#fed7aa" />
+
+              <label>Urgente (vermelho claro)</label>
+              <input id="colorUrgente" type="color" value="#fecaca" />
+            </div>
+          </div>
+
           <div class="dialog-actions" style="justify-content:flex-start;">
             <button id="saveBtn" type="submit">Salvar perfil</button>
           </div>

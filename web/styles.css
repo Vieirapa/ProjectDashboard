@@ -189,6 +189,18 @@ dialog form { padding: 16px; display: grid; gap: 8px; }
   white-space: nowrap;
 }
 .allowed-roles-box { display: flex; flex-wrap: wrap; gap: 18px; margin: 4px 0 2px; }
+.priority-colors-grid {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 8px 12px;
+  align-items: center;
+  max-width: 420px;
+}
+.priority-colors-grid input[type="color"] {
+  width: 100%;
+  min-height: 36px;
+  padding: 3px;
+}
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
 .template-flag-col {

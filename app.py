@@ -400,6 +400,8 @@ def init_db():
         ensure_column(conn, "users", "extension", "extension TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "users", "work_area", "work_area TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "users", "notes", "notes TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "users", "priority_color_enabled", "priority_color_enabled INTEGER NOT NULL DEFAULT 0")
+        ensure_column(conn, "users", "priority_colors_json", "priority_colors_json TEXT NOT NULL DEFAULT ''")
 
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
             pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin123")
@@ -1730,12 +1732,38 @@ def delete_document(slug: str, actor: str) -> tuple[bool, str]:
 def get_user_profile(username: str) -> dict | None:
     with db() as conn:
         row = conn.execute(
-            "SELECT username, role, email, phone, extension, work_area, notes FROM users WHERE username=?",
+            "SELECT username, role, email, phone, extension, work_area, notes, priority_color_enabled, priority_colors_json FROM users WHERE username=?",
             (username,),
         ).fetchone()
     if not row:
         return None
-    return dict(row)
+
+    profile = dict(row)
+    default_colors = {
+        "Baixa": "#dbeafe",
+        "Média": "#fef3c7",
+        "Alta": "#fed7aa",
+        "Urgente": "#fecaca",
+    }
+    raw = str(profile.get("priority_colors_json") or "").strip()
+    try:
+        parsed = json.loads(raw) if raw else {}
+    except Exception:
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    colors = {
+        "Baixa": str(parsed.get("Baixa") or default_colors["Baixa"]),
+        "Média": str(parsed.get("Média") or default_colors["Média"]),
+        "Alta": str(parsed.get("Alta") or default_colors["Alta"]),
+        "Urgente": str(parsed.get("Urgente") or default_colors["Urgente"]),
+    }
+
+    profile["priority_color_enabled"] = bool(int(profile.get("priority_color_enabled") or 0))
+    profile["priority_colors"] = colors
+    profile.pop("priority_colors_json", None)
+    return profile
 
 
 def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
@@ -1748,13 +1776,31 @@ def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
     if len(email) > 200 or len(phone) > 80 or len(extension) > 40 or len(work_area) > 120 or len(notes) > 4000:
         return False, "Campos do perfil excedem o limite permitido"
 
+    priority_color_enabled = bool(payload.get("priority_color_enabled"))
+    default_colors = {
+        "Baixa": "#dbeafe",
+        "Média": "#fef3c7",
+        "Alta": "#fed7aa",
+        "Urgente": "#fecaca",
+    }
+    incoming_colors = payload.get("priority_colors") or {}
+    if not isinstance(incoming_colors, dict):
+        incoming_colors = {}
+
+    colors = {}
+    for key in ["Baixa", "Média", "Alta", "Urgente"]:
+        value = str(incoming_colors.get(key) or default_colors[key]).strip()
+        if not re.match(r"^#[0-9a-fA-F]{6}$", value):
+            return False, f"Cor inválida para prioridade {key}"
+        colors[key] = value
+
     with db() as conn:
         row = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
         if not row:
             return False, "Usuário não encontrado"
         conn.execute(
-            "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=? WHERE username=?",
-            (email, phone, extension, work_area, notes, username),
+            "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=?, priority_color_enabled=?, priority_colors_json=? WHERE username=?",
+            (email, phone, extension, work_area, notes, int(priority_color_enabled), json.dumps(colors, ensure_ascii=False), username),
         )
 
     return True, "ok"
