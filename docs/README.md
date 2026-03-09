@@ -23,7 +23,8 @@ This directory contains the current technical and operational documentation for 
 17. [17-manual-do-usuario-v0.9.0-beta.2.md](./17-manual-do-usuario-v0.9.0-beta.2.md)
 18. [18-manual-pratico-usuarios-v0.9.0-beta.2.md](./18-manual-pratico-usuarios-v0.9.0-beta.2.md)
 19. [19-backlog-executavel-sprint-proxima.md](./19-backlog-executavel-sprint-proxima.md)
-20. [tests/README.md](./tests/README.md)
+20. [20-plano-diario-execucao-sprint.md](./20-plano-diario-execucao-sprint.md)
+21. [tests/README.md](./tests/README.md)
 
 ## Scope
 
