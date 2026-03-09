@@ -268,6 +268,26 @@ set -a; source /etc/projectdashboard.env; set +a
 ./scripts/test_smtp.py your@email.com
 ```
 
+## Upgrade from GitHub (SSH-only friendly)
+
+Use the upgrade helper script on the server:
+
+```bash
+sudo /opt/src/ProjectDashboard/scripts/upgrade_from_github.sh
+```
+
+Deploy a specific version/tag:
+
+```bash
+sudo /opt/src/ProjectDashboard/scripts/upgrade_from_github.sh --ref v0.9.0-beta.2
+```
+
+This script:
+- fetches from GitHub
+- checks out latest `develop` (or your `--ref`)
+- runs pre-upgrade backup (when available)
+- runs `install.sh` with your selected flags
+
 ## Full documentation
 
 See:

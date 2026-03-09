@@ -59,6 +59,26 @@ After first login as admin, configure `/settings.html` (SMTP, defaults, periodic
 - `DOMAIN` (optional)
 - `LE_EMAIL` (required for automatic cert issuance)
 
+## Upgrade from GitHub
+
+Use the provided helper script:
+
+```bash
+sudo /opt/src/ProjectDashboard/scripts/upgrade_from_github.sh
+```
+
+Specific ref/tag:
+
+```bash
+sudo /opt/src/ProjectDashboard/scripts/upgrade_from_github.sh --ref v0.9.0-beta.2
+```
+
+The script performs:
+- `git fetch --all --tags --prune`
+- checkout of requested ref (or latest `develop`)
+- pre-upgrade backup if `/opt/projectdashboard/scripts/backup.sh` exists
+- reinstall/upgrade via `install.sh`
+
 ## Manual Execution (Development)
 
 ```bash
