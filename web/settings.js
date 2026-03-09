@@ -75,8 +75,9 @@ async function api(url, opts = {}) {
   const r = await fetch(url, opts);
   const d = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const err = new Error(d.error || 'Erro');
+    const err = new Error(d.error || `Erro HTTP ${r.status}`);
     err.data = d;
+    err.status = r.status;
     throw err;
   }
   return d;
@@ -529,7 +530,16 @@ testBackupPathBtn.onclick = async () => {
     });
     backupFeedback.textContent = d.message || 'Caminho de backup validado ✅';
   } catch (err) {
-    backupFeedback.textContent = err.message;
+    if (err?.status === 404) {
+      backupFeedback.textContent = 'Este servidor ainda não tem o endpoint de teste de permissões. Atualize/reinicie a instância com a versão mais recente do ProjectDashboard e tente novamente.';
+      return;
+    }
+    if (String(err?.message || '').includes('Permission') || String(err?.message || '').includes('Permissão')) {
+      const p = (f.backupPath.value || '').trim() || '/var/backups/projectdashboard';
+      backupFeedback.textContent = `${err.message} | Sugestão: sudo mkdir -p ${p} && sudo chown -R <usuario_servico>:<grupo_servico> ${p} && sudo chmod -R 775 ${p}`;
+      return;
+    }
+    backupFeedback.textContent = err?.message || 'Falha ao testar permissões do caminho de backup.';
   }
 };
 
