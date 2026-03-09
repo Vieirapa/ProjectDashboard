@@ -1260,6 +1260,26 @@ def _backup_permission_hint(path: Path) -> str:
     )
 
 
+def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str, dict]:
+    settings = get_admin_settings()
+    cfg = _backup_config(settings)
+    target = Path((path_raw or cfg["path"])).expanduser()
+    detail = {"path": str(target), "exists": False, "writable": False}
+
+    try:
+        detail["exists"] = target.exists()
+        target.mkdir(parents=True, exist_ok=True)
+        probe = target / f".pdash-permcheck-{int(time.time())}.tmp"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        detail["writable"] = True
+        return True, f"Caminho de backup OK para escrita: {target}", detail
+    except PermissionError:
+        return False, _backup_permission_hint(target), detail
+    except Exception as e:
+        return False, f"Falha ao validar caminho de backup '{target}': {e}", detail
+
+
 def run_system_backup(actor: str = "system") -> tuple[bool, str]:
     settings = get_admin_settings()
     cfg = _backup_config(settings)
@@ -2367,6 +2387,21 @@ class Handler(BaseHTTPRequestHandler):
             if not admin: return
             done, msg = run_system_backup(admin["username"])
             return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
+
+        if p == "/api/admin/system/backup/test-path":
+            admin = self._require_admin()
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok:
+                body = {}
+            path_raw = str((body or {}).get("path") or "").strip() or None
+            done, msg, detail = test_backup_path_permissions(path_raw)
+            return self._json(200 if done else 400, {
+                "ok": done,
+                "message": msg if done else None,
+                "error": None if done else msg,
+                "detail": detail,
+            })
 
         if p.startswith("/api/admin/deleted-documents/") and p.endswith("/restore"):
             admin = self._require_admin()

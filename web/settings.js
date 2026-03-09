@@ -19,6 +19,7 @@ const reportPreview = document.getElementById('reportPreview');
 const diagOutput = document.getElementById('diagOutput');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
 const runBackupNowBtn = document.getElementById('runBackupNowBtn');
+const testBackupPathBtn = document.getElementById('testBackupPathBtn');
 const runDiagBtn = document.getElementById('runDiagBtn');
 const refreshDeletedBtn = document.getElementById('refreshDeletedBtn');
 const applyDeletedFiltersBtn = document.getElementById('applyDeletedFiltersBtn');
@@ -515,6 +516,20 @@ testSmtpBtn.onclick = async () => {
     feedback.textContent = `Teste SMTP enviado para ${to} ✅`;
   } catch (err) {
     feedback.textContent = err.message;
+  }
+};
+
+testBackupPathBtn.onclick = async () => {
+  backupFeedback.textContent = '';
+  try {
+    const d = await api('/api/admin/system/backup/test-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: f.backupPath.value || '' }),
+    });
+    backupFeedback.textContent = d.message || 'Caminho de backup validado ✅';
+  } catch (err) {
+    backupFeedback.textContent = err.message;
   }
 };
 
