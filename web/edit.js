@@ -52,20 +52,20 @@ async function api(url, opts={}) {
 }
 
 function canEditCard() {
-  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
 }
 
 function canUploadDocument() {
-  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
 }
 
 function canAddReviewNotes() {
-  return ['admin', 'member', 'desenhista', 'revisor'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador', 'revisor'].includes(me?.role || '');
 }
 
 function canDeleteCard() {
   if (!doc || !me) return false;
-  if (me.role === 'admin') return true;
+  if (['admin', 'lider_projeto'].includes(me.role)) return true;
   if (me.role === 'member') return (doc.createdBy || '').toLowerCase() === (me.username || '').toLowerCase();
   return false;
 }
@@ -97,7 +97,7 @@ function canEditReviewNotes() {
 }
 
 function canResolveReviewNotes() {
-  return ['desenhista', 'admin'].includes(me?.role || '') && (f.status.value || '').trim().toLowerCase() === 'em revisão';
+  return ['desenhista', 'colaborador', 'admin', 'lider_projeto'].includes(me?.role || '') && (f.status.value || '').trim().toLowerCase() === 'em revisão';
 }
 
 function updateReviewNotesAvailability() {

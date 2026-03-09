@@ -167,11 +167,11 @@ function docStatusMeta(cardStatus) {
 }
 
 function canCreateCard() {
-  return ['admin', 'member'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member'].includes(me?.role || '');
 }
 
 function canEditCard() {
-  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
 }
 
 function makeCard(p, statuses, priorities) {

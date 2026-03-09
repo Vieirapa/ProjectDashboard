@@ -30,7 +30,8 @@ HOST = os.getenv("PDASH_HOST", "0.0.0.0")
 PORT = int(os.getenv("PDASH_PORT", "8765"))
 STATUSES = ["Backlog", "Em andamento", "Em revisão", "Concluído"]
 PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"]
-ROLES = ["admin", "member", "desenhista", "revisor", "cliente"]
+ROLES = ["admin", "lider_projeto", "member", "desenhista", "colaborador", "revisor", "cliente"]
+ADMIN_EQUIV_ROLES = {"admin", "lider_projeto"}
 SKIP_DIRS = {"ProjectDashboard", "__pycache__"}
 SESSION_COOKIE = "pdash_session"
 SESSION_TTL_SECONDS = 60 * 60 * 24
@@ -232,23 +233,23 @@ def can_create_document(role: str) -> bool:
 
 
 def can_edit_document(role: str) -> bool:
-    return role in {"admin", "member", "desenhista"}
+    return role in {"admin", "lider_projeto", "member", "desenhista", "colaborador"}
 
 
 def can_upload_document(role: str) -> bool:
-    return role in {"admin", "member", "desenhista"}
+    return role in {"admin", "lider_projeto", "member", "desenhista", "colaborador"}
 
 
 def can_add_review_note(role: str) -> bool:
-    return role in {"admin", "member", "desenhista", "revisor"}
+    return role in {"admin", "lider_projeto", "member", "desenhista", "colaborador", "revisor"}
 
 
 def can_resolve_review_note(role: str) -> bool:
-    return role in {"desenhista", "admin"}
+    return role in {"desenhista", "colaborador", "admin", "lider_projeto"}
 
 
 def can_delete_document(role: str, user: str, document: dict) -> bool:
-    if role == "admin":
+    if role in ADMIN_EQUIV_ROLES:
         return True
     if role == "member":
         return (document.get("createdBy") or "").strip().lower() == user.strip().lower()
@@ -286,7 +287,7 @@ def init_db():
                 project_name TEXT NOT NULL,
                 start_date TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
-                allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente',
+                allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,colaborador,revisor,cliente',
                 is_template INTEGER NOT NULL DEFAULT 0,
                 template_source_project_id INTEGER
             )
@@ -388,7 +389,7 @@ def init_db():
         ensure_column(conn, "documents", "opened_at", "opened_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "released_at", "released_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "project_id", "project_id INTEGER NOT NULL DEFAULT 1")
-        ensure_column(conn, "projects", "allowed_roles", "allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente'")
+        ensure_column(conn, "projects", "allowed_roles", "allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,colaborador,revisor,cliente'")
         ensure_column(conn, "projects", "is_template", "is_template INTEGER NOT NULL DEFAULT 0")
         ensure_column(conn, "projects", "template_source_project_id", "template_source_project_id INTEGER")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
@@ -422,7 +423,7 @@ def init_db():
         # Ensure admin user keeps admin role after upgrades/migrations
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE documents SET status='Em revisão' WHERE status='Bloqueado'")
-        conn.execute("UPDATE projects SET allowed_roles='member,desenhista,revisor,cliente' WHERE allowed_roles IS NULL OR TRIM(allowed_roles)=''")
+        conn.execute("UPDATE projects SET allowed_roles='member,desenhista,colaborador,revisor,cliente' WHERE allowed_roles IS NULL OR TRIM(allowed_roles)=''")
         conn.execute("UPDATE projects SET is_template=0 WHERE is_template IS NULL")
         conn.execute("UPDATE documents SET project_id=1 WHERE project_id IS NULL OR project_id<=0")
         conn.execute("UPDATE documents SET document_status=status")
@@ -573,13 +574,13 @@ def _normalize_allowed_roles(raw: str | list | None) -> str:
         vals = [str(x or '').strip().lower() for x in raw]
     else:
         vals = [x.strip().lower() for x in str(raw or '').split(',')]
-    allowed = [r for r in vals if r in ROLES and r != 'admin']
+    allowed = [r for r in vals if r in ROLES and r not in ADMIN_EQUIV_ROLES]
     # remove duplicados preservando ordem
     out: list[str] = []
     for r in allowed:
         if r not in out:
             out.append(r)
-    return ','.join(out) if out else 'member,desenhista,revisor,cliente'
+    return ','.join(out) if out else 'member,desenhista,colaborador,revisor,cliente'
 
 
 def parse_allowed_roles(raw: str | None) -> list[str]:
@@ -588,7 +589,7 @@ def parse_allowed_roles(raw: str | None) -> list[str]:
 
 def project_role_allowed(project_row: dict | None, role: str) -> bool:
     normalized_role = (role or '').strip().lower()
-    if normalized_role == 'admin':
+    if normalized_role in ADMIN_EQUIV_ROLES:
         return True
     if not project_row:
         return False
@@ -1887,7 +1888,7 @@ class Handler(BaseHTTPRequestHandler):
     def _require_admin(self):
         u = self._require_auth()
         if not u: return None
-        if u["role"] != "admin":
+        if (u.get("role") or "").strip().lower() not in ADMIN_EQUIV_ROLES:
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
@@ -1896,7 +1897,7 @@ class Handler(BaseHTTPRequestHandler):
         if not user:
             return all_projects
         role = (user.get("role") or "").strip().lower()
-        if role == "admin":
+        if role in ADMIN_EQUIV_ROLES:
             return all_projects
         return [p for p in all_projects if project_role_allowed(p, role)]
 
@@ -1906,7 +1907,7 @@ class Handler(BaseHTTPRequestHandler):
     def _project_access_error(self, project_id: int, user: dict | None) -> str:
         if not user:
             return "Autenticação necessária."
-        if (user.get("role") or "").strip().lower() == "admin":
+        if (user.get("role") or "").strip().lower() in ADMIN_EQUIV_ROLES:
             return ""
         proj = self._project_by_id(project_id)
         if not proj:
@@ -1918,7 +1919,7 @@ class Handler(BaseHTTPRequestHandler):
     def _can_access_project(self, project_id: int, user: dict | None) -> bool:
         if not user:
             return False
-        if (user.get("role") or "").strip().lower() == "admin":
+        if (user.get("role") or "").strip().lower() in ADMIN_EQUIV_ROLES:
             return True
         proj = self._project_by_id(project_id)
         return project_role_allowed(proj, user.get("role") or "")
@@ -1978,7 +1979,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/profile.html": return self._serve(WEB_DIR / "profile.html", "text/html; charset=utf-8")
         if p == "/settings.html":
             u = self._user()
-            if not u or u.get("role") != "admin":
+            if not u or (u.get("role") or "").strip().lower() not in ADMIN_EQUIV_ROLES:
                 self.send_response(302)
                 self.send_header("Location", "/")
                 self.end_headers()

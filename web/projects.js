@@ -55,14 +55,14 @@ function setAllowedRolesChecks(csvValue) {
 function getAllowedRolesFromChecks() {
   const checks = allowedRolesBox?.querySelectorAll('.allowed-role:checked') || [];
   const vals = Array.from(checks).map((c) => String(c.value || '').trim().toLowerCase()).filter(Boolean);
-  return vals.join(',') || 'member,desenhista,revisor,cliente';
+  return vals.join(',') || 'member,desenhista,colaborador,revisor,cliente';
 }
 
 async function loadMe() {
   const d = await api('/api/me');
   me = d.user;
-  if (me.role !== 'admin') {
-    alert('Acesso restrito a administradores.');
+  if (!['admin', 'lider_projeto'].includes(me.role)) {
+    alert('Acesso restrito a administradores/líder de projeto.');
     window.location.href = '/';
   }
 }
@@ -74,7 +74,7 @@ function setForm(p = null) {
   startDate.value = p?.start_date?.slice(0, 10) || '';
   isTemplate.checked = Boolean(p?.is_template);
   notes.value = p?.notes || '';
-  setAllowedRolesChecks(p?.allowed_roles || 'member,desenhista,revisor,cliente');
+  setAllowedRolesChecks(p?.allowed_roles || 'member,desenhista,colaborador,revisor,cliente');
   deleteBtn.disabled = !p;
   if (cloneBtn) cloneBtn.disabled = !(p && p.is_template);
 

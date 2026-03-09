@@ -27,7 +27,7 @@
     const projectItems = projects || [];
     const projectId = currentProjectId(projectItems);
 
-    const canAdminTools = user.role === 'admin';
+    const canAdminTools = ['admin', 'lider_projeto'].includes(user.role);
     // `projects.html` is an admin page; hide the link for non-admin users.
     const canAccessProjectArea = canAdminTools && projectItems.length > 0;
 
