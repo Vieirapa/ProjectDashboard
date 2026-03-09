@@ -1578,8 +1578,8 @@ def list_deleted_documents(
 
     byv = (deleted_by or "").strip()
     if byv:
-        where.append("deleted_by LIKE ?")
-        params.append(f"%{byv}%")
+        where.append("LOWER(TRIM(COALESCE(deleted_by, ''))) LIKE ?")
+        params.append(f"%{byv.lower()}%")
 
     def _normalize_date_start(raw: str | None) -> str | None:
         v = (raw or "").strip()
