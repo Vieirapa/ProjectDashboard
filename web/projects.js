@@ -48,14 +48,14 @@ function setAllowedRolesChecks(csvValue) {
   const set = new Set(String(csvValue || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
   const checks = allowedRolesBox?.querySelectorAll('.allowed-role') || [];
   checks.forEach((c) => {
-    c.checked = set.size ? set.has(String(c.value || '').toLowerCase()) : true;
+    c.checked = set.has(String(c.value || '').toLowerCase());
   });
 }
 
 function getAllowedRolesFromChecks() {
   const checks = allowedRolesBox?.querySelectorAll('.allowed-role:checked') || [];
   const vals = Array.from(checks).map((c) => String(c.value || '').trim().toLowerCase()).filter(Boolean);
-  return vals.join(',') || 'member,desenhista,colaborador,revisor,cliente';
+  return vals.join(',');
 }
 
 async function loadMe() {
@@ -74,7 +74,7 @@ function setForm(p = null) {
   startDate.value = p?.start_date?.slice(0, 10) || '';
   isTemplate.checked = Boolean(p?.is_template);
   notes.value = p?.notes || '';
-  setAllowedRolesChecks(p?.allowed_roles || 'member,desenhista,colaborador,revisor,cliente');
+  setAllowedRolesChecks(p?.allowed_roles || '');
   deleteBtn.disabled = !p;
   if (cloneBtn) cloneBtn.disabled = !(p && p.is_template);
 

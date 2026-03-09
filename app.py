@@ -580,7 +580,7 @@ def _normalize_allowed_roles(raw: str | list | None) -> str:
     for r in allowed:
         if r not in out:
             out.append(r)
-    return ','.join(out) if out else 'member,desenhista,colaborador,revisor,cliente'
+    return ','.join(out)
 
 
 def parse_allowed_roles(raw: str | None) -> list[str]:
