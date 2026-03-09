@@ -28,8 +28,8 @@
     const projectId = currentProjectId(projectItems);
 
     const canAdminTools = user.role === 'admin';
-    // `projects.html` is an admin page; hide the link for non-admin users.
-    const canAccessProjectArea = canAdminTools && projectItems.length > 0;
+    // `projects.html` is available for admin and líder de projeto.
+    const canAccessProjectArea = ['admin', 'lider_projeto'].includes(user.role) && projectItems.length > 0;
 
     root.innerHTML = `
       <h2>ProjectDashbord</h2>
