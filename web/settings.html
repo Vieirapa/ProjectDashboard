@@ -56,43 +56,45 @@
       </section>
 
       <section class="panel">
-        <h3>Backup do sistema</h3>
-        <form id="backupForm" class="form-grid" style="max-width:900px;">
-          <label class="inline-check"><input id="backup_enabled" type="checkbox" /> <span>Habilitar backup automático interno</span></label>
-          <label>Caminho de saída dos backups</label>
-          <input id="backup_path" placeholder="/opt/documentdashboard/data/backups" />
+        <div class="backup-grid">
+          <form id="backupForm" class="backup-card form-grid">
+            <h3>Backup do sistema</h3>
+            <label class="inline-check"><input id="backup_enabled" type="checkbox" /> <span>Habilitar backup automático interno</span></label>
+            <label>Caminho de saída dos backups</label>
+            <input id="backup_path" placeholder="/opt/documentdashboard/data/backups" />
 
-          <label>Dias da semana</label>
-          <div id="backup_weekdays" class="form-grid">
-            <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
-            <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
-            <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
-            <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
-            <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
-            <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
-            <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
-          </div>
+            <label>Dias da semana</label>
+            <div id="backup_weekdays" class="form-grid">
+              <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
+              <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
+              <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
+              <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
+              <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
+              <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
+              <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+            </div>
 
-          <label>Horário (HH:MM)</label>
-          <input id="backup_run_time" type="time" value="03:00" />
+            <label>Horário (HH:MM)</label>
+            <input id="backup_run_time" type="time" value="03:00" />
 
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit">Salvar política de backup</button>
-            <button type="button" id="testBackupPathBtn" class="secondary">Testar permissões do caminho</button>
-            <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
-          </div>
-          <p id="backupFeedback" class="small"></p>
+            <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap;">
+              <button type="submit">Salvar política de backup</button>
+              <button type="button" id="testBackupPathBtn" class="secondary">Testar permissões do caminho</button>
+              <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
+            </div>
+            <p id="backupFeedback" class="small"></p>
+          </form>
 
-          <div style="margin-top:16px;">
-            <h4 style="margin:0 0 8px;">Recuperação de backup</h4>
+          <div class="backup-card">
+            <h3>Recuperação de backup</h3>
             <p class="small">Selecione um snapshot (data/hora) disponível no caminho de backup e restaure com confirmação.</p>
-            <div class="dialog-actions" style="justify-content:flex-start;">
+            <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap; margin-top:8px;">
               <button type="button" id="refreshBackupListBtn" class="secondary">Atualizar lista de backups</button>
               <button type="button" id="restoreBackupBtn" class="danger">Restaurar backup selecionado</button>
             </div>
-            <div id="backupRestoreList" class="small" style="margin-top:8px;">Nenhum backup listado.</div>
+            <div id="backupRestoreList" class="small" style="margin-top:10px;">Nenhum backup listado.</div>
           </div>
-        </form>
+        </div>
       </section>
 
       <section class="panel">
