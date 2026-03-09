@@ -204,17 +204,26 @@ function applyDeletedFiltersLocal(rows) {
 }
 
 function renderDeletedPager() {
-  if (!deletedDocumentsPager) return;
+  let pagerEl = deletedDocumentsPager || document.getElementById('deletedDocumentsPager');
+  if (!pagerEl && deletedDocumentsList?.parentElement) {
+    pagerEl = document.createElement('div');
+    pagerEl.id = 'deletedDocumentsPager';
+    pagerEl.className = 'small';
+    pagerEl.style.marginTop = '8px';
+    deletedDocumentsList.parentElement.appendChild(pagerEl);
+  }
+  if (!pagerEl) return;
+
   const { page, total_pages, total } = deletedPager;
   if (!total) {
-    deletedDocumentsPager.textContent = '';
+    pagerEl.textContent = '';
     return;
   }
-  deletedDocumentsPager.innerHTML = `
+  pagerEl.innerHTML = `
     <div style="display:flex; gap:8px; align-items:center; justify-content:flex-start; flex-wrap:wrap;">
       <button type="button" class="secondary" id="deletedPrevPageBtn" ${page <= 1 ? 'disabled' : ''}>Anterior</button>
       <button type="button" class="secondary" id="deletedNextPageBtn" ${page >= total_pages ? 'disabled' : ''}>Próxima</button>
-      <span>Página ${page} de ${total_pages} · Total: ${total}</span>
+      <span>Página ${page} de ${total_pages} · Total: ${total} (máx ${deletedPager.page_size}/página)</span>
     </div>
   `;
   const prev = document.getElementById('deletedPrevPageBtn');
@@ -237,18 +246,32 @@ async function loadDeletedDocuments() {
   if (d.filters) {
     deletedFilters = { ...deletedFilters, ...d.filters };
   }
-  deletedPager.page = Number(d.page || 1);
-  deletedPager.page_size = Number(d.page_size || 10);
-  deletedPager.total = Number(d.total || 0);
-  deletedPager.total_pages = Number(d.total_pages || 1);
+
+  const serverHasPagination =
+    d.total !== undefined && d.page !== undefined && d.page_size !== undefined && d.total_pages !== undefined;
+
+  const allRows = applyDeletedFiltersLocal(d.deleted_documents || []);
+  let filteredRows = allRows;
+
+  if (serverHasPagination) {
+    deletedPager.page = Number(d.page || 1);
+    deletedPager.page_size = Number(d.page_size || 10);
+    deletedPager.total = Number(d.total || 0);
+    deletedPager.total_pages = Number(d.total_pages || 1);
+  } else {
+    deletedPager.page_size = 10;
+    deletedPager.total = allRows.length;
+    deletedPager.total_pages = Math.max(1, Math.ceil(deletedPager.total / deletedPager.page_size));
+    deletedPager.page = Math.min(Math.max(1, deletedPager.page), deletedPager.total_pages);
+    const start = (deletedPager.page - 1) * deletedPager.page_size;
+    filteredRows = allRows.slice(start, start + deletedPager.page_size);
+  }
 
   f.deletedFilterQ.value = deletedFilters.q || '';
   f.deletedFilterBy.value = deletedFilters.deleted_by || '';
   f.deletedFilterFrom.value = deletedFilters.deleted_from || '';
   f.deletedFilterTo.value = deletedFilters.deleted_to || '';
   renderDeletedFiltersState();
-
-  const filteredRows = applyDeletedFiltersLocal(d.deleted_documents || []);
 
   if (!filteredRows.length) {
     const hasFilter = Object.values(deletedFilters).some((x) => String(x || '').trim());
