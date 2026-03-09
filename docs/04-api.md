@@ -49,6 +49,10 @@ Creates a review note (permission/stage validation applies).
 
 ## Admin
 
+> Access policy note:
+> - `admin`: full access to all admin routes
+> - `lider_projeto`: admin-equivalent for most operations, but **no** access to users/invites/settings routes
+
 ### `GET /api/admin/users`
 List users and role/account metadata (admin-only).
 

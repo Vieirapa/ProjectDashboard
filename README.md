@@ -4,25 +4,38 @@ ProjectDashboard is a lightweight Kanban-style web application to track document
 
 ## Current highlights
 
+- Landing page (`/`) with project summary KPIs
+- Dedicated Kanban page (`/kanban.html?project_id=...`)
 - Sidebar-based UI with workspace/admin sections
 - User login and role-based access control (RBAC)
 - Dedicated details page for full document editing (`/edit.html?slug=...`)
 - Document creation and quick status/priority updates
 - Filters (text, status, priority, owner)
 - Audit logging for critical operations
-- User administration (`/admin-users.html`)
+- User administration (`/admin-users.html`) and invites
 - Document upload with revision history (`r1`, `r2`, `r3`...)
 - Review notes workflow
 - Deleted documents management (restore + permanent purge)
 - Backup + diagnostics in admin settings
+- Profile behavior customization (optional card color by priority per user)
 
 ## Roles
 
 - `admin`
-  - Full access, user management, sensitive deletions
+  - Full access, including Users/Invites and Settings
+- `lider_projeto`
+  - Admin-equivalent for operations, Kanban and Projects
+  - Does **not** access Users/Invites and Settings
 - `member`
   - Create/edit documents, no admin panel access
-- Additional roles may exist in UI/backend depending on workflow extensions.
+- `desenhista`
+  - Edit documents and resolve review notes
+- `colaborador`
+  - Same operational permissions as `desenhista`
+- `revisor`
+  - Add review notes (stage-restricted)
+- `cliente`
+  - Read-only style/project-restricted access (according to project role allowlist)
 
 ## Data layer
 
@@ -67,7 +80,7 @@ cd /path/to/ProjectDashboard
 sudo ./install.sh
 ```
 
-Installer v2 includes:
+Installer v2 includes (Ubuntu Server or Desktop):
 
 - system user/service setup (`projectdashboard`)
 - deployment to `/opt/projectdashboard`
@@ -92,6 +105,7 @@ sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 - `ENABLE_BACKUP_TIMER=yes|no`
 - `BACKUP_DIR` (default: `/var/backups/projectdashboard`)
 - `BACKUP_RETENTION_DAYS` (default: `14`)
+- `INSTALL_SMOKE_TEST=yes|no` (default: `no`)
 
 ## Simple Ubuntu installation (step-by-step)
 

@@ -1,6 +1,6 @@
 # 08 — Operations and Deployment
 
-## Automated Server Installation
+## Automated Ubuntu Installation (Server/Desktop)
 
 Script:
 - `install.sh` (v2)
@@ -55,6 +55,7 @@ After first login as admin, configure `/settings.html` (SMTP, defaults, periodic
 - `ENABLE_UFW=yes|no`
 - `BACKUP_DIR` (default: `/var/backups/projectdashboard`)
 - `BACKUP_RETENTION_DAYS` (default: `14`)
+- `INSTALL_SMOKE_TEST=yes|no` (default: `no`)
 - `DOMAIN` (optional)
 - `LE_EMAIL` (required for automatic cert issuance)
 

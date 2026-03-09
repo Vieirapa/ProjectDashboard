@@ -17,7 +17,8 @@ Permissions are enforced in backend routes, including:
 
 - project create/edit/delete constraints
 - document/review-note actions
-- admin-only user management operations
+- admin-only user/invite/settings operations
+- role-scoped admin behavior (`lider_projeto` without user/invite/settings access)
 
 ## Protection rules
 

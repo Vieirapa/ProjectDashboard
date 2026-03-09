@@ -21,6 +21,7 @@ This file tracks future ideas and improvements for ProjectDashboard.
 
 - Add `--dry-run` mode to `install.sh` (simulate changes without applying)
 - Add post-install command to print detected runtime service user/group and backup path
+- Add optional non-interactive smoke test mode (`INSTALL_SMOKE_TEST=yes`) for CI-style Ubuntu validation
 
 ### Backup / Restore
 
