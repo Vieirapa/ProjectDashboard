@@ -1912,6 +1912,10 @@ class Handler(BaseHTTPRequestHandler):
         b = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        # Avoid stale frontend assets during iterative rollout/debug.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
@@ -2180,9 +2184,19 @@ class Handler(BaseHTTPRequestHandler):
             settings = get_admin_settings()
             retention_days = _setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30")
             q = (qs.get("q", [""])[0] or "").strip()
-            deleted_by = (qs.get("deleted_by", [""])[0] or "").strip()
-            deleted_from = (qs.get("deleted_from", [""])[0] or "").strip()
-            deleted_to = (qs.get("deleted_to", [""])[0] or "").strip()
+            deleted_by = (
+                (qs.get("deleted_by", [""])[0] or "").strip()
+                or (qs.get("deletedBy", [""])[0] or "").strip()
+                or (qs.get("by", [""])[0] or "").strip()
+            )
+            deleted_from = (
+                (qs.get("deleted_from", [""])[0] or "").strip()
+                or (qs.get("deletedFrom", [""])[0] or "").strip()
+            )
+            deleted_to = (
+                (qs.get("deleted_to", [""])[0] or "").strip()
+                or (qs.get("deletedTo", [""])[0] or "").strip()
+            )
             return self._json(200, {
                 "ok": True,
                 "retention_days": retention_days,
