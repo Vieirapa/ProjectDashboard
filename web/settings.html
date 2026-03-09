@@ -82,6 +82,16 @@
             <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
           </div>
           <p id="backupFeedback" class="small"></p>
+
+          <div style="margin-top:16px;">
+            <h4 style="margin:0 0 8px;">Recuperação de backup</h4>
+            <p class="small">Selecione um snapshot (data/hora) disponível no caminho de backup e restaure com confirmação.</p>
+            <div class="dialog-actions" style="justify-content:flex-start;">
+              <button type="button" id="refreshBackupListBtn" class="secondary">Atualizar lista de backups</button>
+              <button type="button" id="restoreBackupBtn" class="danger">Restaurar backup selecionado</button>
+            </div>
+            <div id="backupRestoreList" class="small" style="margin-top:8px;">Nenhum backup listado.</div>
+          </div>
         </form>
       </section>
 

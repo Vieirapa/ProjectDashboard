@@ -20,6 +20,9 @@ const diagOutput = document.getElementById('diagOutput');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
 const runBackupNowBtn = document.getElementById('runBackupNowBtn');
 const testBackupPathBtn = document.getElementById('testBackupPathBtn');
+const refreshBackupListBtn = document.getElementById('refreshBackupListBtn');
+const restoreBackupBtn = document.getElementById('restoreBackupBtn');
+const backupRestoreList = document.getElementById('backupRestoreList');
 const runDiagBtn = document.getElementById('runDiagBtn');
 const refreshDeletedBtn = document.getElementById('refreshDeletedBtn');
 const applyDeletedFiltersBtn = document.getElementById('applyDeletedFiltersBtn');
@@ -70,6 +73,7 @@ let deletedPager = {
   total: 0,
   total_pages: 1,
 };
+let backupSnapshots = [];
 
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
@@ -175,6 +179,34 @@ async function loadSettings() {
   f.backupWeekdays.querySelectorAll('input[type="checkbox"]').forEach((el) => {
     el.checked = setDays.has(String(el.value));
   });
+}
+
+async function loadBackupSnapshots() {
+  const path = (f.backupPath.value || '').trim();
+  const q = new URLSearchParams();
+  if (path) q.set('path', path);
+  const d = await api(`/api/admin/system/backup/available${q.toString() ? `?${q.toString()}` : ''}`);
+  backupSnapshots = d.items || [];
+
+  if (!backupSnapshots.length) {
+    backupRestoreList.textContent = `Nenhum backup encontrado em ${d.path || path || '(caminho padrão)'}.`;
+    return;
+  }
+
+  backupRestoreList.innerHTML = `<table>
+    <tr><th></th><th>Data/Hora</th><th>DB</th><th>Docs</th></tr>
+    ${backupSnapshots.map((b, idx) => `<tr>
+      <td><input type="radio" name="backup_stamp" value="${b.stamp}" ${idx === 0 ? 'checked' : ''}></td>
+      <td>${b.when || b.stamp}</td>
+      <td>${b.db_backup ? '✅' : '—'}</td>
+      <td>${b.docs_backup ? '✅' : '—'}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function getSelectedBackupStamp() {
+  const el = document.querySelector('input[name="backup_stamp"]:checked');
+  return el ? String(el.value || '').trim() : '';
 }
 
 function applyDeletedFiltersLocal(rows) {
@@ -548,6 +580,46 @@ runBackupNowBtn.onclick = async () => {
   try {
     const d = await api('/api/admin/system/backup/run', { method: 'POST' });
     backupFeedback.textContent = d.message || 'Backup manual executado ✅';
+    await loadBackupSnapshots();
+  } catch (err) {
+    backupFeedback.textContent = err.message;
+  }
+};
+
+refreshBackupListBtn.onclick = async () => {
+  backupFeedback.textContent = '';
+  try {
+    await loadBackupSnapshots();
+    backupFeedback.textContent = 'Lista de backups atualizada.';
+  } catch (err) {
+    backupFeedback.textContent = err.message;
+  }
+};
+
+restoreBackupBtn.onclick = async () => {
+  backupFeedback.textContent = '';
+  const stamp = getSelectedBackupStamp();
+  if (!stamp) {
+    backupFeedback.textContent = 'Selecione um backup na lista.';
+    return;
+  }
+  const confirmText = prompt(`Você vai restaurar o snapshot ${stamp}.\nIsso pode sobrescrever dados atuais.\nDigite RESTAURAR para confirmar:`) || '';
+  if (String(confirmText).trim().toUpperCase() !== 'RESTAURAR') {
+    backupFeedback.textContent = 'Restauração cancelada (confirmação não informada).';
+    return;
+  }
+
+  try {
+    const d = await api('/api/admin/system/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        stamp,
+        path: f.backupPath.value || '',
+        confirm_text: confirmText,
+      }),
+    });
+    backupFeedback.textContent = d.message || `Restore do backup ${stamp} concluído ✅`;
   } catch (err) {
     backupFeedback.textContent = err.message;
   }
@@ -616,6 +688,7 @@ logoutBtn.onclick = async () => {
   try {
     await ensureAdmin();
     await Promise.all([loadSettings(), loadReports(), loadDeletedDocuments()]);
+    await loadBackupSnapshots();
     try {
       const d = await api('/api/admin/system/diagnostics');
       renderDiagnostics(d.diagnostics || {});

@@ -44,6 +44,7 @@ DB_BACKUP=""
 DOCS_REPO_BACKUP=""
 DOCUMENTS_BACKUP=""
 NO_SNAPSHOT="false"
+ALLOW_NON_ROOT="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -69,6 +70,8 @@ while [[ $# -gt 0 ]]; do
       APP_GROUP="${2:-}"; shift 2 ;;
     --no-snapshot)
       NO_SNAPSHOT="true"; shift ;;
+    --allow-non-root)
+      ALLOW_NON_ROOT="true"; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -78,8 +81,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ $EUID -ne 0 ]]; then
-  echo "This script must run as root (sudo)." >&2
+if [[ $EUID -ne 0 && "${ALLOW_NON_ROOT}" != "true" ]]; then
+  echo "This script must run as root (sudo). Use --allow-non-root to run without service stop/start/chown." >&2
   exit 1
 fi
 
@@ -109,8 +112,12 @@ mkdir -p "${DATA_DIR}" "${DOCUMENTS_DIR}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 SNAPSHOT_DIR="${SNAPSHOT_DIR_DEFAULT}/${STAMP}"
 
-echo "[1/7] Stopping service: ${SERVICE_NAME}"
-systemctl stop "${SERVICE_NAME}"
+if [[ $EUID -eq 0 ]]; then
+  echo "[1/7] Stopping service: ${SERVICE_NAME}"
+  systemctl stop "${SERVICE_NAME}"
+else
+  echo "[1/7] Non-root mode: skipping service stop"
+fi
 
 if [[ "${NO_SNAPSHOT}" != "true" ]]; then
   echo "[2/7] Creating safety snapshot: ${SNAPSHOT_DIR}"
@@ -151,20 +158,29 @@ else
   echo "[5/7] documents restore skipped (no --documents-backup provided)."
 fi
 
-echo "[6/7] Fixing ownership (${APP_USER}:${APP_GROUP})"
-chown -R "${APP_USER}:${APP_GROUP}" "${DATA_DIR}" "${DOCUMENTS_DIR}" || true
+if [[ $EUID -eq 0 ]]; then
+  echo "[6/7] Fixing ownership (${APP_USER}:${APP_GROUP})"
+  chown -R "${APP_USER}:${APP_GROUP}" "${DATA_DIR}" "${DOCUMENTS_DIR}" || true
 
-echo "[7/7] Starting service: ${SERVICE_NAME}"
-systemctl start "${SERVICE_NAME}"
+  echo "[7/7] Starting service: ${SERVICE_NAME}"
+  systemctl start "${SERVICE_NAME}"
 
-if systemctl is-active --quiet "${SERVICE_NAME}"; then
-  echo "Restore completed ✅"
-  echo "Service is active: ${SERVICE_NAME}"
+  if systemctl is-active --quiet "${SERVICE_NAME}"; then
+    echo "Restore completed ✅"
+    echo "Service is active: ${SERVICE_NAME}"
+    if [[ "${NO_SNAPSHOT}" != "true" ]]; then
+      echo "Safety snapshot: ${SNAPSHOT_DIR}"
+    fi
+  else
+    echo "Restore finished but service is not active ❌" >&2
+    echo "Run: sudo systemctl status ${SERVICE_NAME} --no-pager" >&2
+    exit 1
+  fi
+else
+  echo "[6/7] Non-root mode: skipping chown"
+  echo "[7/7] Non-root mode: skipping service start"
+  echo "Restore completed (non-root mode) ✅"
   if [[ "${NO_SNAPSHOT}" != "true" ]]; then
     echo "Safety snapshot: ${SNAPSHOT_DIR}"
   fi
-else
-  echo "Restore finished but service is not active ❌" >&2
-  echo "Run: sudo systemctl status ${SERVICE_NAME} --no-pager" >&2
-  exit 1
 fi

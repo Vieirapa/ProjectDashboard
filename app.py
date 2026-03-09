@@ -1327,6 +1327,89 @@ def run_system_backup(actor: str = "system") -> tuple[bool, str]:
     audit(actor, "system.backup.run", str(used_dir), ", ".join(copied))
     return True, f"backup salvo em {used_dir} ({', '.join(copied)})"
 
+def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict]:
+    settings = get_admin_settings()
+    cfg = _backup_config(settings)
+    backup_dir = Path((path_raw or cfg["path"])).expanduser()
+
+    if not backup_dir.exists() or not backup_dir.is_dir():
+        return True, "ok", {"path": str(backup_dir), "items": [], "total": 0}
+
+    db_re = re.compile(r"^projectdashboard-db-(\d{8}-\d{6})\.sqlite3$")
+    docs_re = re.compile(r"^projectdashboard-docs-(\d{8}-\d{6})\.tar\.gz$")
+
+    grouped: dict[str, dict] = {}
+    for p in backup_dir.iterdir():
+        if not p.is_file():
+            continue
+        mdb = db_re.match(p.name)
+        if mdb:
+            stamp = mdb.group(1)
+            item = grouped.setdefault(stamp, {"stamp": stamp, "db_backup": None, "docs_backup": None})
+            item["db_backup"] = str(p)
+            continue
+        mdocs = docs_re.match(p.name)
+        if mdocs:
+            stamp = mdocs.group(1)
+            item = grouped.setdefault(stamp, {"stamp": stamp, "db_backup": None, "docs_backup": None})
+            item["docs_backup"] = str(p)
+
+    items = [v for v in grouped.values() if v.get("db_backup")]
+    items.sort(key=lambda x: x.get("stamp") or "", reverse=True)
+
+    for it in items:
+        st = str(it.get("stamp") or "")
+        try:
+            dt = datetime.strptime(st, "%Y%m%d-%H%M%S")
+            it["when"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            it["when"] = st
+
+    return True, "ok", {"path": str(backup_dir), "items": items, "total": len(items)}
+
+
+def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> tuple[bool, str]:
+    ok, msg, payload = list_available_backups(path_raw)
+    if not ok:
+        return False, msg
+
+    target = None
+    for it in payload.get("items", []):
+        if str(it.get("stamp") or "") == str(stamp or ""):
+            target = it
+            break
+    if not target:
+        return False, "Backup selecionado não encontrado"
+
+    db_backup = str(target.get("db_backup") or "").strip()
+    docs_backup = str(target.get("docs_backup") or "").strip()
+    if not db_backup:
+        return False, "Backup de banco não encontrado para o snapshot selecionado"
+
+    script = APP_DIR / "scripts" / "restore_backup.sh"
+    if not script.exists():
+        return False, f"Script de restore não encontrado: {script}"
+
+    cmd = [str(script), "--db-backup", db_backup, "--allow-non-root"]
+    if docs_backup:
+        cmd.extend(["--docs-backup", docs_backup])
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    except Exception as e:
+        return False, f"Falha ao executar restore: {e}"
+
+    out = (r.stdout or "").strip()
+    err = (r.stderr or "").strip()
+    detail = (out + ("\n" + err if err else "")).strip()
+
+    if r.returncode != 0:
+        return False, f"Restore falhou (code={r.returncode}). {detail[:1200]}"
+
+    audit(actor, "system.backup.restore", str(stamp), f"path={payload.get('path')} docs={bool(docs_backup)}")
+    return True, f"Restore concluído para {stamp}. {detail[:800]}"
+
+
 def run_system_diagnostics() -> dict:
     settings = get_admin_settings()
     repo_url = _setting(settings, "system.git_repo", "PDASH_GIT_REPO", "https://github.com/Vieirapa/ProjectDashboard.git")
@@ -2273,6 +2356,18 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin(): return
             return self._json(200, {"ok": True, "diagnostics": run_system_diagnostics()})
 
+        if p == "/api/admin/system/backup/available":
+            if not self._require_admin(): return
+            path_raw = (qs.get("path", [""])[0] or "").strip() or None
+            done, msg, data = list_available_backups(path_raw)
+            return self._json(200 if done else 400, {
+                "ok": done,
+                "path": data.get("path") if done else None,
+                "items": data.get("items") if done else [],
+                "total": data.get("total") if done else 0,
+                "error": None if done else msg,
+            })
+
         self.send_error(404)
 
     def do_POST(self):
@@ -2402,6 +2497,25 @@ class Handler(BaseHTTPRequestHandler):
                 "error": None if done else msg,
                 "detail": detail,
             })
+
+        if p == "/api/admin/system/backup/restore":
+            admin = self._require_admin()
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body.get("error") or "JSON inválido"})
+
+            stamp = str((body or {}).get("stamp") or "").strip()
+            path_raw = str((body or {}).get("path") or "").strip() or None
+            confirm = str((body or {}).get("confirm_text") or "").strip().upper()
+
+            if not stamp:
+                return self._json(400, {"ok": False, "error": "Stamp do backup é obrigatório"})
+            if confirm != "RESTAURAR":
+                return self._json(400, {"ok": False, "error": "Confirmação obrigatória: digite RESTAURAR"})
+
+            done, msg = restore_backup_from_stamp(stamp, path_raw, admin["username"])
+            return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
 
         if p.startswith("/api/admin/deleted-documents/") and p.endswith("/restore"):
             admin = self._require_admin()
