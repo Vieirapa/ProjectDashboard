@@ -128,11 +128,10 @@ async function loadCardsForSelectedProject() {
     }
 
     projectCardsList.innerHTML = `<table>
-      <tr><th>Nome</th><th>Slug</th><th>Criado em</th><th>Status</th><th>Responsável</th><th>Ações</th></tr>
+      <tr><th>Nome</th><th>Criado em</th><th>Status</th><th>Responsável</th><th>Ações</th></tr>
       ${docs.map(doc => `
         <tr data-slug="${esc(doc.slug)}">
           <td>${esc(doc.name)}</td>
-          <td>${esc(doc.slug)}</td>
           <td>${esc(fmtDate(doc.openedAt || doc.updatedAt))}</td>
           <td>${esc(doc.status || '-')}</td>
           <td>${esc(doc.owner || '-')}</td>
