@@ -733,6 +733,10 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
     requested_start = str(payload.get("start_date") or payload.get("startDate") or "").strip()
     new_start_date = requested_start or now_iso()
 
+    def _safe_filename(name: str, fallback: str = "documento.bin") -> str:
+        clean = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(name or "")).strip("._")
+        return clean or fallback
+
     with db() as conn:
         template = conn.execute(
             "SELECT project_id, project_name, notes, allowed_roles, is_template FROM projects WHERE project_id=?",
@@ -757,17 +761,104 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
             return False, "Falha ao criar projeto a partir do template", None
 
         template_docs = conn.execute(
-            "SELECT name, status, priority, description FROM documents WHERE project_id=? ORDER BY id",
+            "SELECT id, slug, name, status, priority, description, document_name, document_mime, document_path, document_status FROM documents WHERE project_id=? ORDER BY id",
             (template_project_id,),
         ).fetchall()
 
         now = now_iso()
         for row in template_docs:
             d = dict(row)
+            source_slug = str(d.get("slug") or "").strip()
             name = str(d.get("name") or "").strip() or "Documento"
             doc_slug = _unique_slug(conn, name)
-            doc_path = str(BASE_DIR / doc_slug)
+            card_path = str(BASE_DIR / doc_slug)
             (BASE_DIR / doc_slug).mkdir(parents=True, exist_ok=True)
+
+            latest_name = ""
+            latest_mime = ""
+            latest_abs_path = ""
+            latest_status = str(d.get("document_status") or "").strip() or "aguardando edição"
+
+            if source_slug:
+                versions = conn.execute(
+                    "SELECT version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum FROM document_versions WHERE document_slug=? ORDER BY version",
+                    (source_slug,),
+                ).fetchall()
+            else:
+                versions = []
+
+            for vrow in versions:
+                v = dict(vrow)
+                version_num = int(v.get("version") or 0)
+                if version_num <= 0:
+                    continue
+                src_rel = str(v.get("file_rel_path") or "").strip()
+                if not src_rel:
+                    continue
+                src_abs = DOCS_REPO_DIR / src_rel
+                if not src_abs.exists() or not src_abs.is_file():
+                    continue
+
+                version_name = _safe_filename(v.get("document_name") or src_abs.name)
+                rel_path = Path("documents") / doc_slug / f"v{version_num:04d}_{version_name}"
+                dst_abs = DOCS_REPO_DIR / rel_path
+                dst_abs.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_abs, dst_abs)
+
+                checksum = str(v.get("checksum") or "").strip() or hashlib.sha256(dst_abs.read_bytes()).hexdigest()
+                mime = str(v.get("document_mime") or "application/octet-stream").strip() or "application/octet-stream"
+                status_for_version = str(v.get("document_status") or latest_status).strip() or latest_status
+
+                conn.execute(
+                    "INSERT INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        doc_slug,
+                        version_num,
+                        version_name,
+                        mime,
+                        status_for_version,
+                        str(rel_path),
+                        "",
+                        checksum,
+                        actor,
+                        now,
+                    ),
+                )
+
+                latest_name = version_name
+                latest_mime = mime
+                latest_status = status_for_version
+                latest_abs_path = str(dst_abs)
+
+            if not latest_abs_path:
+                source_doc_path = Path(str(d.get("document_path") or "").strip())
+                if source_doc_path.exists() and source_doc_path.is_file():
+                    fallback_name = _safe_filename(d.get("document_name") or source_doc_path.name)
+                    rel_path = Path("documents") / doc_slug / f"v0001_{fallback_name}"
+                    dst_abs = DOCS_REPO_DIR / rel_path
+                    dst_abs.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source_doc_path, dst_abs)
+
+                    latest_name = fallback_name
+                    latest_mime = str(d.get("document_mime") or "application/octet-stream").strip() or "application/octet-stream"
+                    latest_abs_path = str(dst_abs)
+
+                    conn.execute(
+                        "INSERT INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            doc_slug,
+                            1,
+                            latest_name,
+                            latest_mime,
+                            latest_status,
+                            str(rel_path),
+                            "",
+                            hashlib.sha256(dst_abs.read_bytes()).hexdigest(),
+                            actor,
+                            now,
+                        ),
+                    )
+
             conn.execute(
                 "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
@@ -778,12 +869,12 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
                     "",
                     "",
                     str(d.get("description") or "").strip(),
-                    doc_path,
+                    card_path,
                     now,
-                    "aguardando edição",
-                    "",
-                    "",
-                    "",
+                    latest_status,
+                    latest_name,
+                    latest_mime,
+                    latest_abs_path,
                     actor,
                     now,
                     "",
