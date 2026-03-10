@@ -435,9 +435,20 @@ form.onsubmit = async (e) => {
     const depends_on = getMultiSelectedValues(pDependsOn);
     const created = await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid, depends_on })});
 
+    let slug = created?.slug || '';
+
+    // Fallback de robustez: garante persistência de dependências mesmo se algum browser
+    // não refletir corretamente selectedOptions no submit.
+    if (depends_on.length && slug) {
+      await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ depends_on }),
+      });
+    }
+
     const file = pDocumentFile?.files?.[0];
     if (file) {
-      let slug = created?.slug || '';
 
       // fallback para compatibilidade com backend sem retorno de slug
       if (!slug) {
