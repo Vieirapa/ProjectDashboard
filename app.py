@@ -342,6 +342,19 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS document_dependencies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                document_slug TEXT NOT NULL,
+                depends_on_slug TEXT NOT NULL,
+                created_by TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(document_slug, depends_on_slug)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_doc_deps_document ON document_dependencies(document_slug)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_doc_deps_depends_on ON document_dependencies(depends_on_slug)")
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL DEFAULT '',
@@ -541,16 +554,106 @@ def get_document(slug: str, project_id: int | None = None) -> dict | None:
     if not r:
         return None
     age_label, age_days = _project_age_fields(r["opened_at"], r["status"], r["released_at"])
+    project_id_val = int(r["project_id"] or 1)
+    deps = list_document_dependencies(r["slug"], project_id_val)
     return {
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"],
         "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
         "documentMime": r["document_mime"], "documentPath": r["document_path"],
-        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"], "projectId": int(r["project_id"] or 1),
+        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"], "projectId": project_id_val,
         "openedAt": r["opened_at"], "releasedAt": r["released_at"],
         "ageLabel": age_label, "ageDays": age_days,
+        "dependsOn": [d["slug"] for d in deps],
+        "dependencies": deps,
+        "isBlockedByDependencies": any(str(d.get("status") or "") != "Concluído" for d in deps),
     }
+
+
+def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get("depends_on") if "depends_on" in payload else payload.get("dependsOn")
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("depends_on deve ser uma lista de slugs")
+    out: list[str] = []
+    for item in raw:
+        slug = str(item or "").strip()
+        if not slug:
+            continue
+        if slug not in out:
+            out.append(slug)
+    return out
+
+
+def list_document_dependencies(slug: str, project_id: int) -> list[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT dd.depends_on_slug, d.name, d.status
+            FROM document_dependencies dd
+            JOIN documents d ON d.slug = dd.depends_on_slug
+            WHERE dd.document_slug=? AND dd.project_id=?
+            ORDER BY d.name
+            """,
+            (slug, project_id),
+        ).fetchall()
+    return [{"slug": r["depends_on_slug"], "name": r["name"], "status": r["status"]} for r in rows]
+
+
+def unresolved_dependencies(slug: str, project_id: int) -> list[dict]:
+    deps = list_document_dependencies(slug, project_id)
+    return [d for d in deps if str(d.get("status") or "") != "Concluído"]
+
+
+def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_dep_slug: str, project_id: int) -> bool:
+    stack = [candidate_dep_slug]
+    seen: set[str] = set()
+    while stack:
+        cur = stack.pop()
+        if cur == source_slug:
+            return True
+        if cur in seen:
+            continue
+        seen.add(cur)
+        children = conn.execute(
+            "SELECT depends_on_slug FROM document_dependencies WHERE document_slug=? AND project_id=?",
+            (cur, project_id),
+        ).fetchall()
+        for row in children:
+            nxt = str(row["depends_on_slug"] or "").strip()
+            if nxt:
+                stack.append(nxt)
+    return False
+
+
+def set_document_dependencies(slug: str, project_id: int, depends_on_slugs: list[str], actor: str) -> tuple[bool, str]:
+    with db() as conn:
+        doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (slug, project_id)).fetchone()
+        if not doc:
+            return False, "Documento não encontrado"
+
+        for dep_slug in depends_on_slugs:
+            if dep_slug == slug:
+                return False, "Um documento não pode depender de si mesmo"
+            dep_doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (dep_slug, project_id)).fetchone()
+            if not dep_doc:
+                return False, f"Dependência inválida (fora do projeto ou inexistente): {dep_slug}"
+            if _would_create_cycle(conn, slug, dep_slug, project_id):
+                return False, f"Dependência cíclica detectada com {dep_slug}"
+
+        conn.execute("DELETE FROM document_dependencies WHERE document_slug=? AND project_id=?", (slug, project_id))
+        now = now_iso()
+        for dep_slug in depends_on_slugs:
+            conn.execute(
+                "INSERT OR IGNORE INTO document_dependencies (project_id, document_slug, depends_on_slug, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+                (project_id, slug, dep_slug, actor, now),
+            )
+
+    return True, "ok"
 
 
 def list_audit_logs(limit: int = 200) -> list[dict]:
@@ -692,6 +795,7 @@ def delete_project_registry(project_id: int) -> tuple[bool, str, int]:
                 continue
             conn.execute("DELETE FROM review_notes WHERE document_slug=?", (slug,))
             conn.execute("DELETE FROM document_versions WHERE document_slug=?", (slug,))
+            conn.execute("DELETE FROM document_dependencies WHERE document_slug=? OR depends_on_slug=?", (slug, slug))
 
             for candidate in [d.get("path"), d.get("document_path")]:
                 p = str(candidate or "").strip()
@@ -766,11 +870,14 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
         ).fetchall()
 
         now = now_iso()
+        cloned_slug_map: dict[str, str] = {}
         for row in template_docs:
             d = dict(row)
             source_slug = str(d.get("slug") or "").strip()
             name = str(d.get("name") or "").strip() or "Documento"
             doc_slug = _unique_slug(conn, name)
+            if source_slug:
+                cloned_slug_map[source_slug] = doc_slug
             card_path = str(BASE_DIR / doc_slug)
             (BASE_DIR / doc_slug).mkdir(parents=True, exist_ok=True)
 
@@ -882,6 +989,23 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
                 ),
             )
 
+        if cloned_slug_map:
+            template_deps = conn.execute(
+                "SELECT document_slug, depends_on_slug FROM document_dependencies WHERE project_id=?",
+                (template_project_id,),
+            ).fetchall()
+            for drow in template_deps:
+                src_from = str(drow["document_slug"] or "").strip()
+                src_to = str(drow["depends_on_slug"] or "").strip()
+                dst_from = cloned_slug_map.get(src_from)
+                dst_to = cloned_slug_map.get(src_to)
+                if not dst_from or not dst_to:
+                    continue
+                conn.execute(
+                    "INSERT OR IGNORE INTO document_dependencies (project_id, document_slug, depends_on_slug, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (new_project_id, dst_from, dst_to, actor, now),
+                )
+
     return True, "ok", new_project_id
 
 
@@ -909,6 +1033,10 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
     name = (payload.get("name") or "").strip()
     if not name:
         return False, "Nome é obrigatório", None
+    try:
+        depends_on_slugs = _dependency_slugs_from_payload(payload)
+    except ValueError as e:
+        return False, str(e), None
     try:
         project_id = int(payload.get("project_id") or payload.get("projectId") or 1)
     except Exception:
@@ -957,14 +1085,45 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
             "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (document["slug"], document["name"], document["status"], document["priority"], document["owner"], document["dueDate"], document["description"], document["path"], document["updatedAt"], document["status"], document["documentName"], document["documentMime"], document["documentPath"], document["createdBy"], document["openedAt"], document["releasedAt"], int(document.get("projectId") or 1)),
         )
+
+    if depends_on_slugs is not None:
+        done_deps, msg_deps = set_document_dependencies(slug, project_id, depends_on_slugs, actor)
+        if not done_deps:
+            with db() as conn:
+                conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
+            try:
+                shutil.rmtree(proj_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return False, msg_deps, None
+
+    unresolved = unresolved_dependencies(slug, project_id)
+    if status != "Backlog" and unresolved:
+        pend = ", ".join([f"{d['name']}" for d in unresolved][:5])
+        with db() as conn:
+            conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
+            conn.execute("DELETE FROM document_dependencies WHERE document_slug=?", (slug,))
+        try:
+            shutil.rmtree(proj_dir, ignore_errors=True)
+        except Exception:
+            pass
+        return False, f"Não é possível criar fora do Backlog: dependências pendentes ({pend})", None
+
     sync_document_meta(document)
     return True, "ok", slug
 
 
-def patch_document(slug: str, payload: dict, project_id: int | None = None) -> tuple[bool, str]:
+def patch_document(slug: str, payload: dict, project_id: int | None = None, actor: str = "system") -> tuple[bool, str]:
     p = get_document(slug, project_id)
     if not p:
         return False, "Documento não encontrado"
+
+    effective_project_id = int(project_id or p.get("projectId") or 1)
+    try:
+        depends_on_slugs = _dependency_slugs_from_payload(payload)
+    except ValueError as e:
+        return False, str(e)
+
     old_status = p.get("status")
     if "name" in payload and str(payload["name"]).strip():
         p["name"] = str(payload["name"]).strip()
@@ -993,6 +1152,17 @@ def patch_document(slug: str, payload: dict, project_id: int | None = None) -> t
     if "description" in payload:
         p["description"] = str(payload["description"]).strip() or "Sem descrição"
     p["updatedAt"] = now_iso()
+
+    if depends_on_slugs is not None:
+        done_deps, msg_deps = set_document_dependencies(slug, effective_project_id, depends_on_slugs, actor)
+        if not done_deps:
+            return False, msg_deps
+
+    if old_status == "Backlog" and p.get("status") != "Backlog":
+        pend = unresolved_dependencies(slug, effective_project_id)
+        if pend:
+            blocked = ", ".join([f"{d['name']} ({d['status']})" for d in pend][:5])
+            return False, f"Card bloqueado por dependências não concluídas: {blocked}"
 
     with db() as conn:
         conn.execute("UPDATE documents SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=?,released_at=? WHERE slug=?",
@@ -1990,6 +2160,7 @@ def delete_document(slug: str, actor: str) -> tuple[bool, str]:
 
         conn.execute("DELETE FROM review_notes WHERE document_slug=?", (slug,))
         conn.execute("DELETE FROM document_versions WHERE document_slug=?", (slug,))
+        conn.execute("DELETE FROM document_dependencies WHERE document_slug=? OR depends_on_slug=?", (slug, slug))
         conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
     return True, "ok"
 
@@ -2847,7 +3018,7 @@ class Handler(BaseHTTPRequestHandler):
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
 
-            done, msg = patch_document(slug, body, self._selected_project_id(qs, user))
+            done, msg = patch_document(slug, body, self._selected_project_id(qs, user), user["username"])
             if done:
                 audit(user["username"], "document.update", slug, json.dumps(body, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})

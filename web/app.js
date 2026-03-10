@@ -26,6 +26,7 @@ const pPriority = document.getElementById('pPriority');
 const pOwner = document.getElementById('pOwner');
 const pDueDate = document.getElementById('pDueDate');
 const pDocumentFile = document.getElementById('pDocumentFile');
+const pDependsOn = document.getElementById('pDependsOn');
 const ownersList = document.getElementById('ownersList');
 
 let me = null;
@@ -200,7 +201,16 @@ function makeCard(p, statuses, priorities) {
   const st = document.createElement('select');
   statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; if (s === p.status) o.selected = true; st.appendChild(o); });
   st.disabled = !canEditCard();
-  st.onchange = async () => { await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})}); render(); };
+  st.onchange = async () => {
+    const prev = p.status;
+    try {
+      await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})});
+      render();
+    } catch (e) {
+      st.value = prev;
+      alert(e.message || 'Falha ao alterar status.');
+    }
+  };
 
   const pr = document.createElement('select');
   priorities.forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = `Prioridade: ${x}`; if (x === p.priority) o.selected = true; pr.appendChild(o); });
@@ -248,6 +258,16 @@ function fillFilters(statuses, priorities, users=[]) {
   ownersList.innerHTML = '';
   (users || []).forEach(u => ownersList.append(new Option(u, u)));
   pStatus.value = 'Backlog'; pPriority.value = 'Média';
+}
+
+function fillDependenciesOptions() {
+  if (!pDependsOn) return;
+  const docs = (state.documents || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+  pDependsOn.innerHTML = '';
+  docs.forEach((d) => {
+    const label = `${d.name} [${d.status}]`;
+    pDependsOn.append(new Option(label, d.slug));
+  });
 }
 
 function syncProjectSelect() {
@@ -325,6 +345,7 @@ async function render() {
     syncProjectSelect();
     updateProjectSummary();
     fillFilters(state.statuses, state.priorities, state.users || []);
+    fillDependenciesOptions();
     const filters = currentFilters();
     const filtered = state.documents.filter(p => passesFilters(p, filters));
     board.innerHTML = '';
@@ -358,7 +379,7 @@ if (projectSelect) {
   };
 }
 
-newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; dialog.showModal(); };
+newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; if (pDependsOn) Array.from(pDependsOn.options).forEach(o => { o.selected = false; }); dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();
 
 form.onsubmit = async (e) => {
@@ -371,7 +392,8 @@ form.onsubmit = async (e) => {
     }
     const pid = currentProjectIdFromUrl();
     const name = (pName.value || '').trim();
-    const created = await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid })});
+    const depends_on = pDependsOn ? Array.from(pDependsOn.selectedOptions || []).map((o) => String(o.value || '').trim()).filter(Boolean) : [];
+    const created = await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid, depends_on })});
 
     const file = pDocumentFile?.files?.[0];
     if (file) {
