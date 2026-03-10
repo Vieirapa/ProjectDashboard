@@ -21,6 +21,7 @@ const addReviewNoteBtn = document.getElementById('addReviewNoteBtn');
 const reviewNotesHistory = document.getElementById('reviewNotesHistory');
 const ownersList = document.getElementById('ownersList');
 const dependsOnSelect = document.getElementById('dependsOn');
+const dependsSearch = document.getElementById('dependsSearch');
 const dependencyInfo = document.getElementById('dependencyInfo');
 
 const f = {
@@ -40,6 +41,8 @@ let doc = null;
 let isDirty = false;
 let isSaving = false;
 let scopeBlocked = false;
+let dependencyDocs = [];
+let dependencySelected = new Set();
 saveBtn.disabled = true;
 
 async function api(url, opts={}) {
@@ -183,19 +186,47 @@ async function loadVersions() {
   }
 }
 
-async function loadDependencyOptions(currentSlug, selected = []) {
+function renderDependencyChecklist() {
   if (!dependsOnSelect) return;
-  const data = await api(`/api/documents?project_id=${encodeURIComponent(String(currentProjectId()))}`);
-  const selectedSet = new Set((selected || []).map((s) => String(s || '').trim()));
-  dependsOnSelect.innerHTML = (data.documents || [])
-    .filter((d) => String(d.slug) !== String(currentSlug))
-    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'))
+  const q = String(dependsSearch?.value || '').trim().toLowerCase();
+  const shown = dependencyDocs.filter((d) => {
+    if (!q) return true;
+    const hay = `${d.name || ''} ${d.status || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (!shown.length) {
+    dependsOnSelect.innerHTML = '<div class="deps-empty">Nenhum card encontrado.</div>';
+    return;
+  }
+
+  dependsOnSelect.innerHTML = shown
     .map((d) => `
-      <label class="small" style="display:block; margin:2px 0;">
-        <input type="checkbox" data-dep-slug="${String(d.slug)}" ${selectedSet.has(String(d.slug)) ? 'checked' : ''} /> ${d.name} [${d.status}]
+      <label class="small">
+        <input type="checkbox" data-dep-slug="${String(d.slug)}" ${dependencySelected.has(String(d.slug)) ? 'checked' : ''} /> ${d.name} [${d.status}]
       </label>
     `)
     .join('');
+
+  Array.from(dependsOnSelect.querySelectorAll('input[type="checkbox"][data-dep-slug]')).forEach((el) => {
+    el.addEventListener('change', () => {
+      const slug = String(el.getAttribute('data-dep-slug') || '');
+      if (!slug) return;
+      if (el.checked) dependencySelected.add(slug);
+      else dependencySelected.delete(slug);
+      setDirty(true);
+    });
+  });
+}
+
+async function loadDependencyOptions(currentSlug, selected = []) {
+  if (!dependsOnSelect) return;
+  const data = await api(`/api/documents?project_id=${encodeURIComponent(String(currentProjectId()))}`);
+  dependencyDocs = (data.documents || [])
+    .filter((d) => String(d.slug) !== String(currentSlug))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+  dependencySelected = new Set((selected || []).map((s) => String(s || '').trim()).filter(Boolean));
+  renderDependencyChecklist();
 }
 
 function renderDependencyInfo(document) {
@@ -238,6 +269,7 @@ async function loadDocument() {
   f.documentFile.disabled = !canUploadDocument();
   deleteBtn.style.display = canDeleteCard() ? 'inline-block' : 'none';
 
+  if (dependsSearch) dependsSearch.value = '';
   await loadDependencyOptions(slug, p.dependsOn || []);
   renderDependencyInfo(p);
 
@@ -263,8 +295,8 @@ function fileToBase64(file) {
   el.addEventListener('input', () => setDirty(true));
   el.addEventListener('change', () => setDirty(true));
 });
-if (dependsOnSelect) {
-  dependsOnSelect.addEventListener('change', () => setDirty(true));
+if (dependsSearch) {
+  dependsSearch.addEventListener('input', () => renderDependencyChecklist());
 }
 f.documentFile.addEventListener('change', () => setDirty(true));
 f.status.addEventListener('change', () => updateReviewNotesAvailability());
@@ -335,7 +367,7 @@ async function handleSave() {
       return;
     }
 
-    const depends_on = getMultiSelectedValues(dependsOnSelect);
+    const depends_on = Array.from(dependencySelected);
 
     await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value, depends_on,

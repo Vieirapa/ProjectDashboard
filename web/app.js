@@ -27,10 +27,13 @@ const pOwner = document.getElementById('pOwner');
 const pDueDate = document.getElementById('pDueDate');
 const pDocumentFile = document.getElementById('pDocumentFile');
 const pDependsOn = document.getElementById('pDependsOn');
+const pDependsSearch = document.getElementById('pDependsSearch');
 const ownersList = document.getElementById('ownersList');
 
 let me = null;
 let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1 };
+let createDependencyDocs = [];
+let createDependencySelected = new Set();
 let behavior = {
   priorityColorEnabled: false,
   priorityColors: {
@@ -269,12 +272,32 @@ function fillFilters(statuses, priorities, users=[]) {
 
 function fillDependenciesOptions() {
   if (!pDependsOn) return;
-  const docs = (state.documents || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+  const q = String(pDependsSearch?.value || '').trim().toLowerCase();
+  const docs = createDependencyDocs.filter((d) => {
+    if (!q) return true;
+    const hay = `${d.name || ''} ${d.status || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (!docs.length) {
+    pDependsOn.innerHTML = '<div class="deps-empty">Nenhum card encontrado.</div>';
+    return;
+  }
+
   pDependsOn.innerHTML = docs.map((d) => `
-    <label class="small" style="display:block; margin:2px 0;">
-      <input type="checkbox" data-dep-slug="${String(d.slug)}" /> ${d.name} [${d.status}]
+    <label class="small">
+      <input type="checkbox" data-dep-slug="${String(d.slug)}" ${createDependencySelected.has(String(d.slug)) ? 'checked' : ''} /> ${d.name} [${d.status}]
     </label>
   `).join('');
+
+  Array.from(pDependsOn.querySelectorAll('input[type="checkbox"][data-dep-slug]')).forEach((el) => {
+    el.addEventListener('change', () => {
+      const slug = String(el.getAttribute('data-dep-slug') || '');
+      if (!slug) return;
+      if (el.checked) createDependencySelected.add(slug);
+      else createDependencySelected.delete(slug);
+    });
+  });
 }
 
 function syncProjectSelect() {
@@ -352,6 +375,7 @@ async function render() {
     syncProjectSelect();
     updateProjectSummary();
     fillFilters(state.statuses, state.priorities, state.users || []);
+    createDependencyDocs = (state.documents || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
     fillDependenciesOptions();
     const filters = currentFilters();
     const filtered = state.documents.filter(p => passesFilters(p, filters));
@@ -385,8 +409,11 @@ if (projectSelect) {
     window.location.href = `/kanban.html?project_id=${encodeURIComponent(pid)}`;
   };
 }
+if (pDependsSearch) {
+  pDependsSearch.addEventListener('input', () => fillDependenciesOptions());
+}
 
-newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; if (pDependsOn) { Array.from(pDependsOn.querySelectorAll('input[type="checkbox"]')).forEach((c) => { c.checked = false; }); } dialog.showModal(); };
+newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; createDependencySelected = new Set(); if (pDependsSearch) pDependsSearch.value = ''; fillDependenciesOptions(); dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();
 
 form.onsubmit = async (e) => {
@@ -399,7 +426,7 @@ form.onsubmit = async (e) => {
     }
     const pid = currentProjectIdFromUrl();
     const name = (pName.value || '').trim();
-    const depends_on = getMultiSelectedValues(pDependsOn);
+    const depends_on = Array.from(createDependencySelected);
     const created = await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid, depends_on })});
 
     let slug = created?.slug || '';
