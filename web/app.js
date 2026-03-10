@@ -194,8 +194,16 @@ function makeCard(p, statuses, priorities) {
     .replace('DIAS PARA SOLUCAO', 'Dia até solução')
     .replace('DIAS DESDE ABERTURA', 'Dias desde abertura');
 
+  const blockedDeps = Array.isArray(p.dependencies)
+    ? p.dependencies.filter((d) => String(d.status || '') !== 'Concluído')
+    : [];
+  const depBadge = blockedDeps.length
+    ? `<div class="dep-alert" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Dependências pendentes (${blockedDeps.length})</div>`
+    : (Array.isArray(p.dependencies) && p.dependencies.length ? '<div class="dep-ok">✅ Dependências resolvidas</div>' : '');
+
   card.innerHTML = `
     <h3>${p.name}</h3>
+    ${depBadge}
     <p>${p.description || 'Sem descrição'}</p>
     <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>${ageLabel}: <b>${p.ageDays ?? '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
   `;

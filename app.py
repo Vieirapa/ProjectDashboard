@@ -532,17 +532,43 @@ def list_documents(project_id: int | None = None) -> list[dict]:
             rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents ORDER BY name").fetchall()
         else:
             rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE project_id=? ORDER BY name", (project_id,)).fetchall()
-    return [{
-        "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
-        "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
-        "path": r["path"], "updatedAt": r["updated_at"],
-        "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
-        "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
-        "createdBy": r["created_by"], "projectId": int(r["project_id"] or 1),
-        "openedAt": r["opened_at"], "releasedAt": r["released_at"],
-        "ageLabel": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[0],
-        "ageDays": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[1],
-    } for r in rows]
+
+        dep_rows = conn.execute(
+            """
+            SELECT dd.project_id, dd.document_slug, dd.depends_on_slug, d.name, d.status
+            FROM document_dependencies dd
+            JOIN documents d ON d.slug = dd.depends_on_slug
+            """
+        ).fetchall()
+
+    deps_by_doc: dict[tuple[int, str], list[dict]] = {}
+    for dr in dep_rows:
+        key = (int(dr["project_id"] or 1), str(dr["document_slug"] or ""))
+        deps_by_doc.setdefault(key, []).append({
+            "slug": dr["depends_on_slug"],
+            "name": dr["name"],
+            "status": dr["status"],
+        })
+
+    out = []
+    for r in rows:
+        pid = int(r["project_id"] or 1)
+        deps = deps_by_doc.get((pid, str(r["slug"])), [])
+        out.append({
+            "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
+            "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
+            "path": r["path"], "updatedAt": r["updated_at"],
+            "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
+            "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
+            "createdBy": r["created_by"], "projectId": pid,
+            "openedAt": r["opened_at"], "releasedAt": r["released_at"],
+            "ageLabel": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[0],
+            "ageDays": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[1],
+            "dependsOn": [d["slug"] for d in deps],
+            "dependencies": deps,
+            "isBlockedByDependencies": any(str(d.get("status") or "") != "Concluído" for d in deps),
+        })
+    return out
 
 
 def get_document(slug: str, project_id: int | None = None) -> dict | None:
