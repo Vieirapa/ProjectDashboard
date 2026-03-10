@@ -165,7 +165,7 @@ dialog form { padding: 16px; display: grid; gap: 8px; }
 #reviewNoteInput { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
 .review-panel select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
 .deps-checklist {
-  max-height: 170px;
+  max-height: 122px;
   overflow-y: auto;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
