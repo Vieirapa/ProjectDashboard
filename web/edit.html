@@ -31,8 +31,8 @@
             <datalist id="ownersList"></datalist>
             <label>Prazo</label><input id="dueDate" type="date" />
             <label>Depende de (opcional)</label>
-            <select id="dependsOn" multiple size="6"></select>
-            <small class="small">Clique para marcar/desmarcar dependências (não precisa Ctrl).</small>
+            <div id="dependsOn" class="deps-checklist"></div>
+            <small class="small">Marque os cards pré-requisito.</small>
             <div id="dependencyInfo" class="small"></div>
             <label>Anexo do documento (1 arquivo)</label><input id="documentFile" type="file" />
             <label>Documento atual</label><input id="documentName" readonly />

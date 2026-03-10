@@ -65,41 +65,11 @@ function canAddReviewNotes() {
   return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador', 'revisor'].includes(me?.role || '');
 }
 
-function installMultiSelectToggle(selectEl) {
-  if (!selectEl || selectEl.dataset.toggleInstalled === '1') return;
-  selectEl.dataset.toggleInstalled = '1';
-  selectEl._selectedValues = new Set(Array.from(selectEl.options || []).filter((o) => o.selected).map((o) => String(o.value || '')));
-
-  const syncVisual = () => {
-    Array.from(selectEl.options || []).forEach((o) => {
-      o.selected = selectEl._selectedValues.has(String(o.value || ''));
-    });
-  };
-
-  selectEl.addEventListener('mousedown', (e) => {
-    const opt = e.target;
-    if (!(opt instanceof HTMLOptionElement)) return;
-    e.preventDefault();
-    const v = String(opt.value || '');
-    if (selectEl._selectedValues.has(v)) selectEl._selectedValues.delete(v);
-    else selectEl._selectedValues.add(v);
-    syncVisual();
-    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-
-  selectEl.addEventListener('click', (e) => {
-    if (e.target instanceof HTMLOptionElement) e.preventDefault();
-  });
-
-  syncVisual();
-}
-
-function getMultiSelectedValues(selectEl) {
-  if (!selectEl) return [];
-  if (selectEl._selectedValues instanceof Set) {
-    return Array.from(selectEl._selectedValues).map((v) => String(v || '').trim()).filter(Boolean);
-  }
-  return Array.from(selectEl.selectedOptions || []).map((o) => String(o.value || '').trim()).filter(Boolean);
+function getMultiSelectedValues(containerEl) {
+  if (!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('input[type="checkbox"][data-dep-slug]:checked'))
+    .map((el) => String(el.getAttribute('data-dep-slug') || '').trim())
+    .filter(Boolean);
 }
 
 function canDeleteCard() {
@@ -217,19 +187,15 @@ async function loadDependencyOptions(currentSlug, selected = []) {
   if (!dependsOnSelect) return;
   const data = await api(`/api/documents?project_id=${encodeURIComponent(String(currentProjectId()))}`);
   const selectedSet = new Set((selected || []).map((s) => String(s || '').trim()));
-  dependsOnSelect.innerHTML = '';
-  (data.documents || [])
+  dependsOnSelect.innerHTML = (data.documents || [])
     .filter((d) => String(d.slug) !== String(currentSlug))
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'))
-    .forEach((d) => {
-      const opt = new Option(`${d.name} [${d.status}]`, d.slug, false, selectedSet.has(String(d.slug)));
-      dependsOnSelect.append(opt);
-    });
-  dependsOnSelect._selectedValues = new Set(Array.from(selectedSet));
-  installMultiSelectToggle(dependsOnSelect);
-  Array.from(dependsOnSelect.options || []).forEach((o) => {
-    o.selected = dependsOnSelect._selectedValues.has(String(o.value || ''));
-  });
+    .map((d) => `
+      <label class="small" style="display:block; margin:2px 0;">
+        <input type="checkbox" data-dep-slug="${String(d.slug)}" ${selectedSet.has(String(d.slug)) ? 'checked' : ''} /> ${d.name} [${d.status}]
+      </label>
+    `)
+    .join('');
 }
 
 function renderDependencyInfo(document) {
@@ -264,7 +230,11 @@ async function loadDocument() {
 
   const editable = canEditCard();
   [f.name, f.description, f.status, f.priority, f.owner, f.dueDate].forEach((el) => el.disabled = !editable);
-  if (dependsOnSelect) dependsOnSelect.disabled = !editable;
+  if (dependsOnSelect) {
+    Array.from(dependsOnSelect.querySelectorAll('input[type="checkbox"]')).forEach((el) => {
+      el.disabled = !editable;
+    });
+  }
   f.documentFile.disabled = !canUploadDocument();
   deleteBtn.style.display = canDeleteCard() ? 'inline-block' : 'none';
 

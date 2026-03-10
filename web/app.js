@@ -69,41 +69,11 @@ async function api(url, opts = {}) {
   return data;
 }
 
-function installMultiSelectToggle(selectEl) {
-  if (!selectEl || selectEl.dataset.toggleInstalled === '1') return;
-  selectEl.dataset.toggleInstalled = '1';
-  selectEl._selectedValues = new Set(Array.from(selectEl.options || []).filter((o) => o.selected).map((o) => String(o.value || '')));
-
-  const syncVisual = () => {
-    Array.from(selectEl.options || []).forEach((o) => {
-      o.selected = selectEl._selectedValues.has(String(o.value || ''));
-    });
-  };
-
-  selectEl.addEventListener('mousedown', (e) => {
-    const opt = e.target;
-    if (!(opt instanceof HTMLOptionElement)) return;
-    e.preventDefault();
-    const v = String(opt.value || '');
-    if (selectEl._selectedValues.has(v)) selectEl._selectedValues.delete(v);
-    else selectEl._selectedValues.add(v);
-    syncVisual();
-    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-
-  selectEl.addEventListener('click', (e) => {
-    if (e.target instanceof HTMLOptionElement) e.preventDefault();
-  });
-
-  syncVisual();
-}
-
-function getMultiSelectedValues(selectEl) {
-  if (!selectEl) return [];
-  if (selectEl._selectedValues instanceof Set) {
-    return Array.from(selectEl._selectedValues).map((v) => String(v || '').trim()).filter(Boolean);
-  }
-  return Array.from(selectEl.selectedOptions || []).map((o) => String(o.value || '').trim()).filter(Boolean);
+function getMultiSelectedValues(containerEl) {
+  if (!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('input[type="checkbox"][data-dep-slug]:checked'))
+    .map((el) => String(el.getAttribute('data-dep-slug') || '').trim())
+    .filter(Boolean);
 }
 
 function fileToBase64(file) {
@@ -300,14 +270,11 @@ function fillFilters(statuses, priorities, users=[]) {
 function fillDependenciesOptions() {
   if (!pDependsOn) return;
   const docs = (state.documents || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
-  pDependsOn.innerHTML = '';
-  docs.forEach((d) => {
-    const label = `${d.name} [${d.status}]`;
-    pDependsOn.append(new Option(label, d.slug));
-  });
-  installMultiSelectToggle(pDependsOn);
-  if (pDependsOn._selectedValues instanceof Set) pDependsOn._selectedValues.clear();
-  Array.from(pDependsOn.options || []).forEach((o) => { o.selected = false; });
+  pDependsOn.innerHTML = docs.map((d) => `
+    <label class="small" style="display:block; margin:2px 0;">
+      <input type="checkbox" data-dep-slug="${String(d.slug)}" /> ${d.name} [${d.status}]
+    </label>
+  `).join('');
 }
 
 function syncProjectSelect() {
@@ -419,7 +386,7 @@ if (projectSelect) {
   };
 }
 
-newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; if (pDependsOn) { if (pDependsOn._selectedValues instanceof Set) pDependsOn._selectedValues.clear(); Array.from(pDependsOn.options).forEach(o => { o.selected = false; }); } dialog.showModal(); };
+newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; if (pDependsOn) { Array.from(pDependsOn.querySelectorAll('input[type="checkbox"]')).forEach((c) => { c.checked = false; }); } dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();
 
 form.onsubmit = async (e) => {
