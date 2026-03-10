@@ -72,13 +72,38 @@ async function api(url, opts = {}) {
 function installMultiSelectToggle(selectEl) {
   if (!selectEl || selectEl.dataset.toggleInstalled === '1') return;
   selectEl.dataset.toggleInstalled = '1';
+  selectEl._selectedValues = new Set(Array.from(selectEl.options || []).filter((o) => o.selected).map((o) => String(o.value || '')));
+
+  const syncVisual = () => {
+    Array.from(selectEl.options || []).forEach((o) => {
+      o.selected = selectEl._selectedValues.has(String(o.value || ''));
+    });
+  };
+
   selectEl.addEventListener('mousedown', (e) => {
     const opt = e.target;
     if (!(opt instanceof HTMLOptionElement)) return;
     e.preventDefault();
-    opt.selected = !opt.selected;
+    const v = String(opt.value || '');
+    if (selectEl._selectedValues.has(v)) selectEl._selectedValues.delete(v);
+    else selectEl._selectedValues.add(v);
+    syncVisual();
     selectEl.dispatchEvent(new Event('change', { bubbles: true }));
   });
+
+  selectEl.addEventListener('click', (e) => {
+    if (e.target instanceof HTMLOptionElement) e.preventDefault();
+  });
+
+  syncVisual();
+}
+
+function getMultiSelectedValues(selectEl) {
+  if (!selectEl) return [];
+  if (selectEl._selectedValues instanceof Set) {
+    return Array.from(selectEl._selectedValues).map((v) => String(v || '').trim()).filter(Boolean);
+  }
+  return Array.from(selectEl.selectedOptions || []).map((o) => String(o.value || '').trim()).filter(Boolean);
 }
 
 function fileToBase64(file) {
@@ -281,6 +306,8 @@ function fillDependenciesOptions() {
     pDependsOn.append(new Option(label, d.slug));
   });
   installMultiSelectToggle(pDependsOn);
+  if (pDependsOn._selectedValues instanceof Set) pDependsOn._selectedValues.clear();
+  Array.from(pDependsOn.options || []).forEach((o) => { o.selected = false; });
 }
 
 function syncProjectSelect() {
@@ -392,7 +419,7 @@ if (projectSelect) {
   };
 }
 
-newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; if (pDependsOn) Array.from(pDependsOn.options).forEach(o => { o.selected = false; }); dialog.showModal(); };
+newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; if (pDependsOn) { if (pDependsOn._selectedValues instanceof Set) pDependsOn._selectedValues.clear(); Array.from(pDependsOn.options).forEach(o => { o.selected = false; }); } dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();
 
 form.onsubmit = async (e) => {
@@ -405,7 +432,7 @@ form.onsubmit = async (e) => {
     }
     const pid = currentProjectIdFromUrl();
     const name = (pName.value || '').trim();
-    const depends_on = pDependsOn ? Array.from(pDependsOn.selectedOptions || []).map((o) => String(o.value || '').trim()).filter(Boolean) : [];
+    const depends_on = getMultiSelectedValues(pDependsOn);
     const created = await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid, depends_on })});
 
     const file = pDocumentFile?.files?.[0];

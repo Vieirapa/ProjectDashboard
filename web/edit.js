@@ -68,13 +68,38 @@ function canAddReviewNotes() {
 function installMultiSelectToggle(selectEl) {
   if (!selectEl || selectEl.dataset.toggleInstalled === '1') return;
   selectEl.dataset.toggleInstalled = '1';
+  selectEl._selectedValues = new Set(Array.from(selectEl.options || []).filter((o) => o.selected).map((o) => String(o.value || '')));
+
+  const syncVisual = () => {
+    Array.from(selectEl.options || []).forEach((o) => {
+      o.selected = selectEl._selectedValues.has(String(o.value || ''));
+    });
+  };
+
   selectEl.addEventListener('mousedown', (e) => {
     const opt = e.target;
     if (!(opt instanceof HTMLOptionElement)) return;
     e.preventDefault();
-    opt.selected = !opt.selected;
+    const v = String(opt.value || '');
+    if (selectEl._selectedValues.has(v)) selectEl._selectedValues.delete(v);
+    else selectEl._selectedValues.add(v);
+    syncVisual();
     selectEl.dispatchEvent(new Event('change', { bubbles: true }));
   });
+
+  selectEl.addEventListener('click', (e) => {
+    if (e.target instanceof HTMLOptionElement) e.preventDefault();
+  });
+
+  syncVisual();
+}
+
+function getMultiSelectedValues(selectEl) {
+  if (!selectEl) return [];
+  if (selectEl._selectedValues instanceof Set) {
+    return Array.from(selectEl._selectedValues).map((v) => String(v || '').trim()).filter(Boolean);
+  }
+  return Array.from(selectEl.selectedOptions || []).map((o) => String(o.value || '').trim()).filter(Boolean);
 }
 
 function canDeleteCard() {
@@ -200,7 +225,11 @@ async function loadDependencyOptions(currentSlug, selected = []) {
       const opt = new Option(`${d.name} [${d.status}]`, d.slug, false, selectedSet.has(String(d.slug)));
       dependsOnSelect.append(opt);
     });
+  dependsOnSelect._selectedValues = new Set(Array.from(selectedSet));
   installMultiSelectToggle(dependsOnSelect);
+  Array.from(dependsOnSelect.options || []).forEach((o) => {
+    o.selected = dependsOnSelect._selectedValues.has(String(o.value || ''));
+  });
 }
 
 function renderDependencyInfo(document) {
@@ -336,9 +365,7 @@ async function handleSave() {
       return;
     }
 
-    const depends_on = dependsOnSelect
-      ? Array.from(dependsOnSelect.selectedOptions || []).map((o) => String(o.value || '').trim()).filter(Boolean)
-      : [];
+    const depends_on = getMultiSelectedValues(dependsOnSelect);
 
     await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value, depends_on,
