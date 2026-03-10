@@ -20,6 +20,8 @@ const reviewNoteInput = document.getElementById('reviewNoteInput');
 const addReviewNoteBtn = document.getElementById('addReviewNoteBtn');
 const reviewNotesHistory = document.getElementById('reviewNotesHistory');
 const ownersList = document.getElementById('ownersList');
+const dependsOnSelect = document.getElementById('dependsOn');
+const dependencyInfo = document.getElementById('dependencyInfo');
 
 const f = {
   name: document.getElementById('name'),
@@ -61,6 +63,18 @@ function canUploadDocument() {
 
 function canAddReviewNotes() {
   return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador', 'revisor'].includes(me?.role || '');
+}
+
+function installMultiSelectToggle(selectEl) {
+  if (!selectEl || selectEl.dataset.toggleInstalled === '1') return;
+  selectEl.dataset.toggleInstalled = '1';
+  selectEl.addEventListener('mousedown', (e) => {
+    const opt = e.target;
+    if (!(opt instanceof HTMLOptionElement)) return;
+    e.preventDefault();
+    opt.selected = !opt.selected;
+    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+  });
 }
 
 function canDeleteCard() {
@@ -174,6 +188,36 @@ async function loadVersions() {
   }
 }
 
+async function loadDependencyOptions(currentSlug, selected = []) {
+  if (!dependsOnSelect) return;
+  const data = await api(`/api/documents?project_id=${encodeURIComponent(String(currentProjectId()))}`);
+  const selectedSet = new Set((selected || []).map((s) => String(s || '').trim()));
+  dependsOnSelect.innerHTML = '';
+  (data.documents || [])
+    .filter((d) => String(d.slug) !== String(currentSlug))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'))
+    .forEach((d) => {
+      const opt = new Option(`${d.name} [${d.status}]`, d.slug, false, selectedSet.has(String(d.slug)));
+      dependsOnSelect.append(opt);
+    });
+  installMultiSelectToggle(dependsOnSelect);
+}
+
+function renderDependencyInfo(document) {
+  if (!dependencyInfo) return;
+  const deps = Array.isArray(document?.dependencies) ? document.dependencies : [];
+  if (!deps.length) {
+    dependencyInfo.textContent = 'Sem dependências.';
+    return;
+  }
+  const pending = deps.filter((d) => String(d.status || '') !== 'Concluído');
+  if (!pending.length) {
+    dependencyInfo.textContent = `Dependências: ${deps.length} (todas concluídas ✅)`;
+    return;
+  }
+  dependencyInfo.textContent = `Dependências pendentes: ${pending.map((d) => d.name).join(', ')}`;
+}
+
 async function loadDocument() {
   const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`));
   const p = d.document;
@@ -191,8 +235,12 @@ async function loadDocument() {
 
   const editable = canEditCard();
   [f.name, f.description, f.status, f.priority, f.owner, f.dueDate].forEach((el) => el.disabled = !editable);
+  if (dependsOnSelect) dependsOnSelect.disabled = !editable;
   f.documentFile.disabled = !canUploadDocument();
   deleteBtn.style.display = canDeleteCard() ? 'inline-block' : 'none';
+
+  await loadDependencyOptions(slug, p.dependsOn || []);
+  renderDependencyInfo(p);
 
   updateReviewNotesAvailability();
   await loadVersions();
@@ -216,6 +264,9 @@ function fileToBase64(file) {
   el.addEventListener('input', () => setDirty(true));
   el.addEventListener('change', () => setDirty(true));
 });
+if (dependsOnSelect) {
+  dependsOnSelect.addEventListener('change', () => setDirty(true));
+}
 f.documentFile.addEventListener('change', () => setDirty(true));
 f.status.addEventListener('change', () => updateReviewNotesAvailability());
 
@@ -285,8 +336,12 @@ async function handleSave() {
       return;
     }
 
+    const depends_on = dependsOnSelect
+      ? Array.from(dependsOnSelect.selectedOptions || []).map((o) => String(o.value || '').trim()).filter(Boolean)
+      : [];
+
     await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value,
+      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value, depends_on,
     })});
 
     const file = f.documentFile.files?.[0];

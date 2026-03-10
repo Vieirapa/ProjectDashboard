@@ -69,6 +69,18 @@ async function api(url, opts = {}) {
   return data;
 }
 
+function installMultiSelectToggle(selectEl) {
+  if (!selectEl || selectEl.dataset.toggleInstalled === '1') return;
+  selectEl.dataset.toggleInstalled = '1';
+  selectEl.addEventListener('mousedown', (e) => {
+    const opt = e.target;
+    if (!(opt instanceof HTMLOptionElement)) return;
+    e.preventDefault();
+    opt.selected = !opt.selected;
+    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -268,6 +280,7 @@ function fillDependenciesOptions() {
     const label = `${d.name} [${d.status}]`;
     pDependsOn.append(new Option(label, d.slug));
   });
+  installMultiSelectToggle(pDependsOn);
 }
 
 function syncProjectSelect() {
