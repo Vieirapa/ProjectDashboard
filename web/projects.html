@@ -20,7 +20,8 @@
 
       <section class="edit-wrap projects-page-wrap">
         <div class="edit-two-cols projects-top-cols">
-          <form id="projectForm" class="edit-form">
+          <form id="projectForm" class="edit-form" data-module-id="projects.create_edit">
+            <h3 style="margin-top:0;">Criar/Editar Projeto</h3>
             <label>ID do Projeto</label>
             <input id="projectId" type="number" readonly placeholder="(auto)" />
             <label>Nome do Projeto</label>
@@ -52,7 +53,7 @@
             <p id="feedback" class="small"></p>
           </form>
 
-          <section class="review-panel">
+          <section class="review-panel" data-module-id="projects.list">
             <h3>Projetos cadastrados</h3>
             <label for="templateFilter" class="small">Filtro de template</label>
             <select id="templateFilter">
@@ -64,7 +65,7 @@
           </section>
         </div>
 
-        <section class="panel projects-cards-panel" style="margin-top: 14px;">
+        <section class="panel projects-cards-panel" style="margin-top: 14px;" data-module-id="projects.cards_list">
           <h3>Lista de Cards</h3>
           <div id="projectCardsList" class="small">Selecione um projeto para listar os cards.</div>
         </section>

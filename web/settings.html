@@ -18,7 +18,7 @@
         </div>
       </header>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.smtp">
         <h3>Envio de e-mails (SMTP)</h3>
         <form id="smtpForm" class="form-grid" style="max-width:760px;">
           <label>SMTP Host</label><input id="smtp_host" placeholder="smtp.seuprovedor.com" />
@@ -42,7 +42,7 @@
         </form>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.system_behavior">
         <h3>Comportamento do sistema</h3>
         <form id="workflowForm" class="form-grid" style="max-width:760px;">
           <label>Prazo padrão (dias)</label>
@@ -55,7 +55,7 @@
         </form>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.backup">
         <div class="backup-grid">
           <form id="backupForm" class="backup-card form-grid">
             <h3>Backup do sistema</h3>
@@ -85,7 +85,7 @@
             <p id="backupFeedback" class="small"></p>
           </form>
 
-          <div class="backup-card">
+          <div class="backup-card" data-module-id="settings.backup_restore">
             <h3>Recuperação de backup</h3>
             <p class="small">Selecione um snapshot (data/hora) disponível no caminho de backup e restaure com confirmação.</p>
             <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap; margin-top:8px;">
@@ -97,7 +97,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.system_diagnostics">
         <h3>Diagnóstico do sistema</h3>
         <form id="diagForm" class="form-grid" style="max-width:900px;">
           <label>Repositório Git para comparação de versão</label>
@@ -114,8 +114,8 @@
         </form>
       </section>
 
-      <section class="panel">
-        <h3>Documentos apagados (Admin)</h3>
+      <section class="panel" data-module-id="settings.recoverable_documents">
+        <h3>Documentos recuperáveis</h3>
         <form id="deletedPolicyForm" class="form-grid" style="max-width:900px;">
           <label>Retenção após exclusão (dias)</label>
           <input id="deleted_retention_days" type="number" min="1" max="3650" placeholder="30" />
@@ -155,7 +155,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.periodic_reports">
         <h3>Relatórios periódicos</h3>
         <form id="reportForm" class="form-grid" style="max-width:900px;">
           <label>Nome do relatório</label>
