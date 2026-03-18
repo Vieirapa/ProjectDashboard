@@ -27,6 +27,11 @@ const runDiagBtn = document.getElementById('runDiagBtn');
 const refreshDeletedBtn = document.getElementById('refreshDeletedBtn');
 const applyDeletedFiltersBtn = document.getElementById('applyDeletedFiltersBtn');
 const clearDeletedFiltersBtn = document.getElementById('clearDeletedFiltersBtn');
+const rolesRefreshBtn = document.getElementById('rolesRefreshBtn');
+const rolesSaveBtn = document.getElementById('rolesSaveBtn');
+const rolesSyncCatalogBtn = document.getElementById('rolesSyncCatalogBtn');
+const rolesFeedback = document.getElementById('rolesFeedback');
+const rolesMatrixWrap = document.getElementById('rolesMatrixWrap');
 
 const f = {
   host: document.getElementById('smtp_host'),
@@ -74,6 +79,8 @@ let deletedPager = {
   total_pages: 1,
 };
 let backupSnapshots = [];
+let rolesModulesMeta = [];
+let rolesMatrix = [];
 
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
@@ -412,6 +419,68 @@ async function loadReports() {
   });
 }
 
+function renderRolesMatrix() {
+  if (!rolesMatrixWrap) return;
+  if (!rolesModulesMeta.length || !rolesMatrix.length) {
+    rolesMatrixWrap.innerHTML = '<div class="small">Matriz indisponível no momento.</div>';
+    return;
+  }
+
+  const headerCols = rolesModulesMeta.map((m) => `<th title="${m.module_id}">${m.label}</th>`).join('');
+  const rowsHtml = rolesMatrix.map((row) => {
+    const role = row.role;
+    const isImmutable = !!row.immutable;
+    const cells = rolesModulesMeta.map((m) => {
+      const checked = row.permissions?.[m.module_id] ? 'checked' : '';
+      const disabled = isImmutable ? 'disabled' : '';
+      return `<td style="text-align:center;"><input type="checkbox" data-role="${role}" data-module="${m.module_id}" ${checked} ${disabled}></td>`;
+    }).join('');
+    return `<tr>
+      <td><strong>${role}</strong>${isImmutable ? ' <span class="small">(locked)</span>' : ''}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  rolesMatrixWrap.innerHTML = `<table>
+    <tr><th>Role</th>${headerCols}</tr>
+    ${rowsHtml}
+  </table>`;
+}
+
+async function loadRolesMatrix() {
+  const d = await api('/api/roles/modules');
+  rolesModulesMeta = d.modules || [];
+  rolesMatrix = d.matrix || [];
+  renderRolesMatrix();
+}
+
+async function saveRolesMatrix() {
+  if (!rolesMatrixWrap) return;
+  const updatesByRole = {};
+  rolesMatrixWrap.querySelectorAll('input[type="checkbox"][data-role][data-module]').forEach((el) => {
+    if (el.disabled) return;
+    const role = String(el.dataset.role || '').trim();
+    const moduleId = String(el.dataset.module || '').trim();
+    if (!role || !moduleId) return;
+    if (!updatesByRole[role]) updatesByRole[role] = { permissions: {} };
+    updatesByRole[role].permissions[moduleId] = !!el.checked;
+  });
+
+  const roles = Object.keys(updatesByRole);
+  if (!roles.length) {
+    rolesFeedback.textContent = 'Nenhuma alteração para salvar.';
+    return;
+  }
+
+  for (const role of roles) {
+    await api(`/api/roles/${encodeURIComponent(role)}/modules`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatesByRole[role]),
+    });
+  }
+}
+
 smtpForm.onsubmit = async (e) => {
   e.preventDefault();
   feedback.textContent = '';
@@ -679,6 +748,44 @@ clearDeletedFiltersBtn.onclick = async () => {
   }
 };
 
+if (rolesRefreshBtn) {
+  rolesRefreshBtn.onclick = async () => {
+    rolesFeedback.textContent = '';
+    try {
+      await loadRolesMatrix();
+      rolesFeedback.textContent = 'Matriz atualizada.';
+    } catch (err) {
+      rolesFeedback.textContent = err.message;
+    }
+  };
+}
+
+if (rolesSaveBtn) {
+  rolesSaveBtn.onclick = async () => {
+    rolesFeedback.textContent = '';
+    try {
+      await saveRolesMatrix();
+      await loadRolesMatrix();
+      rolesFeedback.textContent = 'Permissões salvas ✅';
+    } catch (err) {
+      rolesFeedback.textContent = err.message;
+    }
+  };
+}
+
+if (rolesSyncCatalogBtn) {
+  rolesSyncCatalogBtn.onclick = async () => {
+    rolesFeedback.textContent = '';
+    try {
+      await api('/api/modules/catalog/sync', { method: 'POST' });
+      await loadRolesMatrix();
+      rolesFeedback.textContent = 'Catálogo sincronizado ✅';
+    } catch (err) {
+      rolesFeedback.textContent = err.message;
+    }
+  };
+}
+
 logoutBtn.onclick = async () => {
   await api('/api/logout', { method: 'POST' });
   location.href = '/login.html';
@@ -693,7 +800,7 @@ logoutBtn.onclick = async () => {
   }
 
   try {
-    await Promise.all([loadSettings(), loadReports(), loadDeletedDocuments()]);
+    await Promise.all([loadSettings(), loadReports(), loadDeletedDocuments(), loadRolesMatrix()]);
   } catch (e) {
     backupFeedback.textContent = e?.message || 'Falha ao carregar configurações iniciais.';
   }

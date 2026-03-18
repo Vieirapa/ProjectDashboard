@@ -118,6 +118,9 @@ Returns full role/module matrix payload:
 ### `PATCH /api/roles/:role/modules`
 Batch-updates module permissions for a target role.
 
+### `POST /api/modules/catalog/sync`
+Re-syncs server-side module catalog using the current code catalog (admin-only). Useful when deploying new modules.
+
 Accepted payload formats:
 - `{"permissions": {"module.id": true, "other.module": false}}`
 - `{"modules": [{"module_id": "module.id", "can_access": true}]}`

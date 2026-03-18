@@ -211,6 +211,22 @@
           <textarea id="reportPreview" rows="21" readonly placeholder="Ao clicar em 'Rodar agora', a prévia do corpo do e-mail aparecerá aqui."></textarea>
         </div>
       </section>
+
+      <section class="panel" data-module-id="settings.roles_control">
+        <h3>Controle de ROLES</h3>
+        <p class="small">Matriz de acesso por módulo. O role <strong>admin</strong> é bloqueado para edição e mantém acesso total.</p>
+
+        <div class="dialog-actions" style="justify-content:flex-start; margin-bottom:8px;">
+          <button type="button" id="rolesRefreshBtn" class="secondary">Atualizar matriz</button>
+          <button type="button" id="rolesSaveBtn">Salvar alterações</button>
+          <button type="button" id="rolesSyncCatalogBtn" class="secondary">Sincronizar catálogo</button>
+        </div>
+        <p id="rolesFeedback" class="small"></p>
+
+        <div id="rolesMatrixWrap" style="overflow:auto; max-width:100%;">
+          <div class="small">Carregando matriz...</div>
+        </div>
+      </section>
     </main>
   </div>
 

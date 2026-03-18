@@ -795,6 +795,22 @@ def list_role_module_matrix() -> list[dict]:
     return matrix
 
 
+def sync_module_catalog() -> None:
+    with db() as conn:
+        for mod in MODULE_CATALOG_V1:
+            conn.execute(
+                """
+                INSERT INTO app_modules (module_id, page_key, label, active, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(module_id) DO UPDATE SET
+                    page_key=excluded.page_key,
+                    label=excluded.label,
+                    active=excluded.active
+                """,
+                (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now_iso()),
+            )
+
+
 def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool, str]:
     role = str(role_name or "").strip().lower()
     if role not in ROLES:
@@ -3115,6 +3131,13 @@ class Handler(BaseHTTPRequestHandler):
                 "expiresAt": exp,
                 "emailStatus": email_status,
             })
+
+        if p == "/api/modules/catalog/sync":
+            admin = self._require_root_admin()
+            if not admin: return
+            sync_module_catalog()
+            audit(admin["username"], "modules.catalog.sync", "app_modules")
+            return self._json(200, {"ok": True, "modules": list_app_modules(active_only=False)})
 
         if p == "/api/signup":
             ok, body = self._read_json()
