@@ -811,6 +811,41 @@ def sync_module_catalog() -> None:
             )
 
 
+def get_role_module_permissions(role_name: str) -> dict[str, bool]:
+    role = str(role_name or "").strip().lower()
+    modules = list_app_modules(active_only=False)
+    out = {m["module_id"]: False for m in modules}
+    if role == "admin":
+        return {k: True for k in out.keys()}
+
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT module_id, can_access FROM role_modules WHERE role_name=?",
+            (role,),
+        ).fetchall()
+    for r in rows:
+        module_id = str(r["module_id"])
+        if module_id in out:
+            out[module_id] = bool(int(r["can_access"] or 0))
+    return out
+
+
+def get_effective_permissions(user: dict | None) -> dict:
+    if not user:
+        return {"role": "", "allowedModules": [], "allowedPages": []}
+    role = str(user.get("role") or "").strip().lower()
+    modules = list_app_modules(active_only=True)
+    mod_by_id = {m["module_id"]: m for m in modules}
+    role_perms = get_role_module_permissions(role)
+    allowed_modules = [mid for mid, ok in role_perms.items() if ok and mid in mod_by_id]
+    allowed_pages = sorted({mod_by_id[mid]["page_key"] for mid in allowed_modules if mid in mod_by_id})
+    return {
+        "role": role,
+        "allowedModules": allowed_modules,
+        "allowedPages": allowed_pages,
+    }
+
+
 def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool, str]:
     role = str(role_name or "").strip().lower()
     if role not in ROLES:
@@ -2542,6 +2577,23 @@ class Handler(BaseHTTPRequestHandler):
     def _project_by_id(self, project_id: int) -> dict | None:
         return next((p for p in list_projects_registry() if int(p.get("project_id") or 0) == int(project_id)), None)
 
+    def _effective_permissions(self, user: dict | None = None) -> dict:
+        return get_effective_permissions(user or self._user())
+
+    def _has_module_access(self, module_id: str, user: dict | None = None) -> bool:
+        user = user or self._user()
+        if not user:
+            return False
+        perms = self._effective_permissions(user)
+        return module_id in set(perms.get("allowedModules") or [])
+
+    def _can_open_page(self, page_key: str, user: dict | None = None) -> bool:
+        user = user or self._user()
+        if not user:
+            return False
+        perms = self._effective_permissions(user)
+        return page_key in set(perms.get("allowedPages") or [])
+
     def _project_access_error(self, project_id: int, user: dict | None) -> str:
         if not user:
             return "Autenticação necessária."
@@ -2612,10 +2664,17 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/signup.html": return self._serve(WEB_DIR / "signup.html", "text/html; charset=utf-8")
         if p == "/kanban.html": return self._serve(WEB_DIR / "kanban.html", "text/html; charset=utf-8")
         if p == "/edit.html": return self._serve(WEB_DIR / "edit.html", "text/html; charset=utf-8")
-        if p == "/projects.html": return self._serve(WEB_DIR / "projects.html", "text/html; charset=utf-8")
+        if p == "/projects.html":
+            u = self._user()
+            if not u or not self._can_open_page("projects.html", u):
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            return self._serve(WEB_DIR / "projects.html", "text/html; charset=utf-8")
         if p == "/admin-users.html":
             u = self._user()
-            if not u or (u.get("role") or "").strip().lower() != "admin":
+            if not u or not self._can_open_page("admin-users.html", u):
                 self.send_response(302)
                 self.send_header("Location", "/")
                 self.end_headers()
@@ -2624,7 +2683,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/profile.html": return self._serve(WEB_DIR / "profile.html", "text/html; charset=utf-8")
         if p == "/settings.html":
             u = self._user()
-            if not u or (u.get("role") or "").strip().lower() != "admin":
+            if not u or not self._can_open_page("settings.html", u):
                 self.send_response(302)
                 self.send_header("Location", "/")
                 self.end_headers()
@@ -2637,6 +2696,12 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/me":
             u = self._user()
             return self._json(200 if u else 401, {"ok": bool(u), "user": {"username": u["username"], "role": u["role"]} if u else None})
+
+        if p == "/api/me/permissions":
+            u = self._require_auth()
+            if not u: return
+            perms = self._effective_permissions(u)
+            return self._json(200, {"ok": True, "permissions": perms})
 
         if p == "/api/me/profile":
             u = self._require_auth()
