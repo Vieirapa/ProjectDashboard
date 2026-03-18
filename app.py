@@ -2795,7 +2795,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "projects": list_projects_registry()})
 
         if p == "/api/admin/users":
-            if not self._require_root_admin(): return
+            user = self._require_auth()
+            if not user: return
+            if not self._has_module_access("admin_users.list", user):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             with db() as conn:
                 user_rows = conn.execute("SELECT username, role, created_at FROM users ORDER BY username").fetchall()
                 users = []
@@ -2834,7 +2837,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": ROLES, "priorities": ["TODOS", *PRIORITIES]})
 
         if p == "/api/admin/audit":
-            if not self._require_admin(): return
+            user = self._require_auth()
+            if not user: return
+            if not self._has_module_access("admin_users.audit_log", user):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             return self._json(200, {"ok": True, "logs": list_audit_logs(300)})
 
         if p == "/api/admin/deleted-documents":
@@ -3127,8 +3133,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
         if p == "/api/admin/users":
-            admin = self._require_root_admin()
+            admin = self._require_auth()
             if not admin: return
+            if not self._has_module_access("admin_users.create", admin):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             username = (body.get("username") or "").strip()
@@ -3146,8 +3154,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if p == "/api/admin/invites":
-            admin = self._require_root_admin()
+            admin = self._require_auth()
             if not admin: return
+            if not self._has_module_access("admin_users.invite", admin):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             role = body.get("role") if body.get("role") in ROLES else "member"
@@ -3348,8 +3358,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):
-            admin = self._require_root_admin()
+            admin = self._require_auth()
             if not admin: return
+            if not self._has_module_access("admin_users.create", admin):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             username = p.split("/")[4]
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3448,8 +3460,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "deleted_cards": deleted_cards if done else 0, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):
-            admin = self._require_root_admin()
+            admin = self._require_auth()
             if not admin: return
+            if not self._has_module_access("admin_users.create", admin):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             username = p.split("/")[4]
             if username == admin["username"]:
                 return self._json(400, {"ok": False, "error": "não é permitido apagar seu próprio usuário"})

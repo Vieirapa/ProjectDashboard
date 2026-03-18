@@ -81,6 +81,7 @@ let deletedPager = {
 let backupSnapshots = [];
 let rolesModulesMeta = [];
 let rolesMatrix = [];
+let allowedModules = new Set();
 
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
@@ -94,9 +95,26 @@ async function api(url, opts = {}) {
   return d;
 }
 
-async function ensureAdmin() {
-  const d = await api('/api/me');
-  if (!d.user || d.user.role !== 'admin') throw new Error('Acesso restrito a admin');
+function hasModule(moduleId) {
+  return allowedModules.has(moduleId);
+}
+
+function applyModuleVisibility() {
+  document.querySelectorAll('[data-module-id]').forEach((el) => {
+    const moduleId = String(el.dataset.moduleId || '').trim();
+    if (!moduleId) return;
+    el.style.display = hasModule(moduleId) ? '' : 'none';
+  });
+}
+
+async function loadPermissions() {
+  const d = await api('/api/me/permissions');
+  const perms = d.permissions || {};
+  allowedModules = new Set(perms.allowedModules || []);
+  if (!(perms.allowedPages || []).includes('settings.html')) {
+    throw new Error('Sem acesso à página de configurações');
+  }
+  applyModuleVisibility();
 }
 
 function getSetting(settings, key, fallback = '') {
@@ -793,28 +811,40 @@ logoutBtn.onclick = async () => {
 
 (async () => {
   try {
-    await ensureAdmin();
+    await loadPermissions();
   } catch {
     location.href = '/';
     return;
   }
 
+  const loads = [];
+  if (hasModule('settings.smtp') || hasModule('settings.system_behavior') || hasModule('settings.backup') || hasModule('settings.system_diagnostics') || hasModule('settings.recoverable_documents')) {
+    loads.push(loadSettings());
+  }
+  if (hasModule('settings.periodic_reports')) loads.push(loadReports());
+  if (hasModule('settings.recoverable_documents')) loads.push(loadDeletedDocuments());
+  if (hasModule('settings.roles_control')) loads.push(loadRolesMatrix());
+
   try {
-    await Promise.all([loadSettings(), loadReports(), loadDeletedDocuments(), loadRolesMatrix()]);
+    if (loads.length) await Promise.all(loads);
   } catch (e) {
     backupFeedback.textContent = e?.message || 'Falha ao carregar configurações iniciais.';
   }
 
-  try {
-    await loadBackupSnapshots();
-  } catch (e) {
-    backupRestoreList.textContent = 'Não foi possível carregar a lista de backups nesta instância (endpoint indisponível ou serviço desatualizado).';
+  if (hasModule('settings.backup_restore') || hasModule('settings.backup')) {
+    try {
+      await loadBackupSnapshots();
+    } catch (e) {
+      backupRestoreList.textContent = 'Não foi possível carregar a lista de backups nesta instância (endpoint indisponível ou serviço desatualizado).';
+    }
   }
 
-  try {
-    const d = await api('/api/admin/system/diagnostics');
-    renderDiagnostics(d.diagnostics || {});
-  } catch (_) {
-    // diagnóstico pode falhar sem bloquear tela
+  if (hasModule('settings.system_diagnostics')) {
+    try {
+      const d = await api('/api/admin/system/diagnostics');
+      renderDiagnostics(d.diagnostics || {});
+    } catch (_) {
+      // diagnóstico pode falhar sem bloquear tela
+    }
   }
 })();

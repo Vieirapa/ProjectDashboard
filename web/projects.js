@@ -19,6 +19,7 @@ const deleteBtn = document.getElementById('deleteBtn');
 let me = null;
 let projects = [];
 let selectedProjectId = null;
+let allowedModules = new Set();
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -58,13 +59,30 @@ function getAllowedRolesFromChecks() {
   return vals.join(',');
 }
 
+function hasModule(moduleId) {
+  return allowedModules.has(moduleId);
+}
+
+function applyModuleVisibility() {
+  document.querySelectorAll('[data-module-id]').forEach((el) => {
+    const moduleId = String(el.dataset.moduleId || '').trim();
+    if (!moduleId) return;
+    el.style.display = hasModule(moduleId) ? '' : 'none';
+  });
+}
+
 async function loadMe() {
-  const d = await api('/api/me');
+  const [d, p] = await Promise.all([api('/api/me'), api('/api/me/permissions')]);
   me = d.user;
-  if (!['admin', 'lider_projeto'].includes(me.role)) {
-    alert('Acesso restrito a administradores/líder de projeto.');
+  allowedModules = new Set(p?.permissions?.allowedModules || []);
+
+  if (!(p?.permissions?.allowedPages || []).includes('projects.html')) {
+    alert('Sem acesso à página de projetos.');
     window.location.href = '/';
+    return;
   }
+
+  applyModuleVisibility();
 }
 
 function setForm(p = null) {
@@ -75,8 +93,17 @@ function setForm(p = null) {
   isTemplate.checked = Boolean(p?.is_template);
   notes.value = p?.notes || '';
   setAllowedRolesChecks(p?.allowed_roles || '');
-  deleteBtn.disabled = !p;
-  if (cloneBtn) cloneBtn.disabled = !(p && p.is_template);
+
+  const canEditProjectModule = hasModule('projects.create_edit');
+  [projectName, startDate, notes, isTemplate].forEach((el) => {
+    if (el) el.disabled = !canEditProjectModule;
+  });
+  (allowedRolesBox?.querySelectorAll('input') || []).forEach((el) => { el.disabled = !canEditProjectModule; });
+  newBtn.disabled = !canEditProjectModule;
+  saveBtn.disabled = !canEditProjectModule;
+
+  deleteBtn.disabled = !p || !canEditProjectModule;
+  if (cloneBtn) cloneBtn.disabled = !(p && p.is_template && canEditProjectModule);
 
   if (selectedProjectId) {
     const u = new URL(window.location.href);
@@ -135,7 +162,7 @@ async function loadCardsForSelectedProject() {
           <td>${esc(fmtDate(doc.openedAt || doc.updatedAt))}</td>
           <td>${esc(doc.status || '-')}</td>
           <td>${esc(doc.owner || '-')}</td>
-          <td><button type="button" class="danger card-delete-btn" data-slug="${esc(doc.slug)}">Excluir</button></td>
+          <td>${hasModule('projects.create_edit') ? `<button type="button" class="danger card-delete-btn" data-slug="${esc(doc.slug)}">Excluir</button>` : '-'}</td>
         </tr>
       `).join('')}
     </table>`;
@@ -160,7 +187,8 @@ async function loadCardsForSelectedProject() {
 }
 
 async function refresh(preferredId = null, fallbackToLast = false) {
-  const d = await api('/api/admin/projects');
+  const canManageProjects = hasModule('projects.create_edit');
+  const d = canManageProjects ? await api('/api/admin/projects') : await api('/api/projects-registry');
   projects = d.projects || [];
   renderList();
 
@@ -179,11 +207,13 @@ async function refresh(preferredId = null, fallbackToLast = false) {
 }
 
 newBtn.onclick = () => {
+  if (!hasModule('projects.create_edit')) return;
   feedback.textContent = '';
   setForm(null);
 };
 
 saveBtn.onclick = async () => {
+  if (!hasModule('projects.create_edit')) return;
   feedback.textContent = '';
   try {
     const payload = {
@@ -219,6 +249,7 @@ saveBtn.onclick = async () => {
 };
 
 deleteBtn.onclick = async () => {
+  if (!hasModule('projects.create_edit')) return;
   if (!projectId.value) return;
 
   const pid = Number(projectId.value || 0);
