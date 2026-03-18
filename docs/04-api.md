@@ -103,3 +103,27 @@ Delete periodic report.
 
 ### `POST /api/admin/reports/:id/run`
 Run periodic report now.
+
+## Role-based module access control (Phase 2)
+
+### `GET /api/modules/catalog`
+Returns the canonical module catalog (`module_id`, `page_key`, `label`, `active`).
+
+### `GET /api/roles/modules`
+Returns full role/module matrix payload:
+- `roles`
+- `modules`
+- `matrix` (per role permissions)
+
+### `PATCH /api/roles/:role/modules`
+Batch-updates module permissions for a target role.
+
+Accepted payload formats:
+- `{"permissions": {"module.id": true, "other.module": false}}`
+- `{"modules": [{"module_id": "module.id", "can_access": true}]}`
+
+Rules:
+- `admin` role is immutable and always full-access.
+- unknown roles/modules return validation error.
+- endpoint currently restricted to root admin session.
+

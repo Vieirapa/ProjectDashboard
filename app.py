@@ -32,6 +32,23 @@ STATUSES = ["Backlog", "Em andamento", "Em revisão", "Concluído"]
 PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"]
 ROLES = ["admin", "lider_projeto", "member", "desenhista", "colaborador", "revisor", "cliente"]
 ADMIN_EQUIV_ROLES = {"admin", "lider_projeto"}
+MODULE_CATALOG_V1 = [
+    {"module_id": "projects.create_edit", "page_key": "projects.html", "label": "Create/Edit Project", "active": 1},
+    {"module_id": "projects.list", "page_key": "projects.html", "label": "Registered Projects", "active": 1},
+    {"module_id": "projects.cards_list", "page_key": "projects.html", "label": "Cards List", "active": 1},
+    {"module_id": "admin_users.create", "page_key": "admin-users.html", "label": "Create User", "active": 1},
+    {"module_id": "admin_users.invite", "page_key": "admin-users.html", "label": "Invite New User", "active": 1},
+    {"module_id": "admin_users.list", "page_key": "admin-users.html", "label": "Registered Users", "active": 1},
+    {"module_id": "admin_users.audit_log", "page_key": "admin-users.html", "label": "Audit Log", "active": 1},
+    {"module_id": "settings.smtp", "page_key": "settings.html", "label": "Email Sending (SMTP)", "active": 1},
+    {"module_id": "settings.system_behavior", "page_key": "settings.html", "label": "System Behavior", "active": 1},
+    {"module_id": "settings.backup", "page_key": "settings.html", "label": "System Backup", "active": 1},
+    {"module_id": "settings.backup_restore", "page_key": "settings.html", "label": "Backup Recovery", "active": 1},
+    {"module_id": "settings.system_diagnostics", "page_key": "settings.html", "label": "System Diagnostics", "active": 1},
+    {"module_id": "settings.recoverable_documents", "page_key": "settings.html", "label": "Recoverable Documents", "active": 1},
+    {"module_id": "settings.periodic_reports", "page_key": "settings.html", "label": "Periodic Reports", "active": 1},
+    {"module_id": "settings.roles_control", "page_key": "settings.html", "label": "Roles Control", "active": 1},
+]
 SKIP_DIRS = {"ProjectDashboard", "__pycache__"}
 SESSION_COOKIE = "pdash_session"
 SESSION_TTL_SECONDS = 60 * 60 * 24
@@ -363,6 +380,28 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_modules (
+                module_id TEXT PRIMARY KEY,
+                page_key TEXT NOT NULL,
+                label TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS role_modules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role_name TEXT NOT NULL,
+                module_id TEXT NOT NULL,
+                can_access INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                updated_by TEXT NOT NULL DEFAULT '',
+                UNIQUE(role_name, module_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_role_modules_role ON role_modules(role_name)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_role_modules_module ON role_modules(module_id)")
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS periodic_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -445,6 +484,19 @@ def init_db():
         conn.execute("UPDATE documents SET opened_at=? WHERE opened_at=''",(now_iso(),))
         conn.execute("UPDATE documents SET due_date='-' WHERE status='Concluído'")
         conn.execute("UPDATE documents SET released_at=updated_at WHERE status='Concluído' AND released_at='' AND updated_at<>''")
+
+        for mod in MODULE_CATALOG_V1:
+            conn.execute(
+                """
+                INSERT INTO app_modules (module_id, page_key, label, active, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(module_id) DO UPDATE SET
+                    page_key=excluded.page_key,
+                    label=excluded.label,
+                    active=excluded.active
+                """,
+                (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now_iso()),
+            )
 
         for k, v in [
             ("smtp.host", ""),
@@ -696,6 +748,104 @@ def list_usernames() -> list[str]:
     with db() as conn:
         rows = conn.execute("SELECT username FROM users ORDER BY username").fetchall()
     return [r["username"] for r in rows]
+
+
+def list_app_modules(active_only: bool = False) -> list[dict]:
+    with db() as conn:
+        if active_only:
+            rows = conn.execute(
+                "SELECT module_id, page_key, label, active FROM app_modules WHERE active=1 ORDER BY page_key, module_id"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT module_id, page_key, label, active FROM app_modules ORDER BY page_key, module_id"
+            ).fetchall()
+    return [
+        {
+            "module_id": r["module_id"],
+            "page_key": r["page_key"],
+            "label": r["label"],
+            "active": bool(int(r["active"] or 0)),
+        }
+        for r in rows
+    ]
+
+
+def list_role_module_matrix() -> list[dict]:
+    modules = list_app_modules(active_only=False)
+    module_ids = [m["module_id"] for m in modules]
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT role_name, module_id, can_access FROM role_modules"
+        ).fetchall()
+    access_map: dict[tuple[str, str], bool] = {}
+    for r in rows:
+        access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
+
+    matrix: list[dict] = []
+    for role in ROLES:
+        role_row = {
+            "role": role,
+            "immutable": role == "admin",
+            "permissions": {},
+        }
+        for module_id in module_ids:
+            role_row["permissions"][module_id] = True if role == "admin" else bool(access_map.get((role, module_id), False))
+        matrix.append(role_row)
+    return matrix
+
+
+def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool, str]:
+    role = str(role_name or "").strip().lower()
+    if role not in ROLES:
+        return False, "role inválida"
+    if role == "admin":
+        return False, "role admin é imutável"
+
+    permissions_payload = payload.get("permissions")
+    normalized: dict[str, int] = {}
+
+    if isinstance(permissions_payload, dict):
+        for module_id, can_access in permissions_payload.items():
+            normalized[str(module_id)] = 1 if bool(can_access) else 0
+    elif isinstance(payload.get("modules"), list):
+        for item in payload.get("modules"):
+            if not isinstance(item, dict):
+                continue
+            module_id = str(item.get("module_id") or item.get("moduleId") or "").strip()
+            if not module_id:
+                continue
+            normalized[module_id] = 1 if bool(item.get("can_access") or item.get("canAccess")) else 0
+    else:
+        return False, "permissions inválidas"
+
+    if not normalized:
+        return False, "nenhuma permissão informada"
+
+    with db() as conn:
+        valid_modules = {
+            r["module_id"]
+            for r in conn.execute("SELECT module_id FROM app_modules").fetchall()
+        }
+        invalid = [mid for mid in normalized.keys() if mid not in valid_modules]
+        if invalid:
+            return False, f"módulos inválidos: {', '.join(invalid)}"
+
+        now = now_iso()
+        for module_id, can_access in normalized.items():
+            conn.execute(
+                """
+                INSERT INTO role_modules (role_name, module_id, can_access, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(role_name, module_id) DO UPDATE SET
+                    can_access=excluded.can_access,
+                    updated_at=excluded.updated_at,
+                    updated_by=excluded.updated_by
+                """,
+                (role, module_id, int(can_access), now, actor),
+            )
+
+    return True, "ok"
 
 
 def _normalize_allowed_roles(raw: str | list | None) -> str:
@@ -2585,6 +2735,19 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_root_admin(): return
             return self._json(200, {"ok": True, "settings": get_admin_settings()})
 
+        if p == "/api/modules/catalog":
+            if not self._require_root_admin(): return
+            return self._json(200, {"ok": True, "modules": list_app_modules(active_only=False)})
+
+        if p == "/api/roles/modules":
+            if not self._require_root_admin(): return
+            return self._json(200, {
+                "ok": True,
+                "roles": ROLES,
+                "modules": list_app_modules(active_only=False),
+                "matrix": list_role_module_matrix(),
+            })
+
         if p == "/api/admin/reports":
             if not self._require_admin(): return
             return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": ROLES, "priorities": ["TODOS", *PRIORITIES]})
@@ -3001,6 +3164,21 @@ class Handler(BaseHTTPRequestHandler):
             done, msg = update_admin_settings(body, admin["username"])
             if done:
                 audit(admin["username"], "admin.settings.update", "app_settings", json.dumps({k: ("***" if "pass" in k else v) for k, v in body.items()}, ensure_ascii=False))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/roles/") and p.endswith("/modules"):
+            admin = self._require_root_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            role_name = str(parts[2] or "").strip().lower()
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = update_role_modules(role_name, body, admin["username"])
+            if done:
+                audit(admin["username"], "roles.modules.updated", role_name)
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/documents/") and "/review-notes/" in p:
