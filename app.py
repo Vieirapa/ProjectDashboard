@@ -32,6 +32,24 @@ STATUSES = ["Backlog", "Em andamento", "Em revisão", "Concluído"]
 PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"]
 ROLES = ["admin", "lider_projeto", "member", "desenhista", "colaborador", "revisor", "cliente"]
 ADMIN_EQUIV_ROLES = {"admin", "lider_projeto"}
+SETTING_KEY_TO_MODULE = {
+    "smtp.host": "settings.smtp",
+    "smtp.port": "settings.smtp",
+    "smtp.user": "settings.smtp",
+    "smtp.pass": "settings.smtp",
+    "smtp.from": "settings.smtp",
+    "smtp.tls": "settings.smtp",
+    "invite.default_message": "settings.smtp",
+    "workflow.default_due_days": "settings.system_behavior",
+    "backup.enabled": "settings.backup",
+    "backup.path": "settings.backup",
+    "backup.weekdays": "settings.backup",
+    "backup.run_time": "settings.backup",
+    "system.git_repo": "settings.system_diagnostics",
+    "system.git_branch": "settings.system_diagnostics",
+    "deleted.retention_days": "settings.recoverable_documents",
+}
+
 MODULE_CATALOG_V1 = [
     {"module_id": "projects.create_edit", "page_key": "projects.html", "label": "Create/Edit Project", "active": 1},
     {"module_id": "projects.list", "page_key": "projects.html", "label": "Registered Projects", "active": 1},
@@ -2565,6 +2583,34 @@ class Handler(BaseHTTPRequestHandler):
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
+    def _require_module(self, module_id: str):
+        u = self._require_auth()
+        if not u:
+            return None
+        if not self._has_module_access(module_id, u):
+            self._json(403, {"ok": False, "error": "forbidden"})
+            return None
+        return u
+
+    def _require_any_module(self, module_ids: list[str]):
+        u = self._require_auth()
+        if not u:
+            return None
+        for module_id in module_ids:
+            if self._has_module_access(module_id, u):
+                return u
+        self._json(403, {"ok": False, "error": "forbidden"})
+        return None
+
+    def _can_manage_setting_keys(self, user: dict, keys: list[str]) -> tuple[bool, str | None]:
+        for key in keys:
+            module_id = SETTING_KEY_TO_MODULE.get(str(key))
+            if not module_id:
+                return False, f"chave de configuração não mapeada: {key}"
+            if not self._has_module_access(module_id, user):
+                return False, f"forbidden: {key}"
+        return True, None
+
     def _projects_for_user(self, user: dict | None) -> list[dict]:
         all_projects = list_projects_registry()
         if not user:
@@ -2791,7 +2837,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "projects": self._projects_for_user(user)})
 
         if p == "/api/admin/projects":
-            if not self._require_admin(): return
+            if not self._require_module("projects.create_edit"): return
             return self._json(200, {"ok": True, "projects": list_projects_registry()})
 
         if p == "/api/admin/users":
@@ -2816,7 +2862,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "users": users, "roles": ROLES})
 
         if p == "/api/admin/settings":
-            if not self._require_root_admin(): return
+            if not self._require_any_module(["settings.smtp", "settings.system_behavior", "settings.backup", "settings.system_diagnostics", "settings.recoverable_documents"]): return
             return self._json(200, {"ok": True, "settings": get_admin_settings()})
 
         if p == "/api/modules/catalog":
@@ -2833,7 +2879,7 @@ class Handler(BaseHTTPRequestHandler):
             })
 
         if p == "/api/admin/reports":
-            if not self._require_admin(): return
+            if not self._require_module("settings.periodic_reports"): return
             return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": ROLES, "priorities": ["TODOS", *PRIORITIES]})
 
         if p == "/api/admin/audit":
@@ -2844,7 +2890,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "logs": list_audit_logs(300)})
 
         if p == "/api/admin/deleted-documents":
-            if not self._require_admin(): return
+            if not self._require_module("settings.recoverable_documents"): return
             settings = get_admin_settings()
             retention_days = _setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30")
             q = (qs.get("q", [""])[0] or "").strip()
@@ -2896,11 +2942,11 @@ class Handler(BaseHTTPRequestHandler):
             })
 
         if p == "/api/admin/system/diagnostics":
-            if not self._require_admin(): return
+            if not self._require_module("settings.system_diagnostics"): return
             return self._json(200, {"ok": True, "diagnostics": run_system_diagnostics()})
 
         if p == "/api/admin/system/backup/available":
-            if not self._require_admin(): return
+            if not self._require_module("settings.backup_restore"): return
             path_raw = (qs.get("path", [""])[0] or "").strip() or None
             done, msg, data = list_available_backups(path_raw)
             return self._json(200 if done else 400, {
@@ -3003,7 +3049,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/settings/test-smtp":
-            admin = self._require_root_admin()
+            admin = self._require_module("settings.smtp")
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3021,13 +3067,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": msg})
 
         if p == "/api/admin/system/backup/run":
-            admin = self._require_admin()
+            admin = self._require_module("settings.backup")
             if not admin: return
             done, msg = run_system_backup(admin["username"])
             return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
 
         if p == "/api/admin/system/backup/test-path":
-            admin = self._require_admin()
+            admin = self._require_module("settings.backup")
             if not admin: return
             ok, body = self._read_json()
             if not ok:
@@ -3042,7 +3088,7 @@ class Handler(BaseHTTPRequestHandler):
             })
 
         if p == "/api/admin/system/backup/restore":
-            admin = self._require_admin()
+            admin = self._require_module("settings.backup_restore")
             if not admin: return
             ok, body = self._read_json()
             if not ok:
@@ -3061,7 +3107,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
 
         if p.startswith("/api/admin/deleted-documents/") and p.endswith("/restore"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.recoverable_documents")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 5:
@@ -3074,7 +3120,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/reports":
-            admin = self._require_admin()
+            admin = self._require_module("settings.periodic_reports")
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3084,7 +3130,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/") and p.endswith("/run"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.periodic_reports")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 5:
@@ -3105,7 +3151,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": msg, "subject": subject, "previewText": preview_text, "recipients": len(recipients)})
 
         if p == "/api/admin/projects":
-            admin = self._require_admin()
+            admin = self._require_module("projects.create_edit")
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3115,7 +3161,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
         if p.startswith("/api/admin/projects/") and p.endswith("/clone"):
-            admin = self._require_admin()
+            admin = self._require_module("projects.create_edit")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 5:
@@ -3255,10 +3301,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/settings":
-            admin = self._require_root_admin()
+            admin = self._require_auth()
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            keys = list((body or {}).keys())
+            allowed, reason = self._can_manage_setting_keys(admin, keys)
+            if not allowed:
+                return self._json(403, {"ok": False, "error": reason or "forbidden"})
             done, msg = update_admin_settings(body, admin["username"])
             if done:
                 audit(admin["username"], "admin.settings.update", "app_settings", json.dumps({k: ("***" if "pass" in k else v) for k, v in body.items()}, ensure_ascii=False))
@@ -3326,7 +3376,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.periodic_reports")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 4:
@@ -3343,7 +3393,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/projects/"):
-            admin = self._require_admin()
+            admin = self._require_module("projects.create_edit")
             if not admin: return
             pid = p.split("/")[4]
             try:
@@ -3420,7 +3470,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/deleted-documents/"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.recoverable_documents")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 4:
@@ -3433,7 +3483,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.periodic_reports")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 4:
@@ -3448,7 +3498,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/projects/"):
-            admin = self._require_admin()
+            admin = self._require_module("projects.create_edit")
             if not admin: return
             try:
                 project_id = int(p.split("/")[4])
