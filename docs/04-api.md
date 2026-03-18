@@ -11,6 +11,12 @@ Terminates current session.
 ### `GET /api/me`
 Returns current authenticated user context.
 
+### `GET /api/me/permissions`
+Returns effective permission resolution for the current session:
+- `role`
+- `allowedModules[]`
+- `allowedPages[]`
+
 ## Documents
 
 ### `GET /api/documents`

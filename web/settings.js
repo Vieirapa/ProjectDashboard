@@ -818,7 +818,7 @@ logoutBtn.onclick = async () => {
   }
 
   const loads = [];
-  if (hasModule('settings.smtp') || hasModule('settings.system_behavior') || hasModule('settings.backup') || hasModule('settings.system_diagnostics') || hasModule('settings.recoverable_documents')) {
+  if (hasModule('settings.smtp') || hasModule('settings.system_behavior') || hasModule('settings.backup') || hasModule('settings.system_diagnostics')) {
     loads.push(loadSettings());
   }
   if (hasModule('settings.periodic_reports')) loads.push(loadReports());
