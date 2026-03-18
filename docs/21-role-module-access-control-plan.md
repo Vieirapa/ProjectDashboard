@@ -51,7 +51,7 @@ This plan defines the phased implementation to:
 - `settings.smtp` → **Email Sending (SMTP)**
 - `settings.system_behavior` → **System Behavior**
 - `settings.backup` → **System Backup**
-- `settings.backup_restore` → **Backup Recovery**
+- `settings.backup_restore` → **System Backup Recovery**
 - `settings.system_diagnostics` → **System Diagnostics**
 - `settings.recoverable_documents` → **Recoverable Documents**
 - `settings.periodic_reports` → **Periodic Reports**

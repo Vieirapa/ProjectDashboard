@@ -35,7 +35,7 @@ This catalog is the source of truth for:
 | `settings.smtp` | `settings.html` | Email Sending (SMTP) | Active |
 | `settings.system_behavior` | `settings.html` | System Behavior | Active |
 | `settings.backup` | `settings.html` | System Backup | Active |
-| `settings.backup_restore` | `settings.html` | Backup Recovery | Active |
+| `settings.backup_restore` | `settings.html` | System Backup Recovery | Active |
 | `settings.system_diagnostics` | `settings.html` | System Diagnostics | Active |
 | `settings.recoverable_documents` | `settings.html` | Recoverable Documents | Active |
 | `settings.periodic_reports` | `settings.html` | Periodic Reports | Active |

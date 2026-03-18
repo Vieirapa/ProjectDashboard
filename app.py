@@ -43,7 +43,7 @@ MODULE_CATALOG_V1 = [
     {"module_id": "settings.smtp", "page_key": "settings.html", "label": "Email Sending (SMTP)", "active": 1},
     {"module_id": "settings.system_behavior", "page_key": "settings.html", "label": "System Behavior", "active": 1},
     {"module_id": "settings.backup", "page_key": "settings.html", "label": "System Backup", "active": 1},
-    {"module_id": "settings.backup_restore", "page_key": "settings.html", "label": "Backup Recovery", "active": 1},
+    {"module_id": "settings.backup_restore", "page_key": "settings.html", "label": "System Backup Recovery", "active": 1},
     {"module_id": "settings.system_diagnostics", "page_key": "settings.html", "label": "System Diagnostics", "active": 1},
     {"module_id": "settings.recoverable_documents", "page_key": "settings.html", "label": "Recoverable Documents", "active": 1},
     {"module_id": "settings.periodic_reports", "page_key": "settings.html", "label": "Periodic Reports", "active": 1},
