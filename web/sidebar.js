@@ -19,31 +19,32 @@
   }
 
   try {
-    const [{ user }, { projects }] = await Promise.all([
+    const [{ user }, { projects }, permsResp] = await Promise.all([
       api('/api/me'),
       api('/api/projects-registry'),
+      api('/api/me/permissions'),
     ]);
 
     const projectItems = projects || [];
     const projectId = currentProjectId(projectItems);
+    const allowedPages = new Set(permsResp?.permissions?.allowedPages || []);
 
-    const canAdminTools = user.role === 'admin';
-    // `projects.html` is available for admin and líder de projeto.
-    const canAccessProjectArea = ['admin', 'lider_projeto'].includes(user.role) && projectItems.length > 0;
+    const canAccessProjectsPage = allowedPages.has('projects.html') && projectItems.length > 0;
+    const canAccessAdminUsersPage = allowedPages.has('admin-users.html');
+    const canAccessSettingsPage = allowedPages.has('settings.html');
+    const hasAdminGroup = canAccessAdminUsersPage || canAccessSettingsPage;
 
     root.innerHTML = `
       <h2>ProjectDashbord</h2>
 
       <div class="side-group">Área de trabalho</div>
       <a class="side-link ${active === 'home' ? 'active' : ''}" href="/">Início</a>
-      ${canAccessProjectArea ? `<a class="side-link ${active === 'projects' ? 'active' : ''}" href="/projects.html?project_id=${projectId}">Projetos</a>` : ''}
+      ${canAccessProjectsPage ? `<a class="side-link ${active === 'projects' ? 'active' : ''}" href="/projects.html?project_id=${projectId}">Projetos</a>` : ''}
       <a class="side-link ${active === 'kanban' ? 'active' : ''}" href="/kanban.html?project_id=${projectId}">Kanban</a>
 
-      ${canAdminTools ? `
-      <div class="side-group">Administração</div>
-      <a id="usersLink" class="side-link ${active === 'users' ? 'active' : ''}" href="/admin-users.html?project_id=${projectId}">Usuários & Convites</a>
-      <a id="settingsLink" class="side-link ${active === 'settings' ? 'active' : ''}" href="/settings.html?project_id=${projectId}">Configurações</a>
-      ` : ''}
+      ${hasAdminGroup ? `<div class="side-group">Administração</div>` : ''}
+      ${canAccessAdminUsersPage ? `<a id="usersLink" class="side-link ${active === 'users' ? 'active' : ''}" href="/admin-users.html?project_id=${projectId}">Usuários & Convites</a>` : ''}
+      ${canAccessSettingsPage ? `<a id="settingsLink" class="side-link ${active === 'settings' ? 'active' : ''}" href="/settings.html?project_id=${projectId}">Configurações</a>` : ''}
 
       <div class="side-group" id="whoamiTitle"></div>
       <a class="side-link ${active === 'profile' ? 'active' : ''}" href="/profile.html?project_id=${projectId}">Meu perfil</a>
