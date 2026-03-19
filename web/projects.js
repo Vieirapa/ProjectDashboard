@@ -73,8 +73,20 @@ async function loadProjectRolesCatalog() {
   try {
     const d = await api('/api/admin/roles');
     renderAllowedRolesChecks(d?.roles || []);
-  } catch {
-    // fallback seguro para não bloquear a tela
+    return;
+  } catch (errPrimary) {
+    // Compat fallback para versões que ainda não expõem /api/admin/roles
+    try {
+      const dUsers = await api('/api/admin/users');
+      if (Array.isArray(dUsers?.roles) && dUsers.roles.length) {
+        renderAllowedRolesChecks(dUsers.roles);
+        return;
+      }
+    } catch (errSecondary) {
+      console.warn('Falha ao carregar catálogo dinâmico de roles:', errPrimary, errSecondary);
+    }
+
+    // fallback seguro final para não bloquear a tela
     renderAllowedRolesChecks(DEFAULT_PROJECT_ROLES);
   }
 }
