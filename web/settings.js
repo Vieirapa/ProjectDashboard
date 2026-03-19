@@ -572,7 +572,7 @@ backupForm.onsubmit = async (e) => {
     return;
   }
   try {
-    const d = await api('/api/admin/settings', {
+    await api('/api/admin/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -583,30 +583,11 @@ backupForm.onsubmit = async (e) => {
       }),
     });
 
-    const savedSettings = d?.settings || {};
-    const savedBackup = d?.saved?.backup || null;
+    // Source of truth after save: reload from backend and build confirmation from reloaded UI state.
+    await loadSettings();
+    const persistedDays = checkedValues(f.backupWeekdays).map((x) => String(x));
 
-    f.backupEnabled.checked = savedBackup
-      ? !!savedBackup.enabled
-      : String(getSetting(savedSettings, 'backup.enabled', f.backupEnabled.checked ? 'true' : 'false')).toLowerCase() === 'true';
-
-    f.backupPath.value = savedBackup?.path || getSetting(savedSettings, 'backup.path', f.backupPath.value || '');
-    f.backupRunTime.value = savedBackup?.run_time || getSetting(savedSettings, 'backup.run_time', f.backupRunTime.value || '03:00');
-
-    let days = [];
-    if (savedBackup && Array.isArray(savedBackup.weekdays)) {
-      days = savedBackup.weekdays;
-    } else {
-      try { days = JSON.parse(getSetting(savedSettings, 'backup.weekdays', '[]')); } catch { days = []; }
-    }
-
-    const normalizedDays = (Array.isArray(days) ? days : []).map((x) => String(x)).filter((x) => ['0','1','2','3','4','5','6'].includes(x));
-    const setDays = new Set(normalizedDays);
-    f.backupWeekdays.querySelectorAll('input[type="checkbox"]').forEach((el) => {
-      el.checked = setDays.has(String(el.value));
-    });
-
-    backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong> · Horário: <strong>${escHtml(f.backupRunTime.value || '-')}</strong> · Dias: <strong>${escHtml(summarizeWeekdays(normalizedDays))}</strong></span>`;
+    backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong> · Horário: <strong>${escHtml(f.backupRunTime.value || '-')}</strong> · Dias: <strong>${escHtml(summarizeWeekdays(persistedDays))}</strong></span>`;
   } catch (err) {
     backupFeedback.textContent = err.message;
   }
