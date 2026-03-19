@@ -1,0 +1,33 @@
+{
+  "slug": "123",
+  "name": "123",
+  "status": "Backlog",
+  "priority": "Média",
+  "owner": "",
+  "dueDate": "2026-03-26",
+  "description": "Sem descrição",
+  "path": "/home/panosso/.openclaw/workspace/projects/ProjectDashboard-isolated/documents/123",
+  "updatedAt": "2026-03-19T11:35:29Z",
+  "documentStatus": "em andamento",
+  "documentName": "",
+  "documentMime": "",
+  "documentPath": "",
+  "hasDocument": false,
+  "createdBy": "admin",
+  "projectId": 1,
+  "openedAt": "2026-03-10T20:06:07Z",
+  "releasedAt": "",
+  "ageLabel": "Dias desde abertura",
+  "ageDays": 9,
+  "dependsOn": [
+    "123123123"
+  ],
+  "dependencies": [
+    {
+      "slug": "123123123",
+      "name": "123123123",
+      "status": "Em andamento"
+    }
+  ],
+  "isBlockedByDependencies": true
+}
