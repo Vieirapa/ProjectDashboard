@@ -97,7 +97,7 @@ async function loadMe() {
   newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
 
   try {
-    const prof = await api('/api/me/profile');
+    const prof = await api(`/api/me/profile?ts=${Date.now()}`);
     const p = prof?.profile || {};
     const colors = p.priority_colors || {};
     behavior.priorityColorEnabled = !!p.priority_color_enabled;

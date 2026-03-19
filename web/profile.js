@@ -46,7 +46,7 @@ async function loadMe() {
 }
 
 async function loadProfile() {
-  const d = await api('/api/me/profile');
+  const d = await api(`/api/me/profile?ts=${Date.now()}`);
   ['email', 'phone', 'extension', 'work_area', 'notes'].forEach((k) => {
     fields[k].value = d.profile?.[k] || '';
   });
@@ -87,7 +87,9 @@ form.onsubmit = async (e) => {
         },
       }),
     });
-    feedback.textContent = 'Perfil atualizado com sucesso ✅';
+
+    await loadProfile();
+    feedback.textContent = `Perfil atualizado com sucesso ✅ (cores por prioridade: ${fields.priorityColorEnabled.checked ? 'ATIVO' : 'INATIVO'})`;
   } catch (err) {
     feedback.textContent = err.message;
   } finally {
