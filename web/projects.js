@@ -2,20 +2,24 @@ const logoutBtn = document.getElementById('logoutBtn');
 
 const projectId = document.getElementById('projectId');
 const projectName = document.getElementById('projectName');
+const isTemplate = document.getElementById('isTemplate');
 const startDate = document.getElementById('startDate');
 const notes = document.getElementById('notes');
 const allowedRolesBox = document.getElementById('allowedRolesBox');
 const feedback = document.getElementById('feedback');
 const projectsList = document.getElementById('projectsList');
 const projectCardsList = document.getElementById('projectCardsList');
+const templateFilter = document.getElementById('templateFilter');
 
 const newBtn = document.getElementById('newBtn');
 const saveBtn = document.getElementById('saveBtn');
+const cloneBtn = document.getElementById('cloneBtn');
 const deleteBtn = document.getElementById('deleteBtn');
 
 let me = null;
 let projects = [];
 let selectedProjectId = null;
+let allowedModules = new Set();
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -45,23 +49,40 @@ function setAllowedRolesChecks(csvValue) {
   const set = new Set(String(csvValue || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
   const checks = allowedRolesBox?.querySelectorAll('.allowed-role') || [];
   checks.forEach((c) => {
-    c.checked = set.size ? set.has(String(c.value || '').toLowerCase()) : true;
+    c.checked = set.has(String(c.value || '').toLowerCase());
   });
 }
 
 function getAllowedRolesFromChecks() {
   const checks = allowedRolesBox?.querySelectorAll('.allowed-role:checked') || [];
   const vals = Array.from(checks).map((c) => String(c.value || '').trim().toLowerCase()).filter(Boolean);
-  return vals.join(',') || 'member,desenhista,revisor,cliente';
+  return vals.join(',');
+}
+
+function hasModule(moduleId) {
+  return allowedModules.has(moduleId);
+}
+
+function applyModuleVisibility() {
+  document.querySelectorAll('[data-module-id]').forEach((el) => {
+    const moduleId = String(el.dataset.moduleId || '').trim();
+    if (!moduleId) return;
+    el.style.display = hasModule(moduleId) ? '' : 'none';
+  });
 }
 
 async function loadMe() {
-  const d = await api('/api/me');
+  const [d, p] = await Promise.all([api('/api/me'), api('/api/me/permissions')]);
   me = d.user;
-  if (me.role !== 'admin') {
-    alert('Acesso restrito a administradores.');
+  allowedModules = new Set(p?.permissions?.allowedModules || []);
+
+  if (!(p?.permissions?.allowedPages || []).includes('projects.html')) {
+    alert('Sem acesso à página de projetos.');
     window.location.href = '/';
+    return;
   }
+
+  applyModuleVisibility();
 }
 
 function setForm(p = null) {
@@ -69,9 +90,20 @@ function setForm(p = null) {
   projectId.value = p?.project_id || '';
   projectName.value = p?.project_name || '';
   startDate.value = p?.start_date?.slice(0, 10) || '';
+  isTemplate.checked = Boolean(p?.is_template);
   notes.value = p?.notes || '';
-  setAllowedRolesChecks(p?.allowed_roles || 'member,desenhista,revisor,cliente');
-  deleteBtn.disabled = !p;
+  setAllowedRolesChecks(p?.allowed_roles || '');
+
+  const canEditProjectModule = hasModule('projects.create_edit');
+  [projectName, startDate, notes, isTemplate].forEach((el) => {
+    if (el) el.disabled = !canEditProjectModule;
+  });
+  (allowedRolesBox?.querySelectorAll('input') || []).forEach((el) => { el.disabled = !canEditProjectModule; });
+  newBtn.disabled = !canEditProjectModule;
+  saveBtn.disabled = !canEditProjectModule;
+
+  deleteBtn.disabled = !p || !canEditProjectModule;
+  if (cloneBtn) cloneBtn.disabled = !(p && p.is_template && canEditProjectModule);
 
   if (selectedProjectId) {
     const u = new URL(window.location.href);
@@ -82,14 +114,22 @@ function setForm(p = null) {
   loadCardsForSelectedProject();
 }
 
+function filteredProjects() {
+  const mode = String(templateFilter?.value || 'all');
+  if (mode === 'template') return projects.filter((p) => !!p.is_template);
+  if (mode === 'non-template') return projects.filter((p) => !p.is_template);
+  return projects;
+}
+
 function renderList() {
-  if (!projects.length) {
-    projectsList.textContent = 'Nenhum projeto cadastrado.';
+  const shown = filteredProjects();
+  if (!shown.length) {
+    projectsList.textContent = 'Nenhum projeto para o filtro selecionado.';
     return;
   }
   projectsList.innerHTML = `<table>
-    <tr><th>ID</th><th>Nome</th><th>Início</th><th>Roles</th></tr>
-    ${projects.map(p => `<tr data-id="${p.project_id}"><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
+    <tr><th class="template-flag-col"></th><th>ID</th><th>Nome</th><th>Início</th><th>Roles</th></tr>
+    ${shown.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
   </table>`;
   projectsList.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.style.cursor = 'pointer';
@@ -115,15 +155,14 @@ async function loadCardsForSelectedProject() {
     }
 
     projectCardsList.innerHTML = `<table>
-      <tr><th>Nome</th><th>Slug</th><th>Criado em</th><th>Status</th><th>Responsável</th><th>Ações</th></tr>
+      <tr><th>Nome</th><th>Criado em</th><th>Status</th><th>Responsável</th><th>Ações</th></tr>
       ${docs.map(doc => `
         <tr data-slug="${esc(doc.slug)}">
           <td>${esc(doc.name)}</td>
-          <td>${esc(doc.slug)}</td>
           <td>${esc(fmtDate(doc.openedAt || doc.updatedAt))}</td>
           <td>${esc(doc.status || '-')}</td>
           <td>${esc(doc.owner || '-')}</td>
-          <td><button type="button" class="danger card-delete-btn" data-slug="${esc(doc.slug)}">Excluir</button></td>
+          <td>${hasModule('projects.create_edit') ? `<button type="button" class="danger card-delete-btn" data-slug="${esc(doc.slug)}">Excluir</button>` : '-'}</td>
         </tr>
       `).join('')}
     </table>`;
@@ -147,8 +186,9 @@ async function loadCardsForSelectedProject() {
   }
 }
 
-async function refresh(preferredId = null) {
-  const d = await api('/api/admin/projects');
+async function refresh(preferredId = null, fallbackToLast = false) {
+  const canManageProjects = hasModule('projects.create_edit');
+  const d = canManageProjects ? await api('/api/admin/projects') : await api('/api/projects-registry');
   projects = d.projects || [];
   renderList();
 
@@ -157,21 +197,28 @@ async function refresh(preferredId = null) {
   const found = projects.find((p) => Number(p.project_id) === Number(targetId));
   if (found) {
     setForm(found);
+  } else if (fallbackToLast && projects.length) {
+    // Fallback for environments still running an older backend response shape
+    // (e.g., POST without project_id in payload): keep the newly created item loaded.
+    setForm(projects[projects.length - 1]);
   } else {
     setForm(null);
   }
 }
 
 newBtn.onclick = () => {
+  if (!hasModule('projects.create_edit')) return;
   feedback.textContent = '';
   setForm(null);
 };
 
 saveBtn.onclick = async () => {
+  if (!hasModule('projects.create_edit')) return;
   feedback.textContent = '';
   try {
     const payload = {
       project_name: projectName.value,
+      is_template: isTemplate.checked,
       start_date: startDate.value,
       notes: notes.value,
       allowed_roles: getAllowedRolesFromChecks(),
@@ -185,32 +232,84 @@ saveBtn.onclick = async () => {
       });
       feedback.textContent = 'Projeto atualizado ✅';
     } else {
-      await api('/api/admin/projects', {
+      const created = await api('/api/admin/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (Number(created?.project_id) > 0) {
+        selectedProjectId = Number(created.project_id);
+      }
       feedback.textContent = 'Projeto criado ✅';
     }
-    await refresh(preserveId);
+    await refresh(Number(projectId.value || selectedProjectId || preserveId || 0) || null, !projectId.value);
   } catch (e) {
     feedback.textContent = e.message;
   }
 };
 
 deleteBtn.onclick = async () => {
+  if (!hasModule('projects.create_edit')) return;
   if (!projectId.value) return;
-  if (!confirm('Apagar este projeto?')) return;
-  feedback.textContent = '';
+
+  const pid = Number(projectId.value || 0);
+  const pname = String(projectName.value || '').trim() || `ID ${pid}`;
+
   try {
-    await api(`/api/admin/projects/${projectId.value}`, { method: 'DELETE' });
-    feedback.textContent = 'Projeto apagado ✅';
+    const docsData = await api(`/api/documents?project_id=${encodeURIComponent(String(pid))}`);
+    const cardCount = Array.isArray(docsData?.documents) ? docsData.documents.length : 0;
+
+    const msg = cardCount > 0
+      ? `ATENÇÃO: o projeto "${pname}" possui ${cardCount} card(s)/documento(s) anexado(s).\n\nSe você confirmar, todos esses cards serão excluídos permanentemente junto com o projeto, e não poderão ser restaurados.\n\nDeseja continuar?`
+      : `Apagar o projeto "${pname}"?`;
+
+    if (!confirm(msg)) return;
+
+    feedback.textContent = '';
+    const del = await api(`/api/admin/projects/${pid}`, { method: 'DELETE' });
+    const deletedCards = Number(del?.deleted_cards || 0);
+    feedback.textContent = deletedCards > 0
+      ? `Projeto apagado ✅ (${deletedCards} card(s) excluído(s))`
+      : 'Projeto apagado ✅';
     setForm(null);
     await refresh();
   } catch (e) {
     feedback.textContent = e.message;
   }
 };
+
+if (cloneBtn) {
+  cloneBtn.onclick = async () => {
+    const pid = Number(projectId.value || selectedProjectId || 0);
+    if (!pid) return;
+    const selected = projects.find((p) => Number(p.project_id) === pid);
+    if (!selected?.is_template) {
+      feedback.textContent = 'Selecione um projeto template para clonar.';
+      return;
+    }
+    const suggested = `${selected.project_name} - Cópia`;
+    const newName = window.prompt('Nome do novo projeto criado a partir do template:', suggested);
+    if (!newName || !String(newName).trim()) return;
+
+    feedback.textContent = '';
+    try {
+      const created = await api(`/api/admin/projects/${pid}/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_name: String(newName).trim() }),
+      });
+      const newProjectId = Number(created?.project_id || 0) || null;
+      feedback.textContent = 'Projeto criado a partir do template ✅';
+      await refresh(newProjectId, true);
+    } catch (e) {
+      feedback.textContent = e.message;
+    }
+  };
+}
+
+if (templateFilter) {
+  templateFilter.onchange = () => renderList();
+}
 
 logoutBtn.onclick = async () => {
   await api('/api/logout', { method: 'POST' });

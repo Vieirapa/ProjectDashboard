@@ -14,6 +14,7 @@ const sumBacklogEl = document.getElementById('sumBacklog');
 const sumProgressEl = document.getElementById('sumProgress');
 const sumReviewEl = document.getElementById('sumReview');
 const sumDoneEl = document.getElementById('sumDone');
+const priorityColorStatus = document.getElementById('priorityColorStatus');
 
 const dialog = document.getElementById('documentDialog');
 const form = document.getElementById('documentForm');
@@ -26,10 +27,41 @@ const pPriority = document.getElementById('pPriority');
 const pOwner = document.getElementById('pOwner');
 const pDueDate = document.getElementById('pDueDate');
 const pDocumentFile = document.getElementById('pDocumentFile');
+const pDependsOn = document.getElementById('pDependsOn');
+const pDependsSearch = document.getElementById('pDependsSearch');
 const ownersList = document.getElementById('ownersList');
 
 let me = null;
-let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1 };
+let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1, dependencyMaxStatus: 'Backlog' };
+let createDependencyDocs = [];
+let createDependencySelected = new Set();
+let behavior = {
+  priorityColorEnabled: false,
+  priorityColors: {
+    'Baixa': '#dbeafe',
+    'Média': '#fef3c7',
+    'Alta': '#fed7aa',
+    'Urgente': '#fecaca',
+  },
+};
+
+function colorByPriorityKey(colors, key, fallback) {
+  const c = colors || {};
+  const direct = c[key];
+  if (direct) return direct;
+  if (key === 'Média') return c['Media'] || c['média'] || c['media'] || fallback;
+  if (key === 'Baixa') return c['baixa'] || fallback;
+  if (key === 'Alta') return c['alta'] || fallback;
+  if (key === 'Urgente') return c['urgente'] || fallback;
+  return fallback;
+}
+
+function updatePriorityColorStatus() {
+  if (!priorityColorStatus) return;
+  const mode = behavior.priorityColorEnabled ? 'ATIVO' : 'INATIVO';
+  const palette = `Baixa:${behavior.priorityColors['Baixa']} · Média:${behavior.priorityColors['Média']} · Alta:${behavior.priorityColors['Alta']} · Urgente:${behavior.priorityColors['Urgente']}`;
+  priorityColorStatus.innerHTML = `Cores por prioridade: <strong>${mode}</strong> <span class="small">(${palette})</span>`;
+}
 
 function projectIdFromUrlOrNull() {
   const rawPid = new URLSearchParams(window.location.search).get('project_id');
@@ -50,8 +82,20 @@ function withProjectId(url) {
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Erro na API');
+  if (!res.ok) {
+    const err = new Error(data.error || 'Erro na API');
+    err.status = res.status;
+    err.payload = data;
+    throw err;
+  }
   return data;
+}
+
+function getMultiSelectedValues(containerEl) {
+  if (!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('input[type="checkbox"][data-dep-slug]:checked'))
+    .map((el) => String(el.getAttribute('data-dep-slug') || '').trim())
+    .filter(Boolean);
 }
 
 function fileToBase64(file) {
@@ -70,6 +114,23 @@ async function loadMe() {
   const data = await api('/api/me');
   me = data.user;
   newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
+
+  try {
+    const prof = await api(`/api/me/profile?ts=${Date.now()}`);
+    const p = prof?.profile || {};
+    const colors = p.priority_colors || {};
+    behavior.priorityColorEnabled = !!p.priority_color_enabled;
+    behavior.priorityColors = {
+      'Baixa': colorByPriorityKey(colors, 'Baixa', '#dbeafe'),
+      'Média': colorByPriorityKey(colors, 'Média', '#fef3c7'),
+      'Alta': colorByPriorityKey(colors, 'Alta', '#fed7aa'),
+      'Urgente': colorByPriorityKey(colors, 'Urgente', '#fecaca'),
+    };
+  } catch {
+    // fallback silencioso para defaults
+  }
+
+  updatePriorityColorStatus();
 }
 
 function currentFilters() {
@@ -138,11 +199,24 @@ function docStatusMeta(cardStatus) {
 }
 
 function canCreateCard() {
-  return ['admin', 'member'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member'].includes(me?.role || '');
 }
 
 function canEditCard() {
-  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
+}
+
+function statusRank(status) {
+  return STATUSES_ORDER.indexOf(status);
+}
+
+const STATUSES_ORDER = ['Backlog', 'Em andamento', 'Em revisão', 'Concluído'];
+
+function statusAllowedWithDependencies(doc, targetStatus) {
+  const hasPendingDeps = !!doc?.isBlockedByDependencies;
+  if (!hasPendingDeps) return true;
+  const maxStatus = state?.dependencyMaxStatus || 'Backlog';
+  return statusRank(targetStatus) <= statusRank(maxStatus);
 }
 
 function makeCard(p, statuses, priorities) {
@@ -154,16 +228,59 @@ function makeCard(p, statuses, priorities) {
     .replace('DIAS PARA SOLUCAO', 'Dia até solução')
     .replace('DIAS DESDE ABERTURA', 'Dias desde abertura');
 
+  const blockedDeps = Array.isArray(p.dependencies)
+    ? p.dependencies.filter((d) => String(d.status || '') !== 'Concluído')
+    : [];
+  const depBadge = blockedDeps.length
+    ? `<div class="dep-alert" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Dependências pendentes (${blockedDeps.length})</div>`
+    : (Array.isArray(p.dependencies) && p.dependencies.length ? '<div class="dep-ok">✅ Dependências resolvidas</div>' : '');
+
   card.innerHTML = `
     <h3>${p.name}</h3>
+    ${depBadge}
     <p>${p.description || 'Sem descrição'}</p>
     <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>${ageLabel}: <b>${p.ageDays ?? '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
   `;
 
+  if (behavior.priorityColorEnabled) {
+    const bg = behavior.priorityColors?.[p.priority];
+    if (bg) {
+      card.style.background = bg;
+      card.style.border = '1px solid rgba(15,23,42,.12)';
+    }
+  } else {
+    card.style.background = '#fff';
+    card.style.border = 'none';
+  }
+
   const st = document.createElement('select');
-  statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; if (s === p.status) o.selected = true; st.appendChild(o); });
+  statuses.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s;
+    o.textContent = s;
+    if (!statusAllowedWithDependencies(p, s)) {
+      o.disabled = true;
+      o.textContent = `${s} 🔒`;
+    }
+    if (s === p.status) o.selected = true;
+    st.appendChild(o);
+  });
   st.disabled = !canEditCard();
-  st.onchange = async () => { await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})}); render(); };
+  st.onchange = async () => {
+    const prev = p.status;
+    if (!statusAllowedWithDependencies(p, st.value)) {
+      st.value = prev;
+      alert(`Status bloqueado por dependências pendentes. Máximo permitido: ${state?.dependencyMaxStatus || 'Backlog'}.`);
+      return;
+    }
+    try {
+      await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})});
+      render();
+    } catch (e) {
+      st.value = prev;
+      alert(e.message || 'Falha ao alterar status.');
+    }
+  };
 
   const pr = document.createElement('select');
   priorities.forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = `Prioridade: ${x}`; if (x === p.priority) o.selected = true; pr.appendChild(o); });
@@ -213,12 +330,43 @@ function fillFilters(statuses, priorities, users=[]) {
   pStatus.value = 'Backlog'; pPriority.value = 'Média';
 }
 
+function fillDependenciesOptions() {
+  if (!pDependsOn) return;
+  const q = String(pDependsSearch?.value || '').trim().toLowerCase();
+  const docs = createDependencyDocs.filter((d) => {
+    if (!q) return true;
+    const hay = `${d.name || ''} ${d.status || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (!docs.length) {
+    pDependsOn.innerHTML = '<div class="deps-empty">Nenhum card encontrado.</div>';
+    return;
+  }
+
+  pDependsOn.innerHTML = docs.map((d) => `
+    <label class="small">
+      <input type="checkbox" data-dep-slug="${String(d.slug)}" ${createDependencySelected.has(String(d.slug)) ? 'checked' : ''} /> ${d.name} [${d.status}]
+    </label>
+  `).join('');
+
+  Array.from(pDependsOn.querySelectorAll('input[type="checkbox"][data-dep-slug]')).forEach((el) => {
+    el.addEventListener('change', () => {
+      const slug = String(el.getAttribute('data-dep-slug') || '');
+      if (!slug) return;
+      if (el.checked) createDependencySelected.add(slug);
+      else createDependencySelected.delete(slug);
+    });
+  });
+}
+
 function syncProjectSelect() {
   if (!projectSelect) return;
   const selected = Number(state.selectedProjectId || 1);
   projectSelect.innerHTML = '';
   (state.projects || []).forEach((p) => {
-    const opt = new Option(`${p.project_id} · ${p.project_name}`, String(p.project_id));
+    const templateLabel = p.is_template ? ' [Template]' : '';
+    const opt = new Option(`${p.project_id} · ${p.project_name}${templateLabel}`, String(p.project_id));
     if (Number(p.project_id) === selected) opt.selected = true;
     projectSelect.append(opt);
   });
@@ -273,32 +421,43 @@ function updateProjectSummary() {
 }
 
 async function render() {
-  const pidInUrl = projectIdFromUrlOrNull();
-  const query = pidInUrl ? `?project_id=${encodeURIComponent(String(pidInUrl))}` : '';
-  state = await api(`/api/documents${query}`);
+  try {
+    const pidInUrl = projectIdFromUrlOrNull();
+    const query = pidInUrl ? `?project_id=${encodeURIComponent(String(pidInUrl))}` : '';
+    state = await api(`/api/documents${query}`);
 
-  if (!pidInUrl && Number(state.selectedProjectId || 0) > 0) {
-    const u = new URL(window.location.href);
-    u.searchParams.set('project_id', String(state.selectedProjectId));
-    window.history.replaceState({}, '', `${u.pathname}?${u.searchParams.toString()}`);
+    if (!pidInUrl && Number(state.selectedProjectId || 0) > 0) {
+      const u = new URL(window.location.href);
+      u.searchParams.set('project_id', String(state.selectedProjectId));
+      window.history.replaceState({}, '', `${u.pathname}?${u.searchParams.toString()}`);
+    }
+
+    syncProjectSelect();
+    updateProjectSummary();
+    fillFilters(state.statuses, state.priorities, state.users || []);
+    createDependencyDocs = (state.documents || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+    fillDependenciesOptions();
+    const filters = currentFilters();
+    const filtered = state.documents.filter(p => passesFilters(p, filters));
+    board.innerHTML = '';
+    const cols = new Map(state.statuses.map(s => [s, makeColumn(s)]));
+    cols.forEach(c => board.appendChild(c));
+
+    filtered.sort((a, b) => {
+      const cmp = compareDocuments(a, b, filters.sortBy, filters.sortDir);
+      if (cmp !== 0) return cmp;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
+    });
+    filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
+    cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} documento(s)`);
+  } catch (e) {
+    if (e?.status === 401) {
+      window.location.href = '/login.html';
+      return;
+    }
+    const msg = String(e?.message || 'Falha ao carregar dados do kanban.');
+    board.innerHTML = `<div class="panel"><b>Não foi possível carregar este projeto.</b><br/><span class="small">${msg}</span></div>`;
   }
-
-  syncProjectSelect();
-  updateProjectSummary();
-  fillFilters(state.statuses, state.priorities, state.users || []);
-  const filters = currentFilters();
-  const filtered = state.documents.filter(p => passesFilters(p, filters));
-  board.innerHTML = '';
-  const cols = new Map(state.statuses.map(s => [s, makeColumn(s)]));
-  cols.forEach(c => board.appendChild(c));
-
-  filtered.sort((a, b) => {
-    const cmp = compareDocuments(a, b, filters.sortBy, filters.sortDir);
-    if (cmp !== 0) return cmp;
-    return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
-  });
-  filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
-  cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} documento(s)`);
 }
 
 [newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter, sortOrderFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
@@ -307,11 +466,14 @@ if (projectSelect) {
   projectSelect.onchange = () => {
     const pid = projectSelect.value;
     if (!pid) return;
-    window.location.href = `/?project_id=${encodeURIComponent(pid)}`;
+    window.location.href = `/kanban.html?project_id=${encodeURIComponent(pid)}`;
   };
 }
+if (pDependsSearch) {
+  pDependsSearch.addEventListener('input', () => fillDependenciesOptions());
+}
 
-newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; dialog.showModal(); };
+newBtn.onclick = () => { pName.value=''; pDescription.value=''; pOwner.value=''; pDueDate.value=''; if (pDocumentFile) pDocumentFile.value=''; createDependencySelected = new Set(); if (pDependsSearch) pDependsSearch.value = ''; fillDependenciesOptions(); dialog.showModal(); };
 cancelDialogBtn.onclick = () => dialog.close();
 
 form.onsubmit = async (e) => {
@@ -324,11 +486,23 @@ form.onsubmit = async (e) => {
     }
     const pid = currentProjectIdFromUrl();
     const name = (pName.value || '').trim();
-    const created = await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid })});
+    const depends_on = Array.from(createDependencySelected);
+    const created = await api('/api/documents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, description:pDescription.value, status:pStatus.value, priority:pPriority.value, owner, dueDate:pDueDate.value, project_id: pid, depends_on })});
+
+    let slug = created?.slug || '';
+
+    // Fallback de robustez: garante persistência de dependências mesmo se algum browser
+    // não refletir corretamente selectedOptions no submit.
+    if (depends_on.length && slug) {
+      await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ depends_on }),
+      });
+    }
 
     const file = pDocumentFile?.files?.[0];
     if (file) {
-      let slug = created?.slug || '';
 
       // fallback para compatibilidade com backend sem retorno de slug
       if (!slug) {
@@ -363,5 +537,14 @@ form.onsubmit = async (e) => {
 
 
 (async () => {
-  try { await loadMe(); await render(); } catch { window.location.href = '/login.html'; }
+  try {
+    await loadMe();
+    await render();
+  } catch (e) {
+    if (e?.status === 401) {
+      window.location.href = '/login.html';
+      return;
+    }
+    alert(e?.message || 'Falha ao iniciar kanban.');
+  }
 })();

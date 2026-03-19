@@ -2,11 +2,17 @@
 
 ## Pages and responsibilities
 
-- `index.html` + `app.js`
+- `index.html` + `dashboard.js`
+  - landing page with summary KPIs
+  - project-level quick metrics table
+  - excludes template projects from summary/statistics
+
+- `kanban.html` + `app.js`
   - main board rendering
   - document creation
   - quick status/priority changes
   - filtering/searching
+  - per-user behavior support (optional priority-based card colors)
 
 - `edit.html` + `edit.js`
   - full project editing
@@ -26,7 +32,8 @@
 ## Navigation and sidebar
 
 The UI is split into workspace and admin sections.
-Admin controls may be hidden in the frontend for non-admin users.
+Admin controls are shown only for `admin`.
+`lider_projeto` sees workspace tools (Início, Projetos, Kanban, Meu perfil) but not Users/Invites and Settings links.
 
 ## Important security note
 

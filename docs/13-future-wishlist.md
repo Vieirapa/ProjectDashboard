@@ -21,12 +21,20 @@ This file tracks future ideas and improvements for ProjectDashboard.
 
 - Add `--dry-run` mode to `install.sh` (simulate changes without applying)
 - Add post-install command to print detected runtime service user/group and backup path
+- Add optional non-interactive smoke test mode (`INSTALL_SMOKE_TEST=yes`) for CI-style Ubuntu validation
 
 ### Backup / Restore
 
 - Add "Test backup path permissions" button in Settings
 - Add helper script to list available backups with interactive selection
 - Add one-click restore assistant in admin UI (guided validation + warning step)
+
+### Project Governance / Meetings
+
+- Add a dedicated feature for **Project Meeting Minutes Notes**
+  - allow storing a chronological list of meeting notes per project
+  - support date, author, and free-text notes
+  - make historical decision tracking easier for project follow-up
 
 ### Diagnostics / Observability
 

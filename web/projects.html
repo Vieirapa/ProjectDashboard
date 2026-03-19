@@ -20,11 +20,18 @@
 
       <section class="edit-wrap projects-page-wrap">
         <div class="edit-two-cols projects-top-cols">
-          <form id="projectForm" class="edit-form">
+          <form id="projectForm" class="edit-form" data-module-id="projects.create_edit">
+            <h3 style="margin-top:0;">Criar/Editar Projeto</h3>
             <label>ID do Projeto</label>
             <input id="projectId" type="number" readonly placeholder="(auto)" />
             <label>Nome do Projeto</label>
-            <input id="projectName" required />
+            <div class="project-name-row">
+              <input id="projectName" required />
+              <label class="inline-check project-template-check">
+                <input id="isTemplate" type="checkbox" />
+                Projeto template
+              </label>
+            </div>
             <label>Data de Início</label>
             <input id="startDate" type="date" />
             <label>Notas</label>
@@ -33,24 +40,32 @@
             <div id="allowedRolesBox" class="allowed-roles-box">
               <label class="inline-check"><input type="checkbox" class="allowed-role" value="member" checked /> member</label>
               <label class="inline-check"><input type="checkbox" class="allowed-role" value="desenhista" checked /> desenhista</label>
+              <label class="inline-check"><input type="checkbox" class="allowed-role" value="colaborador" checked /> colaborador</label>
               <label class="inline-check"><input type="checkbox" class="allowed-role" value="revisor" checked /> revisor</label>
               <label class="inline-check"><input type="checkbox" class="allowed-role" value="cliente" checked /> cliente</label>
             </div>
-            <div class="dialog-actions" style="justify-content:flex-start;">
+            <div class="dialog-actions" style="justify-content:flex-start; flex-wrap: wrap;">
               <button type="button" id="newBtn" class="secondary">Novo</button>
               <button type="button" id="saveBtn">Salvar</button>
+              <button type="button" id="cloneBtn" class="secondary">Criar a partir do template</button>
               <button type="button" id="deleteBtn" class="danger">Apagar</button>
             </div>
             <p id="feedback" class="small"></p>
           </form>
 
-          <section class="review-panel">
+          <section class="review-panel" data-module-id="projects.list">
             <h3>Projetos cadastrados</h3>
+            <label for="templateFilter" class="small">Filtro de template</label>
+            <select id="templateFilter">
+              <option value="all">Todos</option>
+              <option value="template">Apenas templates</option>
+              <option value="non-template">Apenas não-templates</option>
+            </select>
             <div id="projectsList" class="small">Carregando...</div>
           </section>
         </div>
 
-        <section class="panel projects-cards-panel" style="margin-top: 14px;">
+        <section class="panel projects-cards-panel" style="margin-top: 14px;" data-module-id="projects.cards_list">
           <h3>Lista de Cards</h3>
           <div id="projectCardsList" class="small">Selecione um projeto para listar os cards.</div>
         </section>

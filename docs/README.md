@@ -20,7 +20,11 @@ This directory contains the current technical and operational documentation for 
 14. [14-db-structure-and-module-mapping-3be2bc7.md](./14-db-structure-and-module-mapping-3be2bc7.md)
 15. [15-known-bugs.md](./15-known-bugs.md)
 16. [16-release-readiness-2026-03-05.md](./16-release-readiness-2026-03-05.md)
-17. [tests/README.md](./tests/README.md)
+17. [17-manual-do-usuario-v0.9.0-beta.2.md](./17-manual-do-usuario-v0.9.0-beta.2.md)
+18. [18-manual-pratico-usuarios-v0.9.0-beta.2.md](./18-manual-pratico-usuarios-v0.9.0-beta.2.md)
+19. [19-backlog-executavel-sprint-proxima.md](./19-backlog-executavel-sprint-proxima.md)
+20. [20-plano-diario-execucao-sprint.md](./20-plano-diario-execucao-sprint.md)
+21. [tests/README.md](./tests/README.md)
 
 ## Scope
 

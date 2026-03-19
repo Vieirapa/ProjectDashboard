@@ -18,7 +18,7 @@
         </div>
       </header>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.smtp">
         <h3>Envio de e-mails (SMTP)</h3>
         <form id="smtpForm" class="form-grid" style="max-width:760px;">
           <label>SMTP Host</label><input id="smtp_host" placeholder="smtp.seuprovedor.com" />
@@ -42,12 +42,21 @@
         </form>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.system_behavior">
         <h3>Comportamento do sistema</h3>
         <form id="workflowForm" class="form-grid" style="max-width:760px;">
           <label>Prazo padrão (dias)</label>
           <input id="default_due_days" type="number" min="0" max="3650" placeholder="7" />
           <p class="small">Regra: ao criar um documento (ou alterar status sem informar prazo manual), o prazo será recalculado para hoje + X dias.</p>
+
+          <label>Status máximo permitido com dependências pendentes</label>
+          <select id="dependency_max_status">
+            <option value="Backlog">Backlog</option>
+            <option value="Em andamento">Em andamento</option>
+            <option value="Em revisão">Em revisão</option>
+            <option value="Concluído">Concluído</option>
+          </select>
+          <p class="small">Se um card tiver dependências em aberto, ele só poderá avançar até este status máximo.</p>
           <div class="dialog-actions" style="justify-content:flex-start;">
             <button type="submit">Salvar comportamento</button>
           </div>
@@ -55,36 +64,50 @@
         </form>
       </section>
 
-      <section class="panel">
-        <h3>Backup do sistema</h3>
-        <form id="backupForm" class="form-grid" style="max-width:900px;">
-          <label class="inline-check"><input id="backup_enabled" type="checkbox" /> <span>Habilitar backup automático interno</span></label>
-          <label>Caminho de saída dos backups</label>
-          <input id="backup_path" placeholder="/opt/documentdashboard/data/backups" />
+      <section class="panel" data-module-id="settings.backup">
+        <div class="backup-grid">
+          <form id="backupForm" class="backup-card form-grid">
+            <h3>Backup do sistema</h3>
+            <label class="inline-check"><input id="backup_enabled" type="checkbox" /> <span>Habilitar backup automático interno</span></label>
+            <label>Caminho de saída dos backups</label>
+            <input id="backup_path" placeholder="/opt/documentdashboard/data/backups" />
 
-          <label>Dias da semana</label>
-          <div id="backup_weekdays" class="form-grid">
-            <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
-            <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
-            <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
-            <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
-            <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
-            <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
-            <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+            <label>Dias da semana</label>
+            <div id="backup_weekdays" class="form-grid">
+              <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
+              <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
+              <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
+              <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
+              <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
+              <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
+              <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+            </div>
+
+            <label>Horário (HH:MM)</label>
+            <input id="backup_run_time" type="time" value="03:00" />
+
+            <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap;">
+              <button type="submit">Salvar política de backup</button>
+              <button type="button" id="testBackupPathBtn" class="secondary">Testar permissões do caminho</button>
+              <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
+            </div>
+            <p id="backupFeedback" class="small"></p>
+            <p id="backupNextRun" class="small"></p>
+          </form>
+
+          <div class="backup-card" data-module-id="settings.backup_restore">
+            <h3>Recuperação de backup</h3>
+            <p class="small">Selecione um snapshot (data/hora) disponível no caminho de backup e restaure com confirmação.</p>
+            <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap; margin-top:8px;">
+              <button type="button" id="refreshBackupListBtn" class="secondary">Atualizar lista de backups</button>
+              <button type="button" id="restoreBackupBtn" class="danger">Restaurar backup selecionado</button>
+            </div>
+            <div id="backupRestoreList" class="small" style="margin-top:10px;">Nenhum backup listado.</div>
           </div>
-
-          <label>Horário (HH:MM)</label>
-          <input id="backup_run_time" type="time" value="03:00" />
-
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit">Salvar política de backup</button>
-            <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
-          </div>
-          <p id="backupFeedback" class="small"></p>
-        </form>
+        </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.system_diagnostics">
         <h3>Diagnóstico do sistema</h3>
         <form id="diagForm" class="form-grid" style="max-width:900px;">
           <label>Repositório Git para comparação de versão</label>
@@ -101,8 +124,8 @@
         </form>
       </section>
 
-      <section class="panel">
-        <h3>Documentos apagados (Admin)</h3>
+      <section class="panel" data-module-id="settings.recoverable_documents">
+        <h3>Documentos recuperáveis</h3>
         <form id="deletedPolicyForm" class="form-grid" style="max-width:900px;">
           <label>Retenção após exclusão (dias)</label>
           <input id="deleted_retention_days" type="number" min="1" max="3650" placeholder="30" />
@@ -116,11 +139,33 @@
 
         <div style="margin-top:16px;">
           <h4 style="margin:0 0 8px;">Documentos apagados disponíveis para restauração</h4>
+
+          <div class="form-grid" style="max-width:900px; margin-bottom:10px;">
+            <label>Buscar por nome/slug</label>
+            <input id="deleted_filter_q" placeholder="Ex.: desenho-1011" />
+
+            <label>Apagado por</label>
+            <input id="deleted_filter_by" placeholder="Ex.: admin" />
+
+            <label>De (data)</label>
+            <input id="deleted_filter_from" type="date" />
+
+            <label>Até (data)</label>
+            <input id="deleted_filter_to" type="date" />
+
+            <div class="dialog-actions" style="justify-content:flex-start;">
+              <button type="button" id="applyDeletedFiltersBtn" class="secondary">Filtrar</button>
+              <button type="button" id="clearDeletedFiltersBtn" class="secondary">Limpar filtros</button>
+            </div>
+            <p id="deletedFiltersState" class="small" style="margin-top:6px; color:#4b5563;"></p>
+          </div>
+
           <div id="deletedDocumentsList" class="small">Nenhum documento apagado.</div>
+          <div id="deletedDocumentsPager" class="small" style="margin-top:8px;"></div>
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="settings.periodic_reports">
         <h3>Relatórios periódicos</h3>
         <form id="reportForm" class="form-grid" style="max-width:900px;">
           <label>Nome do relatório</label>
@@ -174,6 +219,22 @@
         <div style="margin-top:16px; max-width:760px;">
           <h4 style="margin:0 0 8px;">Prévia do texto enviado</h4>
           <textarea id="reportPreview" rows="21" readonly placeholder="Ao clicar em 'Rodar agora', a prévia do corpo do e-mail aparecerá aqui."></textarea>
+        </div>
+      </section>
+
+      <section class="panel" data-module-id="settings.roles_control">
+        <h3>Controle de ROLES</h3>
+        <p class="small">Matriz de acesso por módulo. O role <strong>admin</strong> é bloqueado para edição e mantém acesso total.</p>
+
+        <div class="dialog-actions" style="justify-content:flex-start; margin-bottom:8px;">
+          <button type="button" id="rolesRefreshBtn" class="secondary">Atualizar matriz</button>
+          <button type="button" id="rolesSaveBtn">Salvar alterações</button>
+          <button type="button" id="rolesSyncCatalogBtn" class="secondary">Sincronizar catálogo</button>
+        </div>
+        <p id="rolesFeedback" class="small"></p>
+
+        <div id="rolesMatrixWrap" style="overflow:auto; max-width:100%;">
+          <div class="small">Carregando matriz...</div>
         </div>
       </section>
     </main>

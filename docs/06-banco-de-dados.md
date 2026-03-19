@@ -13,6 +13,9 @@
 - role
 - created_at
 - email/phone/extension/work_area/notes
+- profile behavior preferences:
+  - `priority_color_enabled`
+  - `priority_colors_json`
 
 ### `documents`
 - slug (unique)

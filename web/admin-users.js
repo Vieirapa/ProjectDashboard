@@ -5,6 +5,7 @@ const inviteOut = document.getElementById('inviteOut');
 
 let me = null;
 let roles = ['member', 'admin'];
+let allowedModules = new Set();
 
 async function api(url, opts={}) {
   const r = await fetch(url, opts);
@@ -13,17 +14,38 @@ async function api(url, opts={}) {
   return d;
 }
 
-async function ensureAdmin() {
-  const d = await api('/api/me');
-  if (!d.user || d.user.role !== 'admin') throw new Error('Acesso restrito a admin');
-  me = d.user;
+function hasModule(moduleId) {
+  return allowedModules.has(moduleId);
+}
+
+function applyModuleVisibility() {
+  document.querySelectorAll('[data-module-id]').forEach((el) => {
+    const moduleId = String(el.dataset.moduleId || '').trim();
+    if (!moduleId) return;
+    el.style.display = hasModule(moduleId) ? '' : 'none';
+  });
+}
+
+async function loadPermissions() {
+  const [meResp, permResp] = await Promise.all([api('/api/me'), api('/api/me/permissions')]);
+  me = meResp.user;
+  allowedModules = new Set(permResp?.permissions?.allowedModules || []);
+  if (!(permResp?.permissions?.allowedPages || []).includes('admin-users.html')) {
+    throw new Error('Sem acesso à página de usuários');
+  }
+  applyModuleVisibility();
 }
 
 async function loadSettingsDefaults() {
-  const d = await api('/api/admin/settings');
-  const msg = d.settings?.['invite.default_message']?.value || '';
-  const inviteMessage = document.getElementById('inviteMessage');
-  if (inviteMessage && msg) inviteMessage.value = msg;
+  if (!hasModule('admin_users.invite')) return;
+  try {
+    const d = await api('/api/admin/settings');
+    const msg = d.settings?.['invite.default_message']?.value || '';
+    const inviteMessage = document.getElementById('inviteMessage');
+    if (inviteMessage && msg) inviteMessage.value = msg;
+  } catch {
+    // optional for non-admin users with invite module restrictions
+  }
 }
 
 async function updateRole(username, role) {
@@ -80,15 +102,15 @@ async function loadUsers() {
         <tr>
           <td>${u.username}</td>
           <td>
-            <select data-role-user="${u.username}" ${u.username === 'admin' ? 'disabled' : ''}>
+            <select data-role-user="${u.username}" ${u.username === 'admin' || !hasModule('admin_users.create') ? 'disabled' : ''}>
               ${roleOptions(u.role)}
             </select>
           </td>
           <td>${u.associated_tasks ?? 0}</td>
           <td>${u.created_at}</td>
           <td>
-            <button class="secondary" data-pass-user="${u.username}">Trocar senha</button>
-            <button class="danger" data-del-user="${u.username}" data-task-count="${u.associated_tasks ?? 0}" ${u.username === me.username || u.role === 'admin' ? 'disabled' : ''}>Excluir</button>
+            <button class="secondary" data-pass-user="${u.username}" ${!hasModule('admin_users.create') ? 'disabled' : ''}>Trocar senha</button>
+            <button class="danger" data-del-user="${u.username}" data-task-count="${u.associated_tasks ?? 0}" ${u.username === me.username || u.role === 'admin' || !hasModule('admin_users.create') ? 'disabled' : ''}>Excluir</button>
           </td>
         </tr>
       `).join('')}
@@ -140,6 +162,7 @@ async function loadAudit() {
 
 document.getElementById('createUserForm').onsubmit = async (e) => {
   e.preventDefault();
+  if (!hasModule('admin_users.create')) return;
   try {
     await api('/api/admin/users', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       username: document.getElementById('newUsername').value,
@@ -148,13 +171,14 @@ document.getElementById('createUserForm').onsubmit = async (e) => {
     })});
     alert('Usuário criado');
     e.target.reset();
-    await loadUsers();
-    await loadAudit();
+    if (hasModule('admin_users.list')) await loadUsers();
+    if (hasModule('admin_users.audit_log')) await loadAudit();
   } catch (e) { alert(e.message); }
 };
 
 document.getElementById('inviteForm').onsubmit = async (e) => {
   e.preventDefault();
+  if (!hasModule('admin_users.invite')) return;
   try {
     const sendEmail = document.getElementById('sendInviteEmail').checked;
     const d = await api('/api/admin/invites', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
@@ -168,7 +192,7 @@ document.getElementById('inviteForm').onsubmit = async (e) => {
       ? `Convite (expira ${d.expiresAt}) enviado para ${document.getElementById('inviteEmail').value}. Link: ${full}`
       : `Convite (expira ${d.expiresAt}): ${full}`;
     await navigator.clipboard.writeText(full);
-    await loadAudit();
+    if (hasModule('admin_users.audit_log')) await loadAudit();
   } catch (e) { alert(e.message); }
 };
 
@@ -176,10 +200,18 @@ logoutBtn.onclick = async () => { await api('/api/logout',{method:'POST'}); loca
 
 (async()=>{
   try {
-    await ensureAdmin();
+    await loadPermissions();
     await loadSettingsDefaults();
-    await loadUsers();
-    await loadAudit();
+    if (hasModule('admin_users.list')) {
+      await loadUsers();
+    } else if (usersList) {
+      usersList.innerHTML = '<p class="small">Sem acesso ao módulo de usuários cadastrados.</p>';
+    }
+    if (hasModule('admin_users.audit_log')) {
+      await loadAudit();
+    } else if (auditList) {
+      auditList.innerHTML = '<p class="small">Sem acesso ao módulo de auditoria.</p>';
+    }
   } catch {
     location.href='/';
   }

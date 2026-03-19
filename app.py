@@ -30,7 +30,46 @@ HOST = os.getenv("PDASH_HOST", "0.0.0.0")
 PORT = int(os.getenv("PDASH_PORT", "8765"))
 STATUSES = ["Backlog", "Em andamento", "Em revisão", "Concluído"]
 PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"]
-ROLES = ["admin", "member", "desenhista", "revisor", "cliente"]
+ROLES = ["admin", "lider_projeto", "member", "desenhista", "colaborador", "revisor", "cliente"]
+ADMIN_EQUIV_ROLES = {"admin", "lider_projeto"}
+SETTING_KEY_TO_MODULE = {
+    "smtp.host": "settings.smtp",
+    "smtp.port": "settings.smtp",
+    "smtp.user": "settings.smtp",
+    "smtp.pass": "settings.smtp",
+    "smtp.from": "settings.smtp",
+    "smtp.tls": "settings.smtp",
+    "invite.default_message": "settings.smtp",
+    "workflow.default_due_days": "settings.system_behavior",
+    "workflow.dependency_max_status": "settings.system_behavior",
+    # Defensive alias for possible old/typo payloads from cached frontends.
+    "workflow.dependency.max.status": "settings.system_behavior",
+    "backup.enabled": "settings.backup",
+    "backup.path": "settings.backup",
+    "backup.weekdays": "settings.backup",
+    "backup.run_time": "settings.backup",
+    "system.git_repo": "settings.system_diagnostics",
+    "system.git_branch": "settings.system_diagnostics",
+    "deleted.retention_days": "settings.recoverable_documents",
+}
+
+MODULE_CATALOG_V1 = [
+    {"module_id": "projects.create_edit", "page_key": "projects.html", "label": "Create/Edit Project", "active": 1},
+    {"module_id": "projects.list", "page_key": "projects.html", "label": "Registered Projects", "active": 1},
+    {"module_id": "projects.cards_list", "page_key": "projects.html", "label": "Cards List", "active": 1},
+    {"module_id": "admin_users.create", "page_key": "admin-users.html", "label": "Create User", "active": 1},
+    {"module_id": "admin_users.invite", "page_key": "admin-users.html", "label": "Invite New User", "active": 1},
+    {"module_id": "admin_users.list", "page_key": "admin-users.html", "label": "Registered Users", "active": 1},
+    {"module_id": "admin_users.audit_log", "page_key": "admin-users.html", "label": "Audit Log", "active": 1},
+    {"module_id": "settings.smtp", "page_key": "settings.html", "label": "Email Sending (SMTP)", "active": 1},
+    {"module_id": "settings.system_behavior", "page_key": "settings.html", "label": "System Behavior", "active": 1},
+    {"module_id": "settings.backup", "page_key": "settings.html", "label": "System Backup", "active": 1},
+    {"module_id": "settings.backup_restore", "page_key": "settings.html", "label": "System Backup Recovery", "active": 1},
+    {"module_id": "settings.system_diagnostics", "page_key": "settings.html", "label": "System Diagnostics", "active": 1},
+    {"module_id": "settings.recoverable_documents", "page_key": "settings.html", "label": "Recoverable Documents", "active": 1},
+    {"module_id": "settings.periodic_reports", "page_key": "settings.html", "label": "Periodic Reports", "active": 1},
+    {"module_id": "settings.roles_control", "page_key": "settings.html", "label": "Roles Control", "active": 1},
+]
 SKIP_DIRS = {"ProjectDashboard", "__pycache__"}
 SESSION_COOKIE = "pdash_session"
 SESSION_TTL_SECONDS = 60 * 60 * 24
@@ -232,23 +271,23 @@ def can_create_document(role: str) -> bool:
 
 
 def can_edit_document(role: str) -> bool:
-    return role in {"admin", "member", "desenhista"}
+    return role in {"admin", "lider_projeto", "member", "desenhista", "colaborador"}
 
 
 def can_upload_document(role: str) -> bool:
-    return role in {"admin", "member", "desenhista"}
+    return role in {"admin", "lider_projeto", "member", "desenhista", "colaborador"}
 
 
 def can_add_review_note(role: str) -> bool:
-    return role in {"admin", "member", "desenhista", "revisor"}
+    return role in {"admin", "lider_projeto", "member", "desenhista", "colaborador", "revisor"}
 
 
 def can_resolve_review_note(role: str) -> bool:
-    return role in {"desenhista", "admin"}
+    return role in {"desenhista", "colaborador", "admin", "lider_projeto"}
 
 
 def can_delete_document(role: str, user: str, document: dict) -> bool:
-    if role == "admin":
+    if role in ADMIN_EQUIV_ROLES:
         return True
     if role == "member":
         return (document.get("createdBy") or "").strip().lower() == user.strip().lower()
@@ -286,7 +325,9 @@ def init_db():
                 project_name TEXT NOT NULL,
                 start_date TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
-                allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente'
+                allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,colaborador,revisor,cliente',
+                is_template INTEGER NOT NULL DEFAULT 0,
+                template_source_project_id INTEGER
             )
         """)
         conn.execute("""
@@ -339,6 +380,19 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS document_dependencies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                document_slug TEXT NOT NULL,
+                depends_on_slug TEXT NOT NULL,
+                created_by TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(document_slug, depends_on_slug)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_doc_deps_document ON document_dependencies(document_slug)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_doc_deps_depends_on ON document_dependencies(depends_on_slug)")
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL DEFAULT '',
@@ -346,6 +400,28 @@ def init_db():
                 updated_at TEXT NOT NULL DEFAULT ''
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_modules (
+                module_id TEXT PRIMARY KEY,
+                page_key TEXT NOT NULL,
+                label TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS role_modules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role_name TEXT NOT NULL,
+                module_id TEXT NOT NULL,
+                can_access INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                updated_by TEXT NOT NULL DEFAULT '',
+                UNIQUE(role_name, module_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_role_modules_role ON role_modules(role_name)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_role_modules_module ON role_modules(module_id)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS periodic_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -386,7 +462,9 @@ def init_db():
         ensure_column(conn, "documents", "opened_at", "opened_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "released_at", "released_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "documents", "project_id", "project_id INTEGER NOT NULL DEFAULT 1")
-        ensure_column(conn, "projects", "allowed_roles", "allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,revisor,cliente'")
+        ensure_column(conn, "projects", "allowed_roles", "allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,colaborador,revisor,cliente'")
+        ensure_column(conn, "projects", "is_template", "is_template INTEGER NOT NULL DEFAULT 0")
+        ensure_column(conn, "projects", "template_source_project_id", "template_source_project_id INTEGER")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
@@ -396,6 +474,8 @@ def init_db():
         ensure_column(conn, "users", "extension", "extension TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "users", "work_area", "work_area TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "users", "notes", "notes TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "users", "priority_color_enabled", "priority_color_enabled INTEGER NOT NULL DEFAULT 0")
+        ensure_column(conn, "users", "priority_colors_json", "priority_colors_json TEXT NOT NULL DEFAULT ''")
 
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
             pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin123")
@@ -416,7 +496,8 @@ def init_db():
         # Ensure admin user keeps admin role after upgrades/migrations
         conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         conn.execute("UPDATE documents SET status='Em revisão' WHERE status='Bloqueado'")
-        conn.execute("UPDATE projects SET allowed_roles='member,desenhista,revisor,cliente' WHERE allowed_roles IS NULL OR TRIM(allowed_roles)=''")
+        conn.execute("UPDATE projects SET allowed_roles='member,desenhista,colaborador,revisor,cliente' WHERE allowed_roles IS NULL OR TRIM(allowed_roles)=''")
+        conn.execute("UPDATE projects SET is_template=0 WHERE is_template IS NULL")
         conn.execute("UPDATE documents SET project_id=1 WHERE project_id IS NULL OR project_id<=0")
         conn.execute("UPDATE documents SET document_status=status")
         conn.execute("UPDATE documents SET created_by=owner WHERE created_by='' AND owner<>''")
@@ -424,6 +505,19 @@ def init_db():
         conn.execute("UPDATE documents SET opened_at=? WHERE opened_at=''",(now_iso(),))
         conn.execute("UPDATE documents SET due_date='-' WHERE status='Concluído'")
         conn.execute("UPDATE documents SET released_at=updated_at WHERE status='Concluído' AND released_at='' AND updated_at<>''")
+
+        for mod in MODULE_CATALOG_V1:
+            conn.execute(
+                """
+                INSERT INTO app_modules (module_id, page_key, label, active, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(module_id) DO UPDATE SET
+                    page_key=excluded.page_key,
+                    label=excluded.label,
+                    active=excluded.active
+                """,
+                (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now_iso()),
+            )
 
         for k, v in [
             ("smtp.host", ""),
@@ -434,6 +528,7 @@ def init_db():
             ("smtp.tls", "true"),
             ("invite.default_message", "Olá!\n\nVocê foi convidado(a) para acessar o ProjectDashboard.\n\nUse este link para concluir seu cadastro:\n{invite_link}\n\nEste convite expira em: {expires_at}\n\nBem-vindo(a) ao sistema!"),
             ("workflow.default_due_days", "7"),
+            ("workflow.dependency_max_status", "Backlog"),
         ]:
             conn.execute(
                 "INSERT OR IGNORE INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, '', '')",
@@ -511,17 +606,43 @@ def list_documents(project_id: int | None = None) -> list[dict]:
             rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents ORDER BY name").fetchall()
         else:
             rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE project_id=? ORDER BY name", (project_id,)).fetchall()
-    return [{
-        "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
-        "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
-        "path": r["path"], "updatedAt": r["updated_at"],
-        "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
-        "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
-        "createdBy": r["created_by"], "projectId": int(r["project_id"] or 1),
-        "openedAt": r["opened_at"], "releasedAt": r["released_at"],
-        "ageLabel": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[0],
-        "ageDays": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[1],
-    } for r in rows]
+
+        dep_rows = conn.execute(
+            """
+            SELECT dd.project_id, dd.document_slug, dd.depends_on_slug, d.name, d.status
+            FROM document_dependencies dd
+            JOIN documents d ON d.slug = dd.depends_on_slug
+            """
+        ).fetchall()
+
+    deps_by_doc: dict[tuple[int, str], list[dict]] = {}
+    for dr in dep_rows:
+        key = (int(dr["project_id"] or 1), str(dr["document_slug"] or ""))
+        deps_by_doc.setdefault(key, []).append({
+            "slug": dr["depends_on_slug"],
+            "name": dr["name"],
+            "status": dr["status"],
+        })
+
+    out = []
+    for r in rows:
+        pid = int(r["project_id"] or 1)
+        deps = deps_by_doc.get((pid, str(r["slug"])), [])
+        out.append({
+            "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
+            "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
+            "path": r["path"], "updatedAt": r["updated_at"],
+            "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
+            "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
+            "createdBy": r["created_by"], "projectId": pid,
+            "openedAt": r["opened_at"], "releasedAt": r["released_at"],
+            "ageLabel": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[0],
+            "ageDays": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[1],
+            "dependsOn": [d["slug"] for d in deps],
+            "dependencies": deps,
+            "isBlockedByDependencies": any(str(d.get("status") or "") != "Concluído" for d in deps),
+        })
+    return out
 
 
 def get_document(slug: str, project_id: int | None = None) -> dict | None:
@@ -533,16 +654,106 @@ def get_document(slug: str, project_id: int | None = None) -> dict | None:
     if not r:
         return None
     age_label, age_days = _project_age_fields(r["opened_at"], r["status"], r["released_at"])
+    project_id_val = int(r["project_id"] or 1)
+    deps = list_document_dependencies(r["slug"], project_id_val)
     return {
         "slug": r["slug"], "name": r["name"], "status": r["status"], "priority": r["priority"],
         "owner": r["owner"], "dueDate": ("-" if r["status"] == "Concluído" else r["due_date"]), "description": r["description"],
         "path": r["path"], "updatedAt": r["updated_at"],
         "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
         "documentMime": r["document_mime"], "documentPath": r["document_path"],
-        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"], "projectId": int(r["project_id"] or 1),
+        "hasDocument": bool(r["document_path"]), "createdBy": r["created_by"], "projectId": project_id_val,
         "openedAt": r["opened_at"], "releasedAt": r["released_at"],
         "ageLabel": age_label, "ageDays": age_days,
+        "dependsOn": [d["slug"] for d in deps],
+        "dependencies": deps,
+        "isBlockedByDependencies": any(str(d.get("status") or "") != "Concluído" for d in deps),
     }
+
+
+def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get("depends_on") if "depends_on" in payload else payload.get("dependsOn")
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("depends_on deve ser uma lista de slugs")
+    out: list[str] = []
+    for item in raw:
+        slug = str(item or "").strip()
+        if not slug:
+            continue
+        if slug not in out:
+            out.append(slug)
+    return out
+
+
+def list_document_dependencies(slug: str, project_id: int) -> list[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT dd.depends_on_slug, d.name, d.status
+            FROM document_dependencies dd
+            JOIN documents d ON d.slug = dd.depends_on_slug
+            WHERE dd.document_slug=? AND dd.project_id=?
+            ORDER BY d.name
+            """,
+            (slug, project_id),
+        ).fetchall()
+    return [{"slug": r["depends_on_slug"], "name": r["name"], "status": r["status"]} for r in rows]
+
+
+def unresolved_dependencies(slug: str, project_id: int) -> list[dict]:
+    deps = list_document_dependencies(slug, project_id)
+    return [d for d in deps if str(d.get("status") or "") != "Concluído"]
+
+
+def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_dep_slug: str, project_id: int) -> bool:
+    stack = [candidate_dep_slug]
+    seen: set[str] = set()
+    while stack:
+        cur = stack.pop()
+        if cur == source_slug:
+            return True
+        if cur in seen:
+            continue
+        seen.add(cur)
+        children = conn.execute(
+            "SELECT depends_on_slug FROM document_dependencies WHERE document_slug=? AND project_id=?",
+            (cur, project_id),
+        ).fetchall()
+        for row in children:
+            nxt = str(row["depends_on_slug"] or "").strip()
+            if nxt:
+                stack.append(nxt)
+    return False
+
+
+def set_document_dependencies(slug: str, project_id: int, depends_on_slugs: list[str], actor: str) -> tuple[bool, str]:
+    with db() as conn:
+        doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (slug, project_id)).fetchone()
+        if not doc:
+            return False, "Documento não encontrado"
+
+        for dep_slug in depends_on_slugs:
+            if dep_slug == slug:
+                return False, "Um documento não pode depender de si mesmo"
+            dep_doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (dep_slug, project_id)).fetchone()
+            if not dep_doc:
+                return False, f"Dependência inválida (fora do projeto ou inexistente): {dep_slug}"
+            if _would_create_cycle(conn, slug, dep_slug, project_id):
+                return False, f"Dependência cíclica detectada com {dep_slug}"
+
+        conn.execute("DELETE FROM document_dependencies WHERE document_slug=? AND project_id=?", (slug, project_id))
+        now = now_iso()
+        for dep_slug in depends_on_slugs:
+            conn.execute(
+                "INSERT OR IGNORE INTO document_dependencies (project_id, document_slug, depends_on_slug, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+                (project_id, slug, dep_slug, actor, now),
+            )
+
+    return True, "ok"
 
 
 def list_audit_logs(limit: int = 200) -> list[dict]:
@@ -561,18 +772,167 @@ def list_usernames() -> list[str]:
     return [r["username"] for r in rows]
 
 
+def list_app_modules(active_only: bool = False) -> list[dict]:
+    with db() as conn:
+        if active_only:
+            rows = conn.execute(
+                "SELECT module_id, page_key, label, active FROM app_modules WHERE active=1 ORDER BY page_key, module_id"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT module_id, page_key, label, active FROM app_modules ORDER BY page_key, module_id"
+            ).fetchall()
+    return [
+        {
+            "module_id": r["module_id"],
+            "page_key": r["page_key"],
+            "label": r["label"],
+            "active": bool(int(r["active"] or 0)),
+        }
+        for r in rows
+    ]
+
+
+def list_role_module_matrix() -> list[dict]:
+    modules = list_app_modules(active_only=False)
+    module_ids = [m["module_id"] for m in modules]
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT role_name, module_id, can_access FROM role_modules"
+        ).fetchall()
+    access_map: dict[tuple[str, str], bool] = {}
+    for r in rows:
+        access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
+
+    matrix: list[dict] = []
+    for role in ROLES:
+        role_row = {
+            "role": role,
+            "immutable": role == "admin",
+            "permissions": {},
+        }
+        for module_id in module_ids:
+            role_row["permissions"][module_id] = True if role == "admin" else bool(access_map.get((role, module_id), False))
+        matrix.append(role_row)
+    return matrix
+
+
+def sync_module_catalog() -> None:
+    with db() as conn:
+        for mod in MODULE_CATALOG_V1:
+            conn.execute(
+                """
+                INSERT INTO app_modules (module_id, page_key, label, active, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(module_id) DO UPDATE SET
+                    page_key=excluded.page_key,
+                    label=excluded.label,
+                    active=excluded.active
+                """,
+                (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now_iso()),
+            )
+
+
+def get_role_module_permissions(role_name: str) -> dict[str, bool]:
+    role = str(role_name or "").strip().lower()
+    modules = list_app_modules(active_only=False)
+    out = {m["module_id"]: False for m in modules}
+    if role == "admin":
+        return {k: True for k in out.keys()}
+
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT module_id, can_access FROM role_modules WHERE role_name=?",
+            (role,),
+        ).fetchall()
+    for r in rows:
+        module_id = str(r["module_id"])
+        if module_id in out:
+            out[module_id] = bool(int(r["can_access"] or 0))
+    return out
+
+
+def get_effective_permissions(user: dict | None) -> dict:
+    if not user:
+        return {"role": "", "allowedModules": [], "allowedPages": []}
+    role = str(user.get("role") or "").strip().lower()
+    modules = list_app_modules(active_only=True)
+    mod_by_id = {m["module_id"]: m for m in modules}
+    role_perms = get_role_module_permissions(role)
+    allowed_modules = [mid for mid, ok in role_perms.items() if ok and mid in mod_by_id]
+    allowed_pages = sorted({mod_by_id[mid]["page_key"] for mid in allowed_modules if mid in mod_by_id})
+    return {
+        "role": role,
+        "allowedModules": allowed_modules,
+        "allowedPages": allowed_pages,
+    }
+
+
+def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool, str]:
+    role = str(role_name or "").strip().lower()
+    if role not in ROLES:
+        return False, "role inválida"
+    if role == "admin":
+        return False, "role admin é imutável"
+
+    permissions_payload = payload.get("permissions")
+    normalized: dict[str, int] = {}
+
+    if isinstance(permissions_payload, dict):
+        for module_id, can_access in permissions_payload.items():
+            normalized[str(module_id)] = 1 if bool(can_access) else 0
+    elif isinstance(payload.get("modules"), list):
+        for item in payload.get("modules"):
+            if not isinstance(item, dict):
+                continue
+            module_id = str(item.get("module_id") or item.get("moduleId") or "").strip()
+            if not module_id:
+                continue
+            normalized[module_id] = 1 if bool(item.get("can_access") or item.get("canAccess")) else 0
+    else:
+        return False, "permissions inválidas"
+
+    if not normalized:
+        return False, "nenhuma permissão informada"
+
+    with db() as conn:
+        valid_modules = {
+            r["module_id"]
+            for r in conn.execute("SELECT module_id FROM app_modules").fetchall()
+        }
+        invalid = [mid for mid in normalized.keys() if mid not in valid_modules]
+        if invalid:
+            return False, f"módulos inválidos: {', '.join(invalid)}"
+
+        now = now_iso()
+        for module_id, can_access in normalized.items():
+            conn.execute(
+                """
+                INSERT INTO role_modules (role_name, module_id, can_access, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(role_name, module_id) DO UPDATE SET
+                    can_access=excluded.can_access,
+                    updated_at=excluded.updated_at,
+                    updated_by=excluded.updated_by
+                """,
+                (role, module_id, int(can_access), now, actor),
+            )
+
+    return True, "ok"
+
+
 def _normalize_allowed_roles(raw: str | list | None) -> str:
     if isinstance(raw, list):
         vals = [str(x or '').strip().lower() for x in raw]
     else:
         vals = [x.strip().lower() for x in str(raw or '').split(',')]
-    allowed = [r for r in vals if r in ROLES and r != 'admin']
+    allowed = [r for r in vals if r in ROLES and r not in ADMIN_EQUIV_ROLES]
     # remove duplicados preservando ordem
     out: list[str] = []
     for r in allowed:
         if r not in out:
             out.append(r)
-    return ','.join(out) if out else 'member,desenhista,revisor,cliente'
+    return ','.join(out)
 
 
 def parse_allowed_roles(raw: str | None) -> list[str]:
@@ -580,40 +940,56 @@ def parse_allowed_roles(raw: str | None) -> list[str]:
 
 
 def project_role_allowed(project_row: dict | None, role: str) -> bool:
-    if (role or '').strip().lower() == 'admin':
+    normalized_role = (role or '').strip().lower()
+    if normalized_role in ADMIN_EQUIV_ROLES:
         return True
     if not project_row:
         return False
+    # Template projects are restricted to admin only.
+    if bool(project_row.get('is_template')):
+        return False
     allowed = parse_allowed_roles(project_row.get('allowed_roles'))
-    return (role or '').strip().lower() in allowed
+    return normalized_role in allowed
+
+
+def _to_bool_int(value) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, (int, float)):
+        return 1 if int(value) != 0 else 0
+    s = str(value or '').strip().lower()
+    return 1 if s in {'1', 'true', 'yes', 'on'} else 0
 
 
 def list_projects_registry() -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles FROM projects ORDER BY project_id").fetchall()
+        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles, is_template, template_source_project_id FROM projects ORDER BY project_id").fetchall()
     out = []
     for r in rows:
         d = dict(r)
         d['allowed_roles'] = _normalize_allowed_roles(d.get('allowed_roles'))
+        d['is_template'] = bool(int(d.get('is_template') or 0))
         out.append(d)
     return out
 
 
-def create_project_registry(payload: dict) -> tuple[bool, str]:
+def create_project_registry(payload: dict) -> tuple[bool, str, int | None]:
     name = str(payload.get("project_name") or "").strip()
     start_date = str(payload.get("start_date") or "").strip()
     notes = str(payload.get("notes") or "").strip()
     allowed_roles = _normalize_allowed_roles(payload.get("allowed_roles") or payload.get("allowedRoles"))
+    is_template = _to_bool_int(payload.get("is_template") if "is_template" in payload else payload.get("isTemplate"))
     if not name:
-        return False, "Nome do projeto é obrigatório"
+        return False, "Nome do projeto é obrigatório", None
     if not start_date:
         start_date = now_iso()
     with db() as conn:
-        conn.execute(
-            "INSERT INTO projects (project_name, start_date, notes, allowed_roles) VALUES (?, ?, ?, ?)",
-            (name, start_date, notes, allowed_roles),
+        cur = conn.execute(
+            "INSERT INTO projects (project_name, start_date, notes, allowed_roles, is_template) VALUES (?, ?, ?, ?, ?)",
+            (name, start_date, notes, allowed_roles, is_template),
         )
-    return True, "ok"
+        new_id = int(cur.lastrowid or 0) or None
+    return True, "ok", new_id
 
 
 def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
@@ -634,6 +1010,9 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
     if "allowed_roles" in payload or "allowedRoles" in payload:
         fields.append("allowed_roles=?")
         vals.append(_normalize_allowed_roles(payload.get("allowed_roles") or payload.get("allowedRoles")))
+    if "is_template" in payload or "isTemplate" in payload:
+        fields.append("is_template=?")
+        vals.append(_to_bool_int(payload.get("is_template") if "is_template" in payload else payload.get("isTemplate")))
     if not fields:
         return False, "Nada para atualizar"
     vals.append(project_id)
@@ -645,16 +1024,238 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
-def delete_project_registry(project_id: int) -> tuple[bool, str]:
+def delete_project_registry(project_id: int) -> tuple[bool, str, int]:
+    deleted_cards = 0
     with db() as conn:
         exists = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
         if not exists:
-            return False, "Projeto não encontrado"
-        linked = conn.execute("SELECT 1 FROM documents WHERE project_id=? LIMIT 1", (project_id,)).fetchone()
-        if linked:
-            return False, "Não é possível apagar projeto com documentos vinculados"
+            return False, "Projeto não encontrado", 0
+
+        linked_docs = conn.execute(
+            "SELECT slug, path, document_path FROM documents WHERE project_id=?",
+            (project_id,),
+        ).fetchall()
+
+        # Hard-delete all project cards (and related metadata) before deleting project.
+        for row in linked_docs:
+            d = dict(row)
+            slug = str(d.get("slug") or "").strip()
+            if not slug:
+                continue
+            conn.execute("DELETE FROM review_notes WHERE document_slug=?", (slug,))
+            conn.execute("DELETE FROM document_versions WHERE document_slug=?", (slug,))
+            conn.execute("DELETE FROM document_dependencies WHERE document_slug=? OR depends_on_slug=?", (slug, slug))
+
+            for candidate in [d.get("path"), d.get("document_path")]:
+                p = str(candidate or "").strip()
+                if not p:
+                    continue
+                try:
+                    rp = Path(p)
+                    if rp.exists():
+                        if rp.is_file():
+                            rp.unlink(missing_ok=True)
+                        elif rp.is_dir():
+                            shutil.rmtree(rp, ignore_errors=True)
+                except Exception:
+                    pass
+
+            conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
+            deleted_cards += 1
+
         conn.execute("DELETE FROM projects WHERE project_id=?", (project_id,))
-    return True, "ok"
+
+    return True, "ok", deleted_cards
+
+
+def _unique_slug(conn: sqlite3.Connection, base_name: str) -> str:
+    base = slugify(base_name)
+    candidate = base
+    i = 2
+    while conn.execute("SELECT 1 FROM documents WHERE slug=?", (candidate,)).fetchone():
+        candidate = f"{base}-{i}"
+        i += 1
+    return candidate
+
+
+def clone_project_from_template(template_project_id: int, payload: dict, actor: str) -> tuple[bool, str, int | None]:
+    new_name = str(payload.get("project_name") or payload.get("projectName") or "").strip()
+    if not new_name:
+        return False, "Nome do novo projeto é obrigatório", None
+
+    requested_start = str(payload.get("start_date") or payload.get("startDate") or "").strip()
+    new_start_date = requested_start or now_iso()
+
+    def _safe_filename(name: str, fallback: str = "documento.bin") -> str:
+        clean = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(name or "")).strip("._")
+        return clean or fallback
+
+    with db() as conn:
+        template = conn.execute(
+            "SELECT project_id, project_name, notes, allowed_roles, is_template FROM projects WHERE project_id=?",
+            (template_project_id,),
+        ).fetchone()
+        if not template:
+            return False, "Template não encontrado", None
+        if int(template["is_template"] or 0) != 1:
+            return False, "Projeto selecionado não é template", None
+
+        template_d = dict(template)
+        default_notes = f"Criado a partir do template #{template_d['project_id']} · {template_d['project_name']}"
+        new_notes = str(payload.get("notes") or "").strip() or default_notes
+        allowed_roles = _normalize_allowed_roles(template_d.get("allowed_roles"))
+
+        cur = conn.execute(
+            "INSERT INTO projects (project_name, start_date, notes, allowed_roles, is_template, template_source_project_id) VALUES (?, ?, ?, ?, 0, ?)",
+            (new_name, new_start_date, new_notes, allowed_roles, int(template_d["project_id"])),
+        )
+        new_project_id = int(cur.lastrowid or 0)
+        if not new_project_id:
+            return False, "Falha ao criar projeto a partir do template", None
+
+        template_docs = conn.execute(
+            "SELECT id, slug, name, status, priority, description, document_name, document_mime, document_path, document_status FROM documents WHERE project_id=? ORDER BY id",
+            (template_project_id,),
+        ).fetchall()
+
+        now = now_iso()
+        cloned_slug_map: dict[str, str] = {}
+        for row in template_docs:
+            d = dict(row)
+            source_slug = str(d.get("slug") or "").strip()
+            name = str(d.get("name") or "").strip() or "Documento"
+            doc_slug = _unique_slug(conn, name)
+            if source_slug:
+                cloned_slug_map[source_slug] = doc_slug
+            card_path = str(BASE_DIR / doc_slug)
+            (BASE_DIR / doc_slug).mkdir(parents=True, exist_ok=True)
+
+            latest_name = ""
+            latest_mime = ""
+            latest_abs_path = ""
+            latest_status = str(d.get("document_status") or "").strip() or "aguardando edição"
+
+            if source_slug:
+                versions = conn.execute(
+                    "SELECT version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum FROM document_versions WHERE document_slug=? ORDER BY version",
+                    (source_slug,),
+                ).fetchall()
+            else:
+                versions = []
+
+            for vrow in versions:
+                v = dict(vrow)
+                version_num = int(v.get("version") or 0)
+                if version_num <= 0:
+                    continue
+                src_rel = str(v.get("file_rel_path") or "").strip()
+                if not src_rel:
+                    continue
+                src_abs = DOCS_REPO_DIR / src_rel
+                if not src_abs.exists() or not src_abs.is_file():
+                    continue
+
+                version_name = _safe_filename(v.get("document_name") or src_abs.name)
+                rel_path = Path("documents") / doc_slug / f"v{version_num:04d}_{version_name}"
+                dst_abs = DOCS_REPO_DIR / rel_path
+                dst_abs.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_abs, dst_abs)
+
+                checksum = str(v.get("checksum") or "").strip() or hashlib.sha256(dst_abs.read_bytes()).hexdigest()
+                mime = str(v.get("document_mime") or "application/octet-stream").strip() or "application/octet-stream"
+                status_for_version = str(v.get("document_status") or latest_status).strip() or latest_status
+
+                conn.execute(
+                    "INSERT INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        doc_slug,
+                        version_num,
+                        version_name,
+                        mime,
+                        status_for_version,
+                        str(rel_path),
+                        "",
+                        checksum,
+                        actor,
+                        now,
+                    ),
+                )
+
+                latest_name = version_name
+                latest_mime = mime
+                latest_status = status_for_version
+                latest_abs_path = str(dst_abs)
+
+            if not latest_abs_path:
+                source_doc_path = Path(str(d.get("document_path") or "").strip())
+                if source_doc_path.exists() and source_doc_path.is_file():
+                    fallback_name = _safe_filename(d.get("document_name") or source_doc_path.name)
+                    rel_path = Path("documents") / doc_slug / f"v0001_{fallback_name}"
+                    dst_abs = DOCS_REPO_DIR / rel_path
+                    dst_abs.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source_doc_path, dst_abs)
+
+                    latest_name = fallback_name
+                    latest_mime = str(d.get("document_mime") or "application/octet-stream").strip() or "application/octet-stream"
+                    latest_abs_path = str(dst_abs)
+
+                    conn.execute(
+                        "INSERT INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            doc_slug,
+                            1,
+                            latest_name,
+                            latest_mime,
+                            latest_status,
+                            str(rel_path),
+                            "",
+                            hashlib.sha256(dst_abs.read_bytes()).hexdigest(),
+                            actor,
+                            now,
+                        ),
+                    )
+
+            conn.execute(
+                "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    doc_slug,
+                    name,
+                    str(d.get("status") or "Backlog"),
+                    str(d.get("priority") or "Média"),
+                    "",
+                    "",
+                    str(d.get("description") or "").strip(),
+                    card_path,
+                    now,
+                    latest_status,
+                    latest_name,
+                    latest_mime,
+                    latest_abs_path,
+                    actor,
+                    now,
+                    "",
+                    new_project_id,
+                ),
+            )
+
+        if cloned_slug_map:
+            template_deps = conn.execute(
+                "SELECT document_slug, depends_on_slug FROM document_dependencies WHERE project_id=?",
+                (template_project_id,),
+            ).fetchall()
+            for drow in template_deps:
+                src_from = str(drow["document_slug"] or "").strip()
+                src_to = str(drow["depends_on_slug"] or "").strip()
+                dst_from = cloned_slug_map.get(src_from)
+                dst_to = cloned_slug_map.get(src_to)
+                if not dst_from or not dst_to:
+                    continue
+                conn.execute(
+                    "INSERT OR IGNORE INTO document_dependencies (project_id, document_slug, depends_on_slug, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (new_project_id, dst_from, dst_to, actor, now),
+                )
+
+    return True, "ok", new_project_id
 
 
 def is_valid_owner(owner: str) -> bool:
@@ -681,6 +1282,10 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
     name = (payload.get("name") or "").strip()
     if not name:
         return False, "Nome é obrigatório", None
+    try:
+        depends_on_slugs = _dependency_slugs_from_payload(payload)
+    except ValueError as e:
+        return False, str(e), None
     try:
         project_id = int(payload.get("project_id") or payload.get("projectId") or 1)
     except Exception:
@@ -729,14 +1334,47 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
             "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (document["slug"], document["name"], document["status"], document["priority"], document["owner"], document["dueDate"], document["description"], document["path"], document["updatedAt"], document["status"], document["documentName"], document["documentMime"], document["documentPath"], document["createdBy"], document["openedAt"], document["releasedAt"], int(document.get("projectId") or 1)),
         )
+
+    if depends_on_slugs is not None:
+        done_deps, msg_deps = set_document_dependencies(slug, project_id, depends_on_slugs, actor)
+        if not done_deps:
+            with db() as conn:
+                conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
+            try:
+                shutil.rmtree(proj_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return False, msg_deps, None
+
+    unresolved = unresolved_dependencies(slug, project_id)
+    if unresolved:
+        allowed, max_status = status_allowed_with_pending_dependencies(status)
+        if not allowed:
+            pend = ", ".join([f"{d['name']}" for d in unresolved][:5])
+            with db() as conn:
+                conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
+                conn.execute("DELETE FROM document_dependencies WHERE document_slug=?", (slug,))
+            try:
+                shutil.rmtree(proj_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return False, f"Não é possível criar com dependências pendentes além de '{max_status}' ({pend})", None
+
     sync_document_meta(document)
     return True, "ok", slug
 
 
-def patch_document(slug: str, payload: dict, project_id: int | None = None) -> tuple[bool, str]:
+def patch_document(slug: str, payload: dict, project_id: int | None = None, actor: str = "system") -> tuple[bool, str]:
     p = get_document(slug, project_id)
     if not p:
         return False, "Documento não encontrado"
+
+    effective_project_id = int(project_id or p.get("projectId") or 1)
+    try:
+        depends_on_slugs = _dependency_slugs_from_payload(payload)
+    except ValueError as e:
+        return False, str(e)
+
     old_status = p.get("status")
     if "name" in payload and str(payload["name"]).strip():
         p["name"] = str(payload["name"]).strip()
@@ -765,6 +1403,18 @@ def patch_document(slug: str, payload: dict, project_id: int | None = None) -> t
     if "description" in payload:
         p["description"] = str(payload["description"]).strip() or "Sem descrição"
     p["updatedAt"] = now_iso()
+
+    if depends_on_slugs is not None:
+        done_deps, msg_deps = set_document_dependencies(slug, effective_project_id, depends_on_slugs, actor)
+        if not done_deps:
+            return False, msg_deps
+
+    pend = unresolved_dependencies(slug, effective_project_id)
+    if pend:
+        allowed, max_status = status_allowed_with_pending_dependencies(str(p.get("status") or "Backlog"))
+        if not allowed:
+            blocked = ", ".join([f"{d['name']} ({d['status']})" for d in pend][:5])
+            return False, f"Card bloqueado por dependências não concluídas: máximo permitido = '{max_status}'. Pendentes: {blocked}"
 
     with db() as conn:
         conn.execute("UPDATE documents SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=?,released_at=? WHERE slug=?",
@@ -801,7 +1451,7 @@ def get_admin_settings() -> dict:
 def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
     allowed = {
         "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls",
-        "invite.default_message", "workflow.default_due_days",
+        "invite.default_message", "workflow.default_due_days", "workflow.dependency_max_status",
         "backup.enabled", "backup.path", "backup.weekdays", "backup.run_time",
         "system.git_repo", "system.git_branch",
         "deleted.retention_days",
@@ -829,14 +1479,17 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
         except Exception:
             return False, "workflow.default_due_days inválido"
 
+    if "workflow.dependency_max_status" in incoming:
+        v = str(incoming["workflow.dependency_max_status"] or "").strip()
+        if v not in STATUSES:
+            return False, "workflow.dependency_max_status inválido"
+        incoming["workflow.dependency_max_status"] = v
+
     if "backup.enabled" in incoming:
         incoming["backup.enabled"] = "true" if incoming["backup.enabled"].strip().lower() in {"1", "true", "yes", "on"} else "false"
 
     if "backup.path" in incoming:
-        p = Path(incoming["backup.path"]).expanduser()
-        if not p.is_absolute():
-            return False, "backup.path deve ser caminho absoluto"
-        incoming["backup.path"] = str(p)
+        incoming["backup.path"] = str(_resolve_backup_path(incoming["backup.path"]))
 
     if "backup.weekdays" in incoming:
         try:
@@ -859,6 +1512,20 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
         if int(hh) > 23 or int(mm) > 59:
             return False, "backup.run_time inválido"
         incoming["backup.run_time"] = rt
+
+    # Consistency rule: automatic backup requires at least one weekday selected.
+    if incoming.get("backup.enabled") == "true":
+        raw_weekdays = incoming.get("backup.weekdays")
+        if raw_weekdays is None:
+            current = get_admin_settings().get("backup.weekdays", {}).get("value", "[]")
+            raw_weekdays = current
+        try:
+            vals = json.loads(raw_weekdays)
+            valid = [str(x) for x in vals if str(x) in {"0", "1", "2", "3", "4", "5", "6"}]
+        except Exception:
+            valid = []
+        if not valid:
+            return False, "Selecione ao menos um dia da semana para backup automático"
 
     if "system.git_repo" in incoming and incoming["system.git_repo"]:
         repo = incoming["system.git_repo"].strip()
@@ -906,6 +1573,26 @@ def default_due_date_iso() -> str:
         days = 7
     days = max(0, min(days, 3650))
     return (datetime.utcnow() + timedelta(days=days)).date().isoformat()
+
+
+def dependency_max_status(settings: dict | None = None) -> str:
+    settings = settings or get_admin_settings()
+    configured = _setting(settings, "workflow.dependency_max_status", "PDASH_DEPENDENCY_MAX_STATUS", "Backlog")
+    return configured if configured in STATUSES else "Backlog"
+
+
+def status_rank(status: str) -> int:
+    try:
+        return STATUSES.index(status)
+    except Exception:
+        return 0
+
+
+def status_allowed_with_pending_dependencies(target_status: str, settings: dict | None = None) -> tuple[bool, str]:
+    max_status = dependency_max_status(settings)
+    if status_rank(target_status) <= status_rank(max_status):
+        return True, max_status
+    return False, max_status
 
 
 def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
@@ -1114,6 +1801,41 @@ def _backup_config(settings: dict) -> dict:
     }
 
 
+def _backup_state(settings: dict | None = None) -> dict:
+    settings = settings or get_admin_settings()
+    cfg = _backup_config(settings)
+    keys = ["backup.enabled", "backup.path", "backup.weekdays", "backup.run_time"]
+    rows = [settings.get(k, {}) for k in keys]
+    updated_at = max([str((r or {}).get("updated_at") or "") for r in rows] + [""])
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "path": str(cfg.get("path") or ""),
+        "weekdays": [str(x) for x in (cfg.get("weekdays") or [])],
+        "run_time": str(cfg.get("run_time") or ""),
+        "config_updated_at": updated_at,
+    }
+
+
+def _normalize_setting_value_for_compare(key: str, value: str) -> str:
+    v = str(value or "")
+    if key == "backup.enabled":
+        return "true" if v.strip().lower() in {"1", "true", "yes", "on"} else "false"
+    if key == "backup.path":
+        return str(_resolve_backup_path(v))
+    if key == "backup.weekdays":
+        try:
+            arr = json.loads(v)
+            if not isinstance(arr, list):
+                arr = []
+        except Exception:
+            arr = []
+        clean = sorted({str(x) for x in arr if str(x) in {"0", "1", "2", "3", "4", "5", "6"}})
+        return json.dumps(clean, ensure_ascii=False)
+    if key == "backup.run_time":
+        return v.strip()
+    return v.strip()
+
+
 def _backup_permission_hint(path: Path) -> str:
     p = str(path)
     return (
@@ -1123,11 +1845,41 @@ def _backup_permission_hint(path: Path) -> str:
     )
 
 
-def run_system_backup(actor: str = "system") -> tuple[bool, str]:
+def _resolve_backup_path(path_value: str | None) -> Path:
+    raw = str(path_value or "").strip()
+    if not raw:
+        return (DATA_DIR / "backups").resolve()
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = (APP_DIR / p).resolve()
+    return p
+
+
+def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str, dict]:
     settings = get_admin_settings()
     cfg = _backup_config(settings)
-    primary_out_dir = Path(cfg["path"]).expanduser()
-    fallback_out_dir = DATA_DIR / "backups"
+    target = _resolve_backup_path(path_raw or cfg["path"])
+    detail = {"path": str(target), "exists": False, "writable": False}
+
+    try:
+        detail["exists"] = target.exists()
+        target.mkdir(parents=True, exist_ok=True)
+        probe = target / f".pdash-permcheck-{int(time.time())}.tmp"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        detail["writable"] = True
+        return True, f"Caminho de backup OK para escrita: {target}", detail
+    except PermissionError:
+        return False, _backup_permission_hint(target), detail
+    except Exception as e:
+        return False, f"Falha ao validar caminho de backup '{target}': {e}", detail
+
+
+def run_system_backup(actor: str = "system", path_override: str | None = None) -> tuple[bool, str]:
+    settings = get_admin_settings()
+    cfg = _backup_config(settings)
+    primary_out_dir = _resolve_backup_path(path_override or cfg["path"])
+    fallback_out_dir = (DATA_DIR / "backups").resolve()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     db_src = DATA_DIR / "projectdashboard.db"
     docs_src = DATA_DIR / "docs_repo"
@@ -1169,6 +1921,128 @@ def run_system_backup(actor: str = "system") -> tuple[bool, str]:
 
     audit(actor, "system.backup.run", str(used_dir), ", ".join(copied))
     return True, f"backup salvo em {used_dir} ({', '.join(copied)})"
+
+def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict]:
+    settings = get_admin_settings()
+    cfg = _backup_config(settings)
+    backup_dir = _resolve_backup_path(path_raw or cfg["path"])
+
+    if not backup_dir.exists() or not backup_dir.is_dir():
+        return True, "ok", {"path": str(backup_dir), "items": [], "total": 0}
+
+    db_re = re.compile(r"^projectdashboard-db-(\d{8}-\d{6})\.sqlite3$")
+    docs_re = re.compile(r"^projectdashboard-docs-(\d{8}-\d{6})\.tar\.gz$")
+
+    grouped: dict[str, dict] = {}
+    for p in backup_dir.iterdir():
+        if not p.is_file():
+            continue
+        mdb = db_re.match(p.name)
+        if mdb:
+            stamp = mdb.group(1)
+            item = grouped.setdefault(stamp, {"stamp": stamp, "db_backup": None, "docs_backup": None})
+            item["db_backup"] = str(p)
+            continue
+        mdocs = docs_re.match(p.name)
+        if mdocs:
+            stamp = mdocs.group(1)
+            item = grouped.setdefault(stamp, {"stamp": stamp, "db_backup": None, "docs_backup": None})
+            item["docs_backup"] = str(p)
+
+    items = [v for v in grouped.values() if v.get("db_backup")]
+    items.sort(key=lambda x: x.get("stamp") or "", reverse=True)
+
+    for it in items:
+        st = str(it.get("stamp") or "")
+        try:
+            dt = datetime.strptime(st, "%Y%m%d-%H%M%S")
+            it["when"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            it["when"] = st
+
+    return True, "ok", {"path": str(backup_dir), "items": items, "total": len(items)}
+
+
+def next_backup_run() -> dict:
+    settings = get_admin_settings()
+    cfg = _backup_config(settings)
+    result = {
+        "enabled": bool(cfg.get("enabled")),
+        "weekdays": [str(x) for x in (cfg.get("weekdays") or [])],
+        "run_time": str(cfg.get("run_time") or "03:00"),
+        "next_run_iso": None,
+        "next_run_human": None,
+    }
+    if not result["enabled"] or not result["weekdays"]:
+        return result
+
+    try:
+        hh, mm = result["run_time"].split(":")
+        hour = int(hh); minute = int(mm)
+    except Exception:
+        hour, minute = 3, 0
+
+    allowed = {int(x) for x in result["weekdays"] if str(x).isdigit()}
+    now = datetime.now()
+    for i in range(0, 15):
+        d = now + timedelta(days=i)
+        if d.weekday() not in allowed:
+            continue
+        candidate = d.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= now:
+            continue
+        result["next_run_iso"] = candidate.isoformat()
+        result["next_run_human"] = candidate.strftime("%Y-%m-%d %H:%M")
+        break
+    return result
+
+
+def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> tuple[bool, str]:
+    ok, msg, payload = list_available_backups(path_raw)
+    if not ok:
+        return False, msg
+
+    target = None
+    for it in payload.get("items", []):
+        if str(it.get("stamp") or "") == str(stamp or ""):
+            target = it
+            break
+    if not target:
+        return False, "Backup selecionado não encontrado"
+
+    db_backup = str(target.get("db_backup") or "").strip()
+    docs_backup = str(target.get("docs_backup") or "").strip()
+    if not db_backup:
+        return False, "Backup de banco não encontrado para o snapshot selecionado"
+
+    script = APP_DIR / "scripts" / "restore_backup.sh"
+    if not script.exists():
+        return False, f"Script de restore não encontrado: {script}"
+
+    cmd = [
+        str(script),
+        "--db-backup", db_backup,
+        "--install-dir", str(APP_DIR),
+        "--allow-non-root",
+    ]
+    if docs_backup:
+        cmd.extend(["--docs-backup", docs_backup])
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    except Exception as e:
+        return False, f"Falha ao executar restore: {e}"
+
+    out = (r.stdout or "").strip()
+    err = (r.stderr or "").strip()
+    detail = (out + ("\n" + err if err else "")).strip()
+
+    if r.returncode != 0:
+        return False, f"Restore falhou (code={r.returncode}). {detail[:1200]}"
+
+    audit(actor, "system.backup.restore", str(stamp), f"path={payload.get('path')} docs={bool(docs_backup)}")
+    return True, f"Restore concluído para {stamp}. {detail[:800]}"
+
 
 def run_system_diagnostics() -> dict:
     settings = get_admin_settings()
@@ -1423,12 +2297,77 @@ def save_document_file(slug: str, filename: str, mime_type: str, b64_content: st
     return True, "ok"
 
 
-def list_deleted_documents() -> list[dict]:
+def list_deleted_documents(
+    q: str | None = None,
+    deleted_by: str | None = None,
+    deleted_from: str | None = None,
+    deleted_to: str | None = None,
+    page: int = 1,
+    page_size: int = 10,
+) -> dict:
+    base_query = "FROM deleted_documents"
+    where: list[str] = []
+    params: list[object] = []
+
+    qv = (q or "").strip()
+    if qv:
+        where.append("(name LIKE ? OR slug LIKE ?)")
+        like = f"%{qv}%"
+        params.extend([like, like])
+
+    byv = (deleted_by or "").strip()
+    if byv:
+        where.append("LOWER(TRIM(COALESCE(deleted_by, ''))) LIKE ?")
+        params.append(f"%{byv.lower()}%")
+
+    def _normalize_date_start(raw: str | None) -> str | None:
+        v = (raw or "").strip()
+        if not v:
+            return None
+        if len(v) == 10:
+            return f"{v}T00:00:00Z"
+        return v
+
+    def _normalize_date_end(raw: str | None) -> str | None:
+        v = (raw or "").strip()
+        if not v:
+            return None
+        if len(v) == 10:
+            return f"{v}T23:59:59Z"
+        return v
+
+    from_v = _normalize_date_start(deleted_from)
+    to_v = _normalize_date_end(deleted_to)
+    if from_v:
+        where.append("deleted_at >= ?")
+        params.append(from_v)
+    if to_v:
+        where.append("deleted_at <= ?")
+        params.append(to_v)
+
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    safe_page = max(1, int(page or 1))
+    safe_page_size = max(1, min(int(page_size or 10), 100))
+
     with db() as conn:
+        total = int(conn.execute(f"SELECT COUNT(*) AS c {base_query}{where_sql}", tuple(params)).fetchone()["c"])
+        total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+        safe_page = min(safe_page, total_pages)
+        offset = (safe_page - 1) * safe_page_size
+
         rows = conn.execute(
-            "SELECT id, slug, name, deleted_at, deleted_by, trash_path FROM deleted_documents ORDER BY deleted_at DESC"
+            f"SELECT id, slug, name, deleted_at, deleted_by, trash_path {base_query}{where_sql} ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
+            tuple(params) + (safe_page_size, offset),
         ).fetchall()
-    return [dict(r) for r in rows]
+
+    return {
+        "items": [dict(r) for r in rows],
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "total_pages": total_pages,
+    }
 
 
 def _purge_deleted_document_record(record: sqlite3.Row | dict) -> tuple[bool, str]:
@@ -1589,6 +2528,7 @@ def delete_document(slug: str, actor: str) -> tuple[bool, str]:
 
         conn.execute("DELETE FROM review_notes WHERE document_slug=?", (slug,))
         conn.execute("DELETE FROM document_versions WHERE document_slug=?", (slug,))
+        conn.execute("DELETE FROM document_dependencies WHERE document_slug=? OR depends_on_slug=?", (slug, slug))
         conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
     return True, "ok"
 
@@ -1596,12 +2536,57 @@ def delete_document(slug: str, actor: str) -> tuple[bool, str]:
 def get_user_profile(username: str) -> dict | None:
     with db() as conn:
         row = conn.execute(
-            "SELECT username, role, email, phone, extension, work_area, notes FROM users WHERE username=?",
+            "SELECT username, role, email, phone, extension, work_area, notes, priority_color_enabled, priority_colors_json FROM users WHERE username=?",
             (username,),
         ).fetchone()
     if not row:
         return None
-    return dict(row)
+
+    profile = dict(row)
+    default_colors = {
+        "Baixa": "#dbeafe",
+        "Média": "#fef3c7",
+        "Alta": "#fed7aa",
+        "Urgente": "#fecaca",
+    }
+    raw = str(profile.get("priority_colors_json") or "").strip()
+    try:
+        parsed = json.loads(raw) if raw else {}
+    except Exception:
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    normalized_parsed: dict[str, str] = {}
+    for k, v in parsed.items():
+        nk = _normalize_priority_label(str(k))
+        if nk:
+            normalized_parsed[nk] = str(v)
+
+    colors = {
+        "Baixa": str(normalized_parsed.get("Baixa") or default_colors["Baixa"]),
+        "Média": str(normalized_parsed.get("Média") or default_colors["Média"]),
+        "Alta": str(normalized_parsed.get("Alta") or default_colors["Alta"]),
+        "Urgente": str(normalized_parsed.get("Urgente") or default_colors["Urgente"]),
+    }
+
+    profile["priority_color_enabled"] = bool(int(profile.get("priority_color_enabled") or 0))
+    profile["priority_colors"] = colors
+    profile.pop("priority_colors_json", None)
+    return profile
+
+
+def _normalize_priority_label(raw: str) -> str:
+    v = str(raw or "").strip().lower()
+    if v in {"baixa"}:
+        return "Baixa"
+    if v in {"media", "média"}:
+        return "Média"
+    if v in {"alta"}:
+        return "Alta"
+    if v in {"urgente"}:
+        return "Urgente"
+    return ""
 
 
 def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
@@ -1614,13 +2599,37 @@ def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
     if len(email) > 200 or len(phone) > 80 or len(extension) > 40 or len(work_area) > 120 or len(notes) > 4000:
         return False, "Campos do perfil excedem o limite permitido"
 
+    priority_color_enabled = bool(payload.get("priority_color_enabled"))
+    default_colors = {
+        "Baixa": "#dbeafe",
+        "Média": "#fef3c7",
+        "Alta": "#fed7aa",
+        "Urgente": "#fecaca",
+    }
+    incoming_colors = payload.get("priority_colors") or {}
+    if not isinstance(incoming_colors, dict):
+        incoming_colors = {}
+
+    normalized_incoming: dict[str, str] = {}
+    for raw_k, raw_v in incoming_colors.items():
+        nk = _normalize_priority_label(str(raw_k))
+        if nk:
+            normalized_incoming[nk] = str(raw_v)
+
+    colors = {}
+    for key in ["Baixa", "Média", "Alta", "Urgente"]:
+        value = str(normalized_incoming.get(key) or default_colors[key]).strip()
+        if not re.match(r"^#[0-9a-fA-F]{6}$", value):
+            return False, f"Cor inválida para prioridade {key}"
+        colors[key] = value
+
     with db() as conn:
         row = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
         if not row:
             return False, "Usuário não encontrado"
         conn.execute(
-            "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=? WHERE username=?",
-            (email, phone, extension, work_area, notes, username),
+            "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=?, priority_color_enabled=?, priority_colors_json=? WHERE username=?",
+            (email, phone, extension, work_area, notes, int(priority_color_enabled), json.dumps(colors, ensure_ascii=False), username),
         )
 
     return True, "ok"
@@ -1684,6 +2693,10 @@ class Handler(BaseHTTPRequestHandler):
         b = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        # Avoid stale frontend assets during iterative rollout/debug.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
@@ -1707,25 +2720,99 @@ class Handler(BaseHTTPRequestHandler):
     def _require_admin(self):
         u = self._require_auth()
         if not u: return None
-        if u["role"] != "admin":
+        if (u.get("role") or "").strip().lower() not in ADMIN_EQUIV_ROLES:
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
+
+    def _require_root_admin(self):
+        u = self._require_auth()
+        if not u: return None
+        if (u.get("role") or "").strip().lower() != "admin":
+            self._json(403, {"ok": False, "error": "forbidden"}); return None
+        return u
+
+    def _require_module(self, module_id: str):
+        u = self._require_auth()
+        if not u:
+            return None
+        if not self._has_module_access(module_id, u):
+            self._json(403, {"ok": False, "error": "forbidden"})
+            return None
+        return u
+
+    def _require_any_module(self, module_ids: list[str]):
+        u = self._require_auth()
+        if not u:
+            return None
+        for module_id in module_ids:
+            if self._has_module_access(module_id, u):
+                return u
+        self._json(403, {"ok": False, "error": "forbidden"})
+        return None
+
+    def _can_manage_setting_keys(self, user: dict, keys: list[str]) -> tuple[bool, str | None]:
+        # defensive canonicalization to tolerate cached/legacy frontend payload variations
+        canonical_map = {re.sub(r"[^a-z0-9._-]", "", str(k).strip().lower()): v for k, v in SETTING_KEY_TO_MODULE.items()}
+
+        for key in keys:
+            raw_key = str(key or "")
+            normalized_key = raw_key.strip()
+            canonical_key = re.sub(r"[^a-z0-9._-]", "", normalized_key.lower())
+
+            module_id = SETTING_KEY_TO_MODULE.get(normalized_key) or canonical_map.get(canonical_key)
+            if not module_id:
+                return False, f"chave de configuração não mapeada: {normalized_key}"
+            if not self._has_module_access(module_id, user):
+                return False, f"forbidden: {normalized_key}"
+        return True, None
 
     def _projects_for_user(self, user: dict | None) -> list[dict]:
         all_projects = list_projects_registry()
         if not user:
             return all_projects
         role = (user.get("role") or "").strip().lower()
-        if role == "admin":
+        if role in ADMIN_EQUIV_ROLES:
             return all_projects
         return [p for p in all_projects if project_role_allowed(p, role)]
+
+    def _project_by_id(self, project_id: int) -> dict | None:
+        return next((p for p in list_projects_registry() if int(p.get("project_id") or 0) == int(project_id)), None)
+
+    def _effective_permissions(self, user: dict | None = None) -> dict:
+        return get_effective_permissions(user or self._user())
+
+    def _has_module_access(self, module_id: str, user: dict | None = None) -> bool:
+        user = user or self._user()
+        if not user:
+            return False
+        perms = self._effective_permissions(user)
+        return module_id in set(perms.get("allowedModules") or [])
+
+    def _can_open_page(self, page_key: str, user: dict | None = None) -> bool:
+        user = user or self._user()
+        if not user:
+            return False
+        perms = self._effective_permissions(user)
+        return page_key in set(perms.get("allowedPages") or [])
+
+    def _project_access_error(self, project_id: int, user: dict | None) -> str:
+        if not user:
+            return "Autenticação necessária."
+        if (user.get("role") or "").strip().lower() in ADMIN_EQUIV_ROLES:
+            return ""
+        proj = self._project_by_id(project_id)
+        if not proj:
+            return "Projeto não encontrado."
+        if bool(proj.get("is_template")):
+            return "Projeto template disponível apenas para administradores."
+        return "Sem acesso ao projeto selecionado para seu role."
 
     def _can_access_project(self, project_id: int, user: dict | None) -> bool:
         if not user:
             return False
-        if (user.get("role") or "").strip().lower() == "admin":
+        if (user.get("role") or "").strip().lower() in ADMIN_EQUIV_ROLES:
             return True
-        proj = next((p for p in list_projects_registry() if int(p.get("project_id") or 0) == int(project_id)), None)
+        proj = self._project_by_id(project_id)
         return project_role_allowed(proj, user.get("role") or "")
 
     def _selected_project_id(self, qs: dict | None = None, user: dict | None = None) -> int:
@@ -1763,7 +2850,7 @@ class Handler(BaseHTTPRequestHandler):
     def _reply_document_scope_error(self, slug: str, qs: dict | None = None, user: dict | None = None):
         project_id = self._selected_project_id(qs, user)
         if user and not self._can_access_project(project_id, user):
-            return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
+            return self._json(403, {"ok": False, "error": self._project_access_error(project_id, user)})
         any_scope = get_document(slug)
         if any_scope:
             return self._json(409, {"ok": False, "error": f"Escopo inválido: documento pertence ao projeto {any_scope.get('projectId')}, mas o contexto atual é {project_id}."})
@@ -1776,25 +2863,46 @@ class Handler(BaseHTTPRequestHandler):
         if p in ["/", "/index.html"]: return self._serve(WEB_DIR / "index.html", "text/html; charset=utf-8")
         if p == "/login.html": return self._serve(WEB_DIR / "login.html", "text/html; charset=utf-8")
         if p == "/signup.html": return self._serve(WEB_DIR / "signup.html", "text/html; charset=utf-8")
+        if p == "/kanban.html": return self._serve(WEB_DIR / "kanban.html", "text/html; charset=utf-8")
         if p == "/edit.html": return self._serve(WEB_DIR / "edit.html", "text/html; charset=utf-8")
-        if p == "/projects.html": return self._serve(WEB_DIR / "projects.html", "text/html; charset=utf-8")
-        if p == "/admin-users.html": return self._serve(WEB_DIR / "admin-users.html", "text/html; charset=utf-8")
+        if p == "/projects.html":
+            u = self._user()
+            if not u or not self._can_open_page("projects.html", u):
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            return self._serve(WEB_DIR / "projects.html", "text/html; charset=utf-8")
+        if p == "/admin-users.html":
+            u = self._user()
+            if not u or not self._can_open_page("admin-users.html", u):
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            return self._serve(WEB_DIR / "admin-users.html", "text/html; charset=utf-8")
         if p == "/profile.html": return self._serve(WEB_DIR / "profile.html", "text/html; charset=utf-8")
         if p == "/settings.html":
             u = self._user()
-            if not u or u.get("role") != "admin":
+            if not u or not self._can_open_page("settings.html", u):
                 self.send_response(302)
                 self.send_header("Location", "/")
                 self.end_headers()
                 return
             return self._serve(WEB_DIR / "settings.html", "text/html; charset=utf-8")
-        if p in ["/app.js", "/edit.js", "/projects.js", "/sidebar.js", "/sidebar-project-select.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
+        if p in ["/app.js", "/dashboard.js", "/edit.js", "/projects.js", "/sidebar.js", "/sidebar-project-select.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
             ctype = "application/javascript; charset=utf-8" if p.endswith(".js") else "text/css; charset=utf-8"
             return self._serve(WEB_DIR / p.lstrip("/"), ctype)
 
         if p == "/api/me":
             u = self._user()
             return self._json(200 if u else 401, {"ok": bool(u), "user": {"username": u["username"], "role": u["role"]} if u else None})
+
+        if p == "/api/me/permissions":
+            u = self._require_auth()
+            if not u: return
+            perms = self._effective_permissions(u)
+            return self._json(200, {"ok": True, "permissions": perms})
 
         if p == "/api/me/profile":
             u = self._require_auth()
@@ -1809,7 +2917,7 @@ class Handler(BaseHTTPRequestHandler):
             if not user: return
             selected_project_id = self._selected_project_id(qs, user)
             if not self._can_access_project(selected_project_id, user):
-                return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
+                return self._json(403, {"ok": False, "error": self._project_access_error(selected_project_id, user)})
             return self._json(200, {
                 "documents": list_documents(selected_project_id),
                 "statuses": STATUSES,
@@ -1817,6 +2925,7 @@ class Handler(BaseHTTPRequestHandler):
                 "users": list_usernames(),
                 "projects": self._projects_for_user(user),
                 "selectedProjectId": selected_project_id,
+                "dependencyMaxStatus": dependency_max_status(),
             })
 
         if p.startswith("/api/documents/") and p.endswith("/document/versions"):
@@ -1876,7 +2985,7 @@ class Handler(BaseHTTPRequestHandler):
             slug = p.split("/")[3]
             doc = self._get_document_in_scope(slug, qs, user)
             if not doc: return self._reply_document_scope_error(slug, qs, user)
-            return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
+            return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames(), "dependencyMaxStatus": dependency_max_status()})
 
         if p == "/api/projects-registry":
             user = self._require_auth()
@@ -1884,11 +2993,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "projects": self._projects_for_user(user)})
 
         if p == "/api/admin/projects":
-            if not self._require_admin(): return
+            if not self._require_module("projects.create_edit"): return
             return self._json(200, {"ok": True, "projects": list_projects_registry()})
 
         if p == "/api/admin/users":
-            if not self._require_admin(): return
+            user = self._require_auth()
+            if not user: return
+            if not self._has_module_access("admin_users.list", user):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             with db() as conn:
                 user_rows = conn.execute("SELECT username, role, created_at FROM users ORDER BY username").fetchall()
                 users = []
@@ -1906,26 +3018,104 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "users": users, "roles": ROLES})
 
         if p == "/api/admin/settings":
-            if not self._require_admin(): return
+            if not self._require_any_module(["settings.smtp", "settings.system_behavior", "settings.backup", "settings.system_diagnostics", "settings.recoverable_documents"]): return
             return self._json(200, {"ok": True, "settings": get_admin_settings()})
 
+        if p == "/api/modules/catalog":
+            if not self._require_root_admin(): return
+            return self._json(200, {"ok": True, "modules": list_app_modules(active_only=False)})
+
+        if p == "/api/roles/modules":
+            if not self._require_root_admin(): return
+            return self._json(200, {
+                "ok": True,
+                "roles": ROLES,
+                "modules": list_app_modules(active_only=False),
+                "matrix": list_role_module_matrix(),
+            })
+
         if p == "/api/admin/reports":
-            if not self._require_admin(): return
+            if not self._require_module("settings.periodic_reports"): return
             return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": ROLES, "priorities": ["TODOS", *PRIORITIES]})
 
         if p == "/api/admin/audit":
-            if not self._require_admin(): return
+            user = self._require_auth()
+            if not user: return
+            if not self._has_module_access("admin_users.audit_log", user):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             return self._json(200, {"ok": True, "logs": list_audit_logs(300)})
 
         if p == "/api/admin/deleted-documents":
-            if not self._require_admin(): return
+            if not self._require_module("settings.recoverable_documents"): return
             settings = get_admin_settings()
             retention_days = _setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30")
-            return self._json(200, {"ok": True, "retention_days": retention_days, "deleted_documents": list_deleted_documents()})
+            q = (qs.get("q", [""])[0] or "").strip()
+            deleted_by = (
+                (qs.get("deleted_by", [""])[0] or "").strip()
+                or (qs.get("deletedBy", [""])[0] or "").strip()
+                or (qs.get("by", [""])[0] or "").strip()
+            )
+            deleted_from = (
+                (qs.get("deleted_from", [""])[0] or "").strip()
+                or (qs.get("deletedFrom", [""])[0] or "").strip()
+            )
+            deleted_to = (
+                (qs.get("deleted_to", [""])[0] or "").strip()
+                or (qs.get("deletedTo", [""])[0] or "").strip()
+            )
+            try:
+                page = int((qs.get("page", ["1"])[0] or "1").strip())
+            except Exception:
+                page = 1
+            try:
+                page_size = int((qs.get("page_size", ["10"])[0] or "10").strip())
+            except Exception:
+                page_size = 10
+
+            data = list_deleted_documents(
+                q=q,
+                deleted_by=deleted_by,
+                deleted_from=deleted_from,
+                deleted_to=deleted_to,
+                page=page,
+                page_size=page_size,
+            )
+
+            return self._json(200, {
+                "ok": True,
+                "retention_days": retention_days,
+                "filters": {
+                    "q": q,
+                    "deleted_by": deleted_by,
+                    "deleted_from": deleted_from,
+                    "deleted_to": deleted_to,
+                },
+                "deleted_documents": data["items"],
+                "total": data["total"],
+                "page": data["page"],
+                "page_size": data["page_size"],
+                "total_pages": data["total_pages"],
+            })
 
         if p == "/api/admin/system/diagnostics":
-            if not self._require_admin(): return
+            if not self._require_module("settings.system_diagnostics"): return
             return self._json(200, {"ok": True, "diagnostics": run_system_diagnostics()})
+
+        if p == "/api/admin/system/backup/available":
+            if not self._require_module("settings.backup_restore"): return
+            path_raw = (qs.get("path", [""])[0] or "").strip() or None
+            done, msg, data = list_available_backups(path_raw)
+            return self._json(200 if done else 400, {
+                "ok": done,
+                "path": data.get("path") if done else None,
+                "items": data.get("items") if done else [],
+                "total": data.get("total") if done else 0,
+                "error": None if done else msg,
+            })
+
+        if p == "/api/admin/system/backup/next-run":
+            if not self._require_module("settings.backup"): return
+            return self._json(200, {"ok": True, "schedule": next_backup_run()})
 
         self.send_error(404)
 
@@ -1974,7 +3164,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pid = self._selected_project_id(qs, user)
             if not self._can_access_project(pid, user):
-                return self._json(403, {"ok": False, "error": "Sem acesso ao projeto selecionado para seu role."})
+                return self._json(403, {"ok": False, "error": self._project_access_error(pid, user)})
             done, msg, slug = create_document(body, user["username"])
             if done:
                 audit(user["username"], "document.create", body.get("name", ""), f"status={body.get('status','Backlog')}")
@@ -2019,7 +3209,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/settings/test-smtp":
-            admin = self._require_admin()
+            admin = self._require_module("settings.smtp")
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -2037,13 +3227,51 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": msg})
 
         if p == "/api/admin/system/backup/run":
-            admin = self._require_admin()
+            admin = self._require_module("settings.backup")
             if not admin: return
-            done, msg = run_system_backup(admin["username"])
+            ok, body = self._read_json()
+            if not ok:
+                body = {}
+            path_raw = str((body or {}).get("path") or "").strip() or None
+            done, msg = run_system_backup(admin["username"], path_raw)
+            return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
+
+        if p == "/api/admin/system/backup/test-path":
+            admin = self._require_module("settings.backup")
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok:
+                body = {}
+            path_raw = str((body or {}).get("path") or "").strip() or None
+            done, msg, detail = test_backup_path_permissions(path_raw)
+            return self._json(200 if done else 400, {
+                "ok": done,
+                "message": msg if done else None,
+                "error": None if done else msg,
+                "detail": detail,
+            })
+
+        if p == "/api/admin/system/backup/restore":
+            admin = self._require_module("settings.backup_restore")
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body.get("error") or "JSON inválido"})
+
+            stamp = str((body or {}).get("stamp") or "").strip()
+            path_raw = str((body or {}).get("path") or "").strip() or None
+            confirm = str((body or {}).get("confirm_text") or "").strip().upper()
+
+            if not stamp:
+                return self._json(400, {"ok": False, "error": "Stamp do backup é obrigatório"})
+            if confirm != "RESTAURAR":
+                return self._json(400, {"ok": False, "error": "Confirmação obrigatória: digite RESTAURAR"})
+
+            done, msg = restore_backup_from_stamp(stamp, path_raw, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
 
         if p.startswith("/api/admin/deleted-documents/") and p.endswith("/restore"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.recoverable_documents")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 5:
@@ -2056,7 +3284,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/reports":
-            admin = self._require_admin()
+            admin = self._require_module("settings.periodic_reports")
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -2066,7 +3294,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/") and p.endswith("/run"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.periodic_reports")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 5:
@@ -2087,18 +3315,38 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": msg, "subject": subject, "previewText": preview_text, "recipients": len(recipients)})
 
         if p == "/api/admin/projects":
-            admin = self._require_admin()
+            admin = self._require_module("projects.create_edit")
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            done, msg = create_project_registry(body)
+            done, msg, new_project_id = create_project_registry(body)
             if done:
                 audit(admin["username"], "project.registry.create", body.get("project_name", ""))
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+            return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
+
+        if p.startswith("/api/admin/projects/") and p.endswith("/clone"):
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                template_project_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "ID inválido"})
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg, new_project_id = clone_project_from_template(template_project_id, body, admin["username"])
+            if done:
+                audit(admin["username"], "project.registry.clone_from_template", str(template_project_id), f"new_project_id={new_project_id}")
+            return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
         if p == "/api/admin/users":
-            admin = self._require_admin()
+            admin = self._require_auth()
             if not admin: return
+            if not self._has_module_access("admin_users.create", admin):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             username = (body.get("username") or "").strip()
@@ -2116,8 +3364,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if p == "/api/admin/invites":
-            admin = self._require_admin()
+            admin = self._require_auth()
             if not admin: return
+            if not self._has_module_access("admin_users.invite", admin):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             role = body.get("role") if body.get("role") in ROLES else "member"
@@ -2167,6 +3417,13 @@ class Handler(BaseHTTPRequestHandler):
                 "emailStatus": email_status,
             })
 
+        if p == "/api/modules/catalog/sync":
+            admin = self._require_root_admin()
+            if not admin: return
+            sync_module_catalog()
+            audit(admin["username"], "modules.catalog.sync", "app_modules")
+            return self._json(200, {"ok": True, "modules": list_app_modules(active_only=False)})
+
         if p == "/api/signup":
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -2208,13 +3465,56 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/settings":
-            admin = self._require_admin()
+            admin = self._require_auth()
             if not admin: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            keys = list((body or {}).keys())
+            allowed, reason = self._can_manage_setting_keys(admin, keys)
+            if not allowed:
+                return self._json(403, {"ok": False, "error": reason or "forbidden"})
             done, msg = update_admin_settings(body, admin["username"])
             if done:
                 audit(admin["username"], "admin.settings.update", "app_settings", json.dumps({k: ("***" if "pass" in k else v) for k, v in body.items()}, ensure_ascii=False))
+                settings_now = get_admin_settings()
+                backup_state = _backup_state(settings_now)
+
+                mismatches: list[dict] = []
+                for key, sent_value in (body or {}).items():
+                    persisted_raw = settings_now.get(key, {}).get("value", "")
+                    sent_norm = _normalize_setting_value_for_compare(str(key), str(sent_value))
+                    persisted_norm = _normalize_setting_value_for_compare(str(key), str(persisted_raw))
+                    if sent_norm != persisted_norm:
+                        mismatches.append({
+                            "key": str(key),
+                            "sent": sent_norm,
+                            "persisted": persisted_norm,
+                        })
+
+                return self._json(200, {
+                    "ok": True,
+                    "error": None,
+                    "settings": settings_now,
+                    "saved": {
+                        "backup": backup_state,
+                    },
+                    "mismatch": mismatches,
+                })
+            return self._json(400, {"ok": False, "error": msg, "settings": None})
+
+        if p.startswith("/api/roles/") and p.endswith("/modules"):
+            admin = self._require_root_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            role_name = str(parts[2] or "").strip().lower()
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg = update_role_modules(role_name, body, admin["username"])
+            if done:
+                audit(admin["username"], "roles.modules.updated", role_name)
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/documents/") and "/review-notes/" in p:
@@ -2258,13 +3558,13 @@ class Handler(BaseHTTPRequestHandler):
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
 
-            done, msg = patch_document(slug, body, self._selected_project_id(qs, user))
+            done, msg = patch_document(slug, body, self._selected_project_id(qs, user), user["username"])
             if done:
                 audit(user["username"], "document.update", slug, json.dumps(body, ensure_ascii=False))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.periodic_reports")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 4:
@@ -2281,7 +3581,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/projects/"):
-            admin = self._require_admin()
+            admin = self._require_module("projects.create_edit")
             if not admin: return
             pid = p.split("/")[4]
             try:
@@ -2296,8 +3596,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):
-            admin = self._require_admin()
+            admin = self._require_auth()
             if not admin: return
+            if not self._has_module_access("admin_users.create", admin):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             username = p.split("/")[4]
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -2356,7 +3658,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/deleted-documents/"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.recoverable_documents")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 4:
@@ -2369,7 +3671,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/reports/"):
-            admin = self._require_admin()
+            admin = self._require_module("settings.periodic_reports")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 4:
@@ -2384,20 +3686,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p.startswith("/api/admin/projects/"):
-            admin = self._require_admin()
+            admin = self._require_module("projects.create_edit")
             if not admin: return
             try:
                 project_id = int(p.split("/")[4])
             except Exception:
                 return self._json(400, {"ok": False, "error": "ID inválido"})
-            done, msg = delete_project_registry(project_id)
+            done, msg, deleted_cards = delete_project_registry(project_id)
             if done:
-                audit(admin["username"], "project.registry.delete", str(project_id))
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+                audit(admin["username"], "project.registry.delete", str(project_id), f"deleted_cards={deleted_cards}")
+            return self._json(200 if done else 400, {"ok": done, "deleted_cards": deleted_cards if done else 0, "error": None if done else msg})
 
         if p.startswith("/api/admin/users/"):
-            admin = self._require_admin()
+            admin = self._require_auth()
             if not admin: return
+            if not self._has_module_access("admin_users.create", admin):
+                return self._json(403, {"ok": False, "error": "forbidden"})
             username = p.split("/")[4]
             if username == admin["username"]:
                 return self._json(400, {"ok": False, "error": "não é permitido apagar seu próprio usuário"})

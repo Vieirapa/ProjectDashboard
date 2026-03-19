@@ -11,6 +11,12 @@ Terminates current session.
 ### `GET /api/me`
 Returns current authenticated user context.
 
+### `GET /api/me/permissions`
+Returns effective permission resolution for the current session:
+- `role`
+- `allowedModules[]`
+- `allowedPages[]`
+
 ## Documents
 
 ### `GET /api/documents`
@@ -49,6 +55,10 @@ Creates a review note (permission/stage validation applies).
 
 ## Admin
 
+> Access policy note:
+> - `admin`: full access to all admin routes
+> - `lider_projeto`: admin-equivalent for most operations, but **no** access to users/invites/settings routes
+
 ### `GET /api/admin/users`
 List users and role/account metadata (admin-only).
 
@@ -72,6 +82,9 @@ Send SMTP test email.
 
 ### `POST /api/admin/system/backup/run`
 Run system backup now.
+
+### `GET /api/admin/system/backup/next-run`
+Returns computed next scheduled automatic backup execution from persisted settings.
 
 ### `GET /api/admin/system/diagnostics`
 Run system diagnostics.
@@ -99,3 +112,30 @@ Delete periodic report.
 
 ### `POST /api/admin/reports/:id/run`
 Run periodic report now.
+
+## Role-based module access control (Phase 2)
+
+### `GET /api/modules/catalog`
+Returns the canonical module catalog (`module_id`, `page_key`, `label`, `active`).
+
+### `GET /api/roles/modules`
+Returns full role/module matrix payload:
+- `roles`
+- `modules`
+- `matrix` (per role permissions)
+
+### `PATCH /api/roles/:role/modules`
+Batch-updates module permissions for a target role.
+
+### `POST /api/modules/catalog/sync`
+Re-syncs server-side module catalog using the current code catalog (admin-only). Useful when deploying new modules.
+
+Accepted payload formats:
+- `{"permissions": {"module.id": true, "other.module": false}}`
+- `{"modules": [{"module_id": "module.id", "can_access": true}]}`
+
+Rules:
+- `admin` role is immutable and always full-access.
+- unknown roles/modules return validation error.
+- endpoint currently restricted to root admin session.
+

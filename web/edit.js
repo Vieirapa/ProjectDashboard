@@ -20,6 +20,9 @@ const reviewNoteInput = document.getElementById('reviewNoteInput');
 const addReviewNoteBtn = document.getElementById('addReviewNoteBtn');
 const reviewNotesHistory = document.getElementById('reviewNotesHistory');
 const ownersList = document.getElementById('ownersList');
+const dependsOnSelect = document.getElementById('dependsOn');
+const dependsSearch = document.getElementById('dependsSearch');
+const dependencyInfo = document.getElementById('dependencyInfo');
 
 const f = {
   name: document.getElementById('name'),
@@ -38,6 +41,8 @@ let doc = null;
 let isDirty = false;
 let isSaving = false;
 let scopeBlocked = false;
+let dependencyDocs = [];
+let dependencySelected = new Set();
 saveBtn.disabled = true;
 
 async function api(url, opts={}) {
@@ -52,20 +57,27 @@ async function api(url, opts={}) {
 }
 
 function canEditCard() {
-  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
 }
 
 function canUploadDocument() {
-  return ['admin', 'member', 'desenhista'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
 }
 
 function canAddReviewNotes() {
-  return ['admin', 'member', 'desenhista', 'revisor'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador', 'revisor'].includes(me?.role || '');
+}
+
+function getMultiSelectedValues(containerEl) {
+  if (!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('input[type="checkbox"][data-dep-slug]:checked'))
+    .map((el) => String(el.getAttribute('data-dep-slug') || '').trim())
+    .filter(Boolean);
 }
 
 function canDeleteCard() {
   if (!doc || !me) return false;
-  if (me.role === 'admin') return true;
+  if (['admin', 'lider_projeto'].includes(me.role)) return true;
   if (me.role === 'member') return (doc.createdBy || '').toLowerCase() === (me.username || '').toLowerCase();
   return false;
 }
@@ -97,7 +109,7 @@ function canEditReviewNotes() {
 }
 
 function canResolveReviewNotes() {
-  return ['desenhista', 'admin'].includes(me?.role || '') && (f.status.value || '').trim().toLowerCase() === 'em revisão';
+  return ['desenhista', 'colaborador', 'admin', 'lider_projeto'].includes(me?.role || '') && (f.status.value || '').trim().toLowerCase() === 'em revisão';
 }
 
 function updateReviewNotesAvailability() {
@@ -174,6 +186,64 @@ async function loadVersions() {
   }
 }
 
+function renderDependencyChecklist() {
+  if (!dependsOnSelect) return;
+  const q = String(dependsSearch?.value || '').trim().toLowerCase();
+  const shown = dependencyDocs.filter((d) => {
+    if (!q) return true;
+    const hay = `${d.name || ''} ${d.status || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (!shown.length) {
+    dependsOnSelect.innerHTML = '<div class="deps-empty">Nenhum card encontrado.</div>';
+    return;
+  }
+
+  dependsOnSelect.innerHTML = shown
+    .map((d) => `
+      <label class="small">
+        <input type="checkbox" data-dep-slug="${String(d.slug)}" ${dependencySelected.has(String(d.slug)) ? 'checked' : ''} /> ${d.name} [${d.status}]
+      </label>
+    `)
+    .join('');
+
+  Array.from(dependsOnSelect.querySelectorAll('input[type="checkbox"][data-dep-slug]')).forEach((el) => {
+    el.addEventListener('change', () => {
+      const slug = String(el.getAttribute('data-dep-slug') || '');
+      if (!slug) return;
+      if (el.checked) dependencySelected.add(slug);
+      else dependencySelected.delete(slug);
+      setDirty(true);
+    });
+  });
+}
+
+async function loadDependencyOptions(currentSlug, selected = []) {
+  if (!dependsOnSelect) return;
+  const data = await api(`/api/documents?project_id=${encodeURIComponent(String(currentProjectId()))}`);
+  dependencyDocs = (data.documents || [])
+    .filter((d) => String(d.slug) !== String(currentSlug))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+  dependencySelected = new Set((selected || []).map((s) => String(s || '').trim()).filter(Boolean));
+  renderDependencyChecklist();
+}
+
+function renderDependencyInfo(document) {
+  if (!dependencyInfo) return;
+  const deps = Array.isArray(document?.dependencies) ? document.dependencies : [];
+  if (!deps.length) {
+    dependencyInfo.textContent = 'Sem dependências.';
+    return;
+  }
+  const pending = deps.filter((d) => String(d.status || '') !== 'Concluído');
+  if (!pending.length) {
+    dependencyInfo.textContent = `Dependências: ${deps.length} (todas concluídas ✅)`;
+    return;
+  }
+  dependencyInfo.textContent = `Dependências pendentes: ${pending.map((d) => d.name).join(', ')}`;
+}
+
 async function loadDocument() {
   const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`));
   const p = d.document;
@@ -191,8 +261,17 @@ async function loadDocument() {
 
   const editable = canEditCard();
   [f.name, f.description, f.status, f.priority, f.owner, f.dueDate].forEach((el) => el.disabled = !editable);
+  if (dependsOnSelect) {
+    Array.from(dependsOnSelect.querySelectorAll('input[type="checkbox"]')).forEach((el) => {
+      el.disabled = !editable;
+    });
+  }
   f.documentFile.disabled = !canUploadDocument();
   deleteBtn.style.display = canDeleteCard() ? 'inline-block' : 'none';
+
+  if (dependsSearch) dependsSearch.value = '';
+  await loadDependencyOptions(slug, p.dependsOn || []);
+  renderDependencyInfo(p);
 
   updateReviewNotesAvailability();
   await loadVersions();
@@ -216,6 +295,9 @@ function fileToBase64(file) {
   el.addEventListener('input', () => setDirty(true));
   el.addEventListener('change', () => setDirty(true));
 });
+if (dependsSearch) {
+  dependsSearch.addEventListener('input', () => renderDependencyChecklist());
+}
 f.documentFile.addEventListener('change', () => setDirty(true));
 f.status.addEventListener('change', () => updateReviewNotesAvailability());
 
@@ -230,7 +312,7 @@ backBtn.onclick = () => {
     const leave = confirm('Você fez alterações que ainda não foram salvas. Se sair agora, elas serão perdidas. Deseja continuar?');
     if (!leave) return;
   }
-  location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
+  location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
 };
 
 logoutBtn.onclick = async () => {
@@ -285,8 +367,10 @@ async function handleSave() {
       return;
     }
 
+    const depends_on = Array.from(dependencySelected);
+
     await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value,
+      name:f.name.value, description:f.description.value, status:f.status.value, priority:f.priority.value, owner, dueDate:f.dueDate.value, depends_on,
     })});
 
     const file = f.documentFile.files?.[0];
@@ -308,7 +392,7 @@ async function handleSave() {
     await loadVersions();
     setDirty(false);
     feedback.textContent = 'Salvo com sucesso ✅';
-    location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
+    location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
   } catch (e) {
     feedback.textContent = e.message;
     isSaving = false;
@@ -326,7 +410,7 @@ deleteBtn.onclick = async () => {
   if (!confirm('Apagar este documento do dashboard? (somente admin)')) return;
   try {
     await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'DELETE'});
-    location.href = `/?project_id=${encodeURIComponent(String(currentProjectId()))}`;
+    location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
   } catch (e) { feedback.textContent = e.message; }
 };
 

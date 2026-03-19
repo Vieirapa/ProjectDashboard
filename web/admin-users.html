@@ -17,8 +17,8 @@
       </header>
 
       <section class="panel-grid">
-        <section class="panel">
-          <h3>Criar usuário direto</h3>
+        <section class="panel" data-module-id="admin_users.create">
+          <h3>Criar usuário</h3>
           <form id="createUserForm" class="form-grid">
             <input id="newUsername" placeholder="username" required />
             <input id="newPassword" placeholder="senha" required />
@@ -27,8 +27,8 @@
           </form>
         </section>
 
-        <section class="panel">
-          <h3>Gerar convite</h3>
+        <section class="panel" data-module-id="admin_users.invite">
+          <h3>Convidar novo usuário</h3>
           <form id="inviteForm" class="form-grid">
             <select id="inviteRole"><option value="member">member</option><option value="admin">admin</option></select>
             <input id="inviteEmail" type="email" placeholder="email do convidado (opcional)" />
@@ -53,12 +53,12 @@ Bem-vindo(a) ao sistema!</textarea>
         </section>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="admin_users.list">
         <h3>Usuários cadastrados</h3>
         <div id="usersList"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-module-id="admin_users.audit_log">
         <h3>Log de auditoria</h3>
         <div id="auditList"></div>
       </section>

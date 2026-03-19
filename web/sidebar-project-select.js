@@ -27,7 +27,8 @@
 
     const selected = currentProjectId() || items[0].project_id;
     items.forEach((p) => {
-      const opt = new Option(`${p.project_id} · ${p.project_name}`, String(p.project_id));
+      const templateLabel = p.is_template ? ' [Template]' : '';
+      const opt = new Option(`${p.project_id} · ${p.project_name}${templateLabel}`, String(p.project_id));
       if (Number(p.project_id) === Number(selected)) opt.selected = true;
       sel.append(opt);
     });
@@ -38,7 +39,7 @@
       const u = new URL(window.location.href);
       u.searchParams.set('project_id', pid);
       if (u.pathname === '/edit.html' || u.pathname === '/profile.html' || u.pathname === '/admin-users.html' || u.pathname === '/settings.html' || u.pathname === '/projects.html') {
-        window.location.href = `/?project_id=${encodeURIComponent(pid)}`;
+        window.location.href = `/kanban.html?project_id=${encodeURIComponent(pid)}`;
       } else {
         window.location.href = u.pathname + '?' + u.searchParams.toString();
       }

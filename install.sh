@@ -15,6 +15,7 @@ ENABLE_BACKUP_TIMER="${ENABLE_BACKUP_TIMER:-yes}" # yes|no
 ENABLE_UFW="${ENABLE_UFW:-yes}"      # yes|no
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/projectdashboard}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
+INSTALL_SMOKE_TEST="${INSTALL_SMOKE_TEST:-no}"   # yes|no
 ADMIN_USER="admin"
 ADMIN_PASSWORD="admin"
 
@@ -76,6 +77,7 @@ if [[ "${DOCUMENTS_DIR}" != /* ]]; then
 fi
 
 echo "[1/10] Installing dependencies..."
+export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y python3 python3-venv rsync curl git ca-certificates ufw
 if [[ "$ENABLE_NGINX" == "yes" ]]; then
@@ -377,6 +379,26 @@ else
   echo "     - sudo systemctl status nginx --no-pager"
   echo "     - sudo systemctl status projectdashboard-backup.timer --no-pager"
   echo "     - sudo journalctl -u projectdashboard -n 120 --no-pager"
+fi
+
+if [[ "$INSTALL_SMOKE_TEST" == "yes" ]]; then
+  echo
+  echo "[smoke-test] Running quick HTTP checks..."
+  if curl -fsS "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
+    echo "  ✅ GET /"
+  else
+    echo "  ❌ GET /"
+  fi
+  if curl -fsS "http://127.0.0.1:${PORT}/login.html" >/dev/null 2>&1; then
+    echo "  ✅ GET /login.html"
+  else
+    echo "  ❌ GET /login.html"
+  fi
+  if curl -fsS "http://127.0.0.1:${PORT}/kanban.html" >/dev/null 2>&1; then
+    echo "  ✅ GET /kanban.html"
+  else
+    echo "  ❌ GET /kanban.html"
+  fi
 fi
 
 echo

@@ -9,16 +9,30 @@ const feedback = document.getElementById('feedback');
 const workflowFeedback = document.getElementById('workflowFeedback');
 const reportFeedback = document.getElementById('reportFeedback');
 const backupFeedback = document.getElementById('backupFeedback');
+const backupNextRun = document.getElementById('backupNextRun');
 const diagFeedback = document.getElementById('diagFeedback');
 const deletedPolicyFeedback = document.getElementById('deletedPolicyFeedback');
 const reportsList = document.getElementById('reportsList');
 const deletedDocumentsList = document.getElementById('deletedDocumentsList');
+const deletedDocumentsPager = document.getElementById('deletedDocumentsPager');
+const deletedFiltersState = document.getElementById('deletedFiltersState');
 const reportPreview = document.getElementById('reportPreview');
 const diagOutput = document.getElementById('diagOutput');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
 const runBackupNowBtn = document.getElementById('runBackupNowBtn');
+const testBackupPathBtn = document.getElementById('testBackupPathBtn');
+const refreshBackupListBtn = document.getElementById('refreshBackupListBtn');
+const restoreBackupBtn = document.getElementById('restoreBackupBtn');
+const backupRestoreList = document.getElementById('backupRestoreList');
 const runDiagBtn = document.getElementById('runDiagBtn');
 const refreshDeletedBtn = document.getElementById('refreshDeletedBtn');
+const applyDeletedFiltersBtn = document.getElementById('applyDeletedFiltersBtn');
+const clearDeletedFiltersBtn = document.getElementById('clearDeletedFiltersBtn');
+const rolesRefreshBtn = document.getElementById('rolesRefreshBtn');
+const rolesSaveBtn = document.getElementById('rolesSaveBtn');
+const rolesSyncCatalogBtn = document.getElementById('rolesSyncCatalogBtn');
+const rolesFeedback = document.getElementById('rolesFeedback');
+const rolesMatrixWrap = document.getElementById('rolesMatrixWrap');
 
 const f = {
   host: document.getElementById('smtp_host'),
@@ -30,6 +44,7 @@ const f = {
   inviteDefaultMessage: document.getElementById('invite_default_message'),
   smtpTestTo: document.getElementById('smtp_test_to'),
   defaultDueDays: document.getElementById('default_due_days'),
+  dependencyMaxStatus: document.getElementById('dependency_max_status'),
   backupEnabled: document.getElementById('backup_enabled'),
   backupPath: document.getElementById('backup_path'),
   backupWeekdays: document.getElementById('backup_weekdays'),
@@ -37,6 +52,10 @@ const f = {
   systemGitRepo: document.getElementById('system_git_repo'),
   systemGitBranch: document.getElementById('system_git_branch'),
   deletedRetentionDays: document.getElementById('deleted_retention_days'),
+  deletedFilterQ: document.getElementById('deleted_filter_q'),
+  deletedFilterBy: document.getElementById('deleted_filter_by'),
+  deletedFilterFrom: document.getElementById('deleted_filter_from'),
+  deletedFilterTo: document.getElementById('deleted_filter_to'),
 
   rName: document.getElementById('r_name'),
   rStatuses: document.getElementById('r_statuses'),
@@ -49,21 +68,56 @@ const f = {
 };
 
 let meta = { statuses: [], roles: [] };
+let deletedFilters = {
+  q: '',
+  deleted_by: '',
+  deleted_from: '',
+  deleted_to: '',
+};
+let deletedPager = {
+  page: 1,
+  page_size: 10,
+  total: 0,
+  total_pages: 1,
+};
+let backupSnapshots = [];
+let rolesModulesMeta = [];
+let rolesMatrix = [];
+let allowedModules = new Set();
+let lastPersistedBackupPath = '';
 
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
   const d = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const err = new Error(d.error || 'Erro');
+    const err = new Error(d.error || `Erro HTTP ${r.status}`);
     err.data = d;
+    err.status = r.status;
     throw err;
   }
   return d;
 }
 
-async function ensureAdmin() {
-  const d = await api('/api/me');
-  if (!d.user || d.user.role !== 'admin') throw new Error('Acesso restrito a admin');
+function hasModule(moduleId) {
+  return allowedModules.has(moduleId);
+}
+
+function applyModuleVisibility() {
+  document.querySelectorAll('[data-module-id]').forEach((el) => {
+    const moduleId = String(el.dataset.moduleId || '').trim();
+    if (!moduleId) return;
+    el.style.display = hasModule(moduleId) ? '' : 'none';
+  });
+}
+
+async function loadPermissions() {
+  const d = await api('/api/me/permissions');
+  const perms = d.permissions || {};
+  allowedModules = new Set(perms.allowedModules || []);
+  if (!(perms.allowedPages || []).includes('settings.html')) {
+    throw new Error('Sem acesso à página de configurações');
+  }
+  applyModuleVisibility();
 }
 
 function getSetting(settings, key, fallback = '') {
@@ -79,6 +133,18 @@ function renderReportMeta() {
   f.rRoles.innerHTML = meta.roles.map((r) => `<label class="inline-check"><input type="checkbox" value="${r}" /> <span>${r}</span></label>`).join('');
 }
 
+function renderDeletedFiltersState() {
+  if (!deletedFiltersState) return;
+  const labels = [];
+  if (String(deletedFilters.q || '').trim()) labels.push(`nome/slug: "${deletedFilters.q}"`);
+  if (String(deletedFilters.deleted_by || '').trim()) labels.push(`apagado por: "${deletedFilters.deleted_by}"`);
+  if (String(deletedFilters.deleted_from || '').trim()) labels.push(`de: ${deletedFilters.deleted_from}`);
+  if (String(deletedFilters.deleted_to || '').trim()) labels.push(`até: ${deletedFilters.deleted_to}`);
+  deletedFiltersState.textContent = labels.length
+    ? `Filtros ativos → ${labels.join(' | ')}`
+    : 'Filtros ativos → nenhum';
+}
+
 function weekdayLabel(v) {
   const m = {
     '0': 'segunda',
@@ -92,6 +158,12 @@ function weekdayLabel(v) {
   return m[String(v)] || String(v);
 }
 
+function summarizeWeekdays(values) {
+  const arr = (values || []).map((x) => String(x));
+  if (!arr.length) return 'nenhum dia selecionado';
+  return arr.map((d) => weekdayLabel(d)).join(', ');
+}
+
 function reportConfigLine(r) {
   const statuses = (r.statuses || []).join('; ') || '-';
   const priorities = (r.priorities || []).join('; ') || '-';
@@ -99,6 +171,86 @@ function reportConfigLine(r) {
   const days = (r.weekdays || []).map(weekdayLabel).join(', ') || '-';
   const time = r.run_time ? `${r.run_time}h` : '-';
   return `{${statuses}} {${priorities}} {${roles}} {${days}} {${time}}`;
+}
+
+function escHtml(s) {
+  return String(s || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatBackupRunMessage(message) {
+  const raw = String(message || '').trim();
+  const concise = raw.split('| Obs:')[0].trim();
+  const m = concise.match(/backup salvo em\s+(.+?)\s*\(/i);
+  if (!m) return escHtml(concise || raw || 'Backup manual executado ✅');
+  const backupPath = m[1].trim();
+  return `Backup salvo em <strong>${escHtml(backupPath)}</strong><br><span class="small">${escHtml(concise)}</span>`;
+}
+
+function resolveRelativeBackupPath(inputPath) {
+  const raw = String(inputPath || '').trim();
+  if (!raw || raw.startsWith('/')) return raw;
+  if (!raw.startsWith('./')) return raw;
+  const base = String(lastPersistedBackupPath || '').trim();
+  const marker = '/data/';
+  const idx = base.indexOf(marker);
+  if (idx <= 0) return raw;
+  const projectRoot = base.slice(0, idx);
+  return `${projectRoot}/${raw.slice(2)}`;
+}
+
+function fallbackNextRunFromForm() {
+  if (!f.backupEnabled.checked) {
+    return { enabled: false, weekdays: [], run_time: f.backupRunTime.value || '03:00', next_run_human: null };
+  }
+  const days = checkedValues(f.backupWeekdays).map((x) => Number(x)).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+  if (!days.length) return { enabled: true, weekdays: [], run_time: f.backupRunTime.value || '03:00', next_run_human: null };
+
+  const [hh, mm] = String(f.backupRunTime.value || '03:00').split(':');
+  const hour = Number(hh || 3);
+  const minute = Number(mm || 0);
+  const now = new Date();
+
+  for (let i = 0; i < 15; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() + i);
+    const wd = (d.getDay() + 6) % 7; // JS: Sunday=0 -> map to Monday=0
+    if (!days.includes(wd)) continue;
+    d.setHours(hour, minute, 0, 0);
+    if (d <= now) continue;
+    const fmt = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return { enabled: true, weekdays: days.map(String), run_time: f.backupRunTime.value || '03:00', next_run_human: fmt };
+  }
+
+  return { enabled: true, weekdays: days.map(String), run_time: f.backupRunTime.value || '03:00', next_run_human: null };
+}
+
+async function refreshBackupNextRun() {
+  if (!backupNextRun || !hasModule('settings.backup')) return;
+  try {
+    const d = await api('/api/admin/system/backup/next-run');
+    const s = d?.schedule || {};
+    if (!s.enabled) {
+      backupNextRun.innerHTML = '<span class="small">Agendamento automático: <strong>desabilitado</strong></span>';
+      return;
+    }
+    const days = summarizeWeekdays((s.weekdays || []).map((x) => String(x)));
+    const when = s.next_run_human || 'indisponível';
+    backupNextRun.innerHTML = `<span class="small">Próxima execução prevista: <strong>${escHtml(when)}</strong> · Dias: <strong>${escHtml(days)}</strong> · Horário: <strong>${escHtml(s.run_time || '-')}</strong></span>`;
+  } catch {
+    const s = fallbackNextRunFromForm();
+    if (!s.enabled) {
+      backupNextRun.innerHTML = '<span class="small">Agendamento automático: <strong>desabilitado</strong></span>';
+      return;
+    }
+    const days = summarizeWeekdays((s.weekdays || []).map((x) => String(x)));
+    const when = s.next_run_human || 'indisponível';
+    backupNextRun.innerHTML = `<span class="small">Próxima execução prevista: <strong>${escHtml(when)}</strong> · Dias: <strong>${escHtml(days)}</strong> · Horário: <strong>${escHtml(s.run_time || '-')}</strong></span>`;
+  }
 }
 
 function renderDiagnostics(diagnostics) {
@@ -128,8 +280,10 @@ async function loadSettings() {
   f.tls.checked = String(getSetting(s, 'smtp.tls', 'true')).toLowerCase() !== 'false';
   f.inviteDefaultMessage.value = getSetting(s, 'invite.default_message', '');
   f.defaultDueDays.value = getSetting(s, 'workflow.default_due_days', '7');
+  f.dependencyMaxStatus.value = getSetting(s, 'workflow.dependency_max_status', 'Backlog');
   f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
   f.backupPath.value = getSetting(s, 'backup.path', '/opt/documentdashboard/data/backups');
+  lastPersistedBackupPath = f.backupPath.value || '';
   f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
   f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
   f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'main');
@@ -143,19 +297,145 @@ async function loadSettings() {
   });
 }
 
-async function loadDeletedDocuments() {
-  const d = await api('/api/admin/deleted-documents');
+async function loadBackupSnapshots() {
+  const path = (f.backupPath.value || '').trim();
+  const q = new URLSearchParams();
+  if (path) q.set('path', path);
+  const d = await api(`/api/admin/system/backup/available${q.toString() ? `?${q.toString()}` : ''}`);
+  backupSnapshots = d.items || [];
 
-  if (!d.deleted_documents?.length) {
-    deletedDocumentsList.textContent = 'Nenhum documento apagado.';
+  if (!backupSnapshots.length) {
+    backupRestoreList.textContent = `Nenhum backup encontrado em ${d.path || path || '(caminho padrão)'}.`;
+    return;
+  }
+
+  backupRestoreList.innerHTML = `<table>
+    <tr><th></th><th>Data/Hora</th><th>DB</th><th>Docs</th></tr>
+    ${backupSnapshots.map((b, idx) => `<tr>
+      <td><input type="radio" name="backup_stamp" value="${b.stamp}" ${idx === 0 ? 'checked' : ''}></td>
+      <td>${b.when || b.stamp}</td>
+      <td>${b.db_backup ? '✅' : '—'}</td>
+      <td>${b.docs_backup ? '✅' : '—'}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function getSelectedBackupStamp() {
+  const el = document.querySelector('input[name="backup_stamp"]:checked');
+  return el ? String(el.value || '').trim() : '';
+}
+
+function applyDeletedFiltersLocal(rows) {
+  const q = String(deletedFilters.q || '').trim().toLowerCase();
+  const by = String(deletedFilters.deleted_by || '').trim().toLowerCase();
+  const from = String(deletedFilters.deleted_from || '').trim();
+  const to = String(deletedFilters.deleted_to || '').trim();
+
+  return (rows || []).filter((r) => {
+    const name = String(r?.name || '').toLowerCase();
+    const slug = String(r?.slug || '').toLowerCase();
+    const deletedBy = String(r?.deleted_by || '').trim().toLowerCase();
+    const deletedAt = String(r?.deleted_at || '').trim();
+
+    if (q && !name.includes(q) && !slug.includes(q)) return false;
+    if (by && !deletedBy.includes(by)) return false;
+
+    if (from) {
+      const fromIso = from.length === 10 ? `${from}T00:00:00Z` : from;
+      if (deletedAt && deletedAt < fromIso) return false;
+    }
+    if (to) {
+      const toIso = to.length === 10 ? `${to}T23:59:59Z` : to;
+      if (deletedAt && deletedAt > toIso) return false;
+    }
+
+    return true;
+  });
+}
+
+function renderDeletedPager() {
+  let pagerEl = deletedDocumentsPager || document.getElementById('deletedDocumentsPager');
+  if (!pagerEl && deletedDocumentsList?.parentElement) {
+    pagerEl = document.createElement('div');
+    pagerEl.id = 'deletedDocumentsPager';
+    pagerEl.className = 'small';
+    pagerEl.style.marginTop = '8px';
+    deletedDocumentsList.parentElement.appendChild(pagerEl);
+  }
+  if (!pagerEl) return;
+
+  const { page, total_pages, total } = deletedPager;
+  if (!total) {
+    pagerEl.textContent = '';
+    return;
+  }
+  pagerEl.innerHTML = `
+    <div style="display:flex; gap:8px; align-items:center; justify-content:flex-start; flex-wrap:wrap;">
+      <button type="button" class="secondary" id="deletedPrevPageBtn" ${page <= 1 ? 'disabled' : ''}>Anterior</button>
+      <button type="button" class="secondary" id="deletedNextPageBtn" ${page >= total_pages ? 'disabled' : ''}>Próxima</button>
+      <span>Página ${page} de ${total_pages} · Total: ${total} (máx ${deletedPager.page_size}/página)</span>
+    </div>
+  `;
+  const prev = document.getElementById('deletedPrevPageBtn');
+  const next = document.getElementById('deletedNextPageBtn');
+  if (prev) prev.onclick = async () => { deletedPager.page = Math.max(1, deletedPager.page - 1); await loadDeletedDocuments(); };
+  if (next) next.onclick = async () => { deletedPager.page = Math.min(deletedPager.total_pages, deletedPager.page + 1); await loadDeletedDocuments(); };
+}
+
+async function loadDeletedDocuments() {
+  const params = new URLSearchParams();
+  Object.entries(deletedFilters).forEach(([k, v]) => {
+    const val = String(v || '').trim();
+    if (val) params.set(k, val);
+  });
+  params.set('page', String(deletedPager.page || 1));
+  params.set('page_size', String(deletedPager.page_size || 10));
+
+  const d = await api(`/api/admin/deleted-documents?${params.toString()}`);
+
+  if (d.filters) {
+    deletedFilters = { ...deletedFilters, ...d.filters };
+  }
+
+  const serverHasPagination =
+    d.total !== undefined && d.page !== undefined && d.page_size !== undefined && d.total_pages !== undefined;
+
+  const allRows = applyDeletedFiltersLocal(d.deleted_documents || []);
+  let filteredRows = allRows;
+
+  if (serverHasPagination) {
+    deletedPager.page = Number(d.page || 1);
+    deletedPager.page_size = Number(d.page_size || 10);
+    deletedPager.total = Number(d.total || 0);
+    deletedPager.total_pages = Number(d.total_pages || 1);
+  } else {
+    deletedPager.page_size = 10;
+    deletedPager.total = allRows.length;
+    deletedPager.total_pages = Math.max(1, Math.ceil(deletedPager.total / deletedPager.page_size));
+    deletedPager.page = Math.min(Math.max(1, deletedPager.page), deletedPager.total_pages);
+    const start = (deletedPager.page - 1) * deletedPager.page_size;
+    filteredRows = allRows.slice(start, start + deletedPager.page_size);
+  }
+
+  f.deletedFilterQ.value = deletedFilters.q || '';
+  f.deletedFilterBy.value = deletedFilters.deleted_by || '';
+  f.deletedFilterFrom.value = deletedFilters.deleted_from || '';
+  f.deletedFilterTo.value = deletedFilters.deleted_to || '';
+  renderDeletedFiltersState();
+
+  if (!filteredRows.length) {
+    const hasFilter = Object.values(deletedFilters).some((x) => String(x || '').trim());
+    deletedDocumentsList.textContent = hasFilter
+      ? 'Nenhum documento apagado encontrado para os filtros informados.'
+      : 'Nenhum documento apagado.';
+    renderDeletedPager();
     return;
   }
 
   deletedDocumentsList.innerHTML = `<table>
-    <tr><th>Nome</th><th>Slug</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr>
-    ${d.deleted_documents.map((p) => `<tr>
+    <tr><th>Nome</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr>
+    ${filteredRows.map((p) => `<tr>
       <td>${p.name || '-'}</td>
-      <td>${p.slug || '-'}</td>
       <td>${p.deleted_at || '-'}</td>
       <td>${p.deleted_by || '-'}</td>
       <td>
@@ -164,6 +444,7 @@ async function loadDeletedDocuments() {
       </td>
     </tr>`).join('')}
   </table>`;
+  renderDeletedPager();
 
   deletedDocumentsList.querySelectorAll('[data-restore]').forEach((btn) => {
     btn.onclick = async () => {
@@ -247,6 +528,68 @@ async function loadReports() {
   });
 }
 
+function renderRolesMatrix() {
+  if (!rolesMatrixWrap) return;
+  if (!rolesModulesMeta.length || !rolesMatrix.length) {
+    rolesMatrixWrap.innerHTML = '<div class="small">Matriz indisponível no momento.</div>';
+    return;
+  }
+
+  const headerCols = rolesModulesMeta.map((m) => `<th title="${m.module_id}">${m.label}</th>`).join('');
+  const rowsHtml = rolesMatrix.map((row) => {
+    const role = row.role;
+    const isImmutable = !!row.immutable;
+    const cells = rolesModulesMeta.map((m) => {
+      const checked = row.permissions?.[m.module_id] ? 'checked' : '';
+      const disabled = isImmutable ? 'disabled' : '';
+      return `<td style="text-align:center;"><input type="checkbox" data-role="${role}" data-module="${m.module_id}" ${checked} ${disabled}></td>`;
+    }).join('');
+    return `<tr>
+      <td><strong>${role}</strong>${isImmutable ? ' <span class="small">(locked)</span>' : ''}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  rolesMatrixWrap.innerHTML = `<table>
+    <tr><th>Role</th>${headerCols}</tr>
+    ${rowsHtml}
+  </table>`;
+}
+
+async function loadRolesMatrix() {
+  const d = await api('/api/roles/modules');
+  rolesModulesMeta = d.modules || [];
+  rolesMatrix = d.matrix || [];
+  renderRolesMatrix();
+}
+
+async function saveRolesMatrix() {
+  if (!rolesMatrixWrap) return;
+  const updatesByRole = {};
+  rolesMatrixWrap.querySelectorAll('input[type="checkbox"][data-role][data-module]').forEach((el) => {
+    if (el.disabled) return;
+    const role = String(el.dataset.role || '').trim();
+    const moduleId = String(el.dataset.module || '').trim();
+    if (!role || !moduleId) return;
+    if (!updatesByRole[role]) updatesByRole[role] = { permissions: {} };
+    updatesByRole[role].permissions[moduleId] = !!el.checked;
+  });
+
+  const roles = Object.keys(updatesByRole);
+  if (!roles.length) {
+    rolesFeedback.textContent = 'Nenhuma alteração para salvar.';
+    return;
+  }
+
+  for (const role of roles) {
+    await api(`/api/roles/${encodeURIComponent(role)}/modules`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatesByRole[role]),
+    });
+  }
+}
+
 smtpForm.onsubmit = async (e) => {
   e.preventDefault();
   feedback.textContent = '';
@@ -279,9 +622,11 @@ workflowForm.onsubmit = async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         'workflow.default_due_days': f.defaultDueDays.value,
+        'workflow.dependency_max_status': f.dependencyMaxStatus.value,
       }),
     });
-    workflowFeedback.textContent = 'Comportamento salvo ✅';
+    await loadSettings();
+    workflowFeedback.textContent = `Comportamento salvo ✅ (máximo com dependências pendentes: ${f.dependencyMaxStatus.value})`;
   } catch (err) {
     workflowFeedback.textContent = err.message;
   }
@@ -290,20 +635,46 @@ workflowForm.onsubmit = async (e) => {
 backupForm.onsubmit = async (e) => {
   e.preventDefault();
   backupFeedback.textContent = '';
+
+  const submitBtn = backupForm.querySelector('button[type="submit"]');
+  if (submitBtn?.disabled) return;
+
+  const selectedDays = checkedValues(f.backupWeekdays);
+  if (f.backupEnabled.checked && !selectedDays.length) {
+    backupFeedback.textContent = 'Selecione ao menos um dia da semana para backup automático.';
+    return;
+  }
+
   try {
-    await api('/api/admin/settings', {
+    if (submitBtn) submitBtn.disabled = true;
+
+    const pathToSave = resolveRelativeBackupPath(f.backupPath.value || '');
+    const resp = await api('/api/admin/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         'backup.enabled': f.backupEnabled.checked ? 'true' : 'false',
-        'backup.path': f.backupPath.value,
-        'backup.weekdays': JSON.stringify(checkedValues(f.backupWeekdays)),
+        'backup.path': pathToSave,
+        'backup.weekdays': JSON.stringify(selectedDays),
         'backup.run_time': f.backupRunTime.value,
       }),
     });
-    backupFeedback.textContent = 'Política de backup salva ✅';
+
+    // Source of truth after save: reload from backend and build confirmation from reloaded UI state.
+    await loadSettings();
+    await refreshBackupNextRun();
+    const persistedDays = checkedValues(f.backupWeekdays).map((x) => String(x));
+
+    let suffix = '';
+    if (Array.isArray(resp?.mismatch) && resp.mismatch.length) {
+      suffix = `<br><span class="small" style="color:#b45309;">⚠️ Divergência detectada em: ${escHtml(resp.mismatch.map((m) => m.key).join(', '))}</span>`;
+    }
+
+    backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong> · Horário: <strong>${escHtml(f.backupRunTime.value || '-')}</strong> · Dias: <strong>${escHtml(summarizeWeekdays(persistedDays))}</strong></span>${suffix}`;
   } catch (err) {
     backupFeedback.textContent = err.message;
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
   }
 };
 
@@ -387,11 +758,78 @@ testSmtpBtn.onclick = async () => {
   }
 };
 
+testBackupPathBtn.onclick = async () => {
+  backupFeedback.textContent = '';
+  try {
+    const d = await api('/api/admin/system/backup/test-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: f.backupPath.value || '' }),
+    });
+    backupFeedback.textContent = d.message || 'Caminho de backup validado ✅';
+  } catch (err) {
+    if (err?.status === 404) {
+      backupFeedback.textContent = 'Este servidor ainda não tem o endpoint de teste de permissões. Atualize/reinicie a instância com a versão mais recente do ProjectDashboard e tente novamente.';
+      return;
+    }
+    if (String(err?.message || '').includes('Permission') || String(err?.message || '').includes('Permissão')) {
+      const p = (f.backupPath.value || '').trim() || '/var/backups/projectdashboard';
+      backupFeedback.textContent = `${err.message} | Sugestão: sudo mkdir -p ${p} && sudo chown -R <usuario_servico>:<grupo_servico> ${p} && sudo chmod -R 775 ${p}`;
+      return;
+    }
+    backupFeedback.textContent = err?.message || 'Falha ao testar permissões do caminho de backup.';
+  }
+};
+
 runBackupNowBtn.onclick = async () => {
   backupFeedback.textContent = '';
   try {
-    const d = await api('/api/admin/system/backup/run', { method: 'POST' });
-    backupFeedback.textContent = d.message || 'Backup manual executado ✅';
+    const d = await api('/api/admin/system/backup/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: f.backupPath.value || '' }),
+    });
+    backupFeedback.innerHTML = formatBackupRunMessage(d.message || 'Backup manual executado ✅');
+    await loadBackupSnapshots();
+  } catch (err) {
+    backupFeedback.textContent = err.message;
+  }
+};
+
+refreshBackupListBtn.onclick = async () => {
+  backupFeedback.textContent = '';
+  try {
+    await loadBackupSnapshots();
+    backupFeedback.textContent = 'Lista de backups atualizada.';
+  } catch (err) {
+    backupFeedback.textContent = err.message;
+  }
+};
+
+restoreBackupBtn.onclick = async () => {
+  backupFeedback.textContent = '';
+  const stamp = getSelectedBackupStamp();
+  if (!stamp) {
+    backupFeedback.textContent = 'Selecione um backup na lista.';
+    return;
+  }
+  const confirmText = prompt(`Você vai restaurar o snapshot ${stamp}.\nIsso pode sobrescrever dados atuais.\nDigite RESTAURAR para confirmar:`) || '';
+  if (String(confirmText).trim().toUpperCase() !== 'RESTAURAR') {
+    backupFeedback.textContent = 'Restauração cancelada (confirmação não informada).';
+    return;
+  }
+
+  try {
+    const d = await api('/api/admin/system/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        stamp,
+        path: f.backupPath.value || '',
+        confirm_text: confirmText,
+      }),
+    });
+    backupFeedback.textContent = d.message || `Restore do backup ${stamp} concluído ✅`;
   } catch (err) {
     backupFeedback.textContent = err.message;
   }
@@ -418,6 +856,77 @@ refreshDeletedBtn.onclick = async () => {
   }
 };
 
+applyDeletedFiltersBtn.onclick = async () => {
+  deletedPolicyFeedback.textContent = '';
+  deletedFilters = {
+    q: f.deletedFilterQ.value,
+    deleted_by: f.deletedFilterBy.value,
+    deleted_from: f.deletedFilterFrom.value,
+    deleted_to: f.deletedFilterTo.value,
+  };
+  deletedPager.page = 1;
+  try {
+    await loadDeletedDocuments();
+    deletedPolicyFeedback.textContent = 'Filtros aplicados.';
+  } catch (err) {
+    deletedPolicyFeedback.textContent = err.message;
+  }
+};
+
+clearDeletedFiltersBtn.onclick = async () => {
+  deletedPolicyFeedback.textContent = '';
+  deletedFilters = { q: '', deleted_by: '', deleted_from: '', deleted_to: '' };
+  deletedPager.page = 1;
+  f.deletedFilterQ.value = '';
+  f.deletedFilterBy.value = '';
+  f.deletedFilterFrom.value = '';
+  f.deletedFilterTo.value = '';
+  try {
+    await loadDeletedDocuments();
+    deletedPolicyFeedback.textContent = 'Filtros limpos.';
+  } catch (err) {
+    deletedPolicyFeedback.textContent = err.message;
+  }
+};
+
+if (rolesRefreshBtn) {
+  rolesRefreshBtn.onclick = async () => {
+    rolesFeedback.textContent = '';
+    try {
+      await loadRolesMatrix();
+      rolesFeedback.textContent = 'Matriz atualizada.';
+    } catch (err) {
+      rolesFeedback.textContent = err.message;
+    }
+  };
+}
+
+if (rolesSaveBtn) {
+  rolesSaveBtn.onclick = async () => {
+    rolesFeedback.textContent = '';
+    try {
+      await saveRolesMatrix();
+      await loadRolesMatrix();
+      rolesFeedback.textContent = 'Permissões salvas ✅';
+    } catch (err) {
+      rolesFeedback.textContent = err.message;
+    }
+  };
+}
+
+if (rolesSyncCatalogBtn) {
+  rolesSyncCatalogBtn.onclick = async () => {
+    rolesFeedback.textContent = '';
+    try {
+      await api('/api/modules/catalog/sync', { method: 'POST' });
+      await loadRolesMatrix();
+      rolesFeedback.textContent = 'Catálogo sincronizado ✅';
+    } catch (err) {
+      rolesFeedback.textContent = err.message;
+    }
+  };
+}
+
 logoutBtn.onclick = async () => {
   await api('/api/logout', { method: 'POST' });
   location.href = '/login.html';
@@ -425,15 +934,44 @@ logoutBtn.onclick = async () => {
 
 (async () => {
   try {
-    await ensureAdmin();
-    await Promise.all([loadSettings(), loadReports(), loadDeletedDocuments()]);
+    await loadPermissions();
+  } catch {
+    location.href = '/';
+    return;
+  }
+
+  const loads = [];
+  if (hasModule('settings.smtp') || hasModule('settings.system_behavior') || hasModule('settings.backup') || hasModule('settings.system_diagnostics')) {
+    loads.push(loadSettings());
+  }
+  if (hasModule('settings.periodic_reports')) loads.push(loadReports());
+  if (hasModule('settings.recoverable_documents')) loads.push(loadDeletedDocuments());
+  if (hasModule('settings.roles_control')) loads.push(loadRolesMatrix());
+
+  try {
+    if (loads.length) await Promise.all(loads);
+  } catch (e) {
+    backupFeedback.textContent = e?.message || 'Falha ao carregar configurações iniciais.';
+  }
+
+  if (hasModule('settings.backup_restore') || hasModule('settings.backup')) {
+    try {
+      await loadBackupSnapshots();
+    } catch (e) {
+      backupRestoreList.textContent = 'Não foi possível carregar a lista de backups nesta instância (endpoint indisponível ou serviço desatualizado).';
+    }
+  }
+
+  if (hasModule('settings.backup')) {
+    await refreshBackupNextRun();
+  }
+
+  if (hasModule('settings.system_diagnostics')) {
     try {
       const d = await api('/api/admin/system/diagnostics');
       renderDiagnostics(d.diagnostics || {});
     } catch (_) {
       // diagnóstico pode falhar sem bloquear tela
     }
-  } catch {
-    location.href = '/';
   }
 })();
