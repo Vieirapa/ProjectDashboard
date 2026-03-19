@@ -14,6 +14,7 @@ const sumBacklogEl = document.getElementById('sumBacklog');
 const sumProgressEl = document.getElementById('sumProgress');
 const sumReviewEl = document.getElementById('sumReview');
 const sumDoneEl = document.getElementById('sumDone');
+const priorityColorStatus = document.getElementById('priorityColorStatus');
 
 const dialog = document.getElementById('documentDialog');
 const form = document.getElementById('documentForm');
@@ -53,6 +54,13 @@ function colorByPriorityKey(colors, key, fallback) {
   if (key === 'Alta') return c['alta'] || fallback;
   if (key === 'Urgente') return c['urgente'] || fallback;
   return fallback;
+}
+
+function updatePriorityColorStatus() {
+  if (!priorityColorStatus) return;
+  const mode = behavior.priorityColorEnabled ? 'ATIVO' : 'INATIVO';
+  const palette = `Baixa:${behavior.priorityColors['Baixa']} · Média:${behavior.priorityColors['Média']} · Alta:${behavior.priorityColors['Alta']} · Urgente:${behavior.priorityColors['Urgente']}`;
+  priorityColorStatus.innerHTML = `Cores por prioridade: <strong>${mode}</strong> <span class="small">(${palette})</span>`;
 }
 
 function projectIdFromUrlOrNull() {
@@ -121,6 +129,8 @@ async function loadMe() {
   } catch {
     // fallback silencioso para defaults
   }
+
+  updatePriorityColorStatus();
 }
 
 function currentFilters() {
@@ -225,6 +235,9 @@ function makeCard(p, statuses, priorities) {
       card.style.background = bg;
       card.style.border = '1px solid rgba(15,23,42,.12)';
     }
+  } else {
+    card.style.background = '#fff';
+    card.style.border = 'none';
   }
 
   const st = document.createElement('select');
