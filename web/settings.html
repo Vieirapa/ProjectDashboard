@@ -226,6 +226,20 @@
         <h3>Controle de ROLES</h3>
         <p class="small">Matriz de acesso por módulo. O role <strong>admin</strong> é bloqueado para edição e mantém acesso total.</p>
 
+        <form id="roleCreateForm" class="edit-form" style="margin: 10px 0 14px; max-width: 720px;">
+          <h4 style="margin:0 0 8px;">Criar nova role</h4>
+          <label>Role key (imutável)</label>
+          <input id="roleKeyInput" placeholder="ex.: suporte_n1" />
+          <label>Nome de exibição</label>
+          <input id="roleDisplayNameInput" placeholder="ex.: Suporte N1" />
+          <div class="dialog-actions" style="justify-content:flex-start;">
+            <button type="submit" id="roleCreateBtn">Criar role</button>
+          </div>
+        </form>
+
+        <h4 style="margin:0 0 8px;">Catálogo de roles</h4>
+        <div id="rolesCatalogWrap" class="small" style="margin-bottom: 10px;">Carregando catálogo...</div>
+
         <div class="dialog-actions" style="justify-content:flex-start; margin-bottom:8px;">
           <button type="button" id="rolesRefreshBtn" class="secondary">Atualizar matriz</button>
           <button type="button" id="rolesSaveBtn">Salvar alterações</button>
