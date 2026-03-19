@@ -772,7 +772,7 @@ def list_usernames() -> list[str]:
     return [r["username"] for r in rows]
 
 
-def list_role_catalog(include_admin_equiv: bool = True) -> list[str]:
+def list_role_catalog(include_admin: bool = True) -> list[str]:
     # Base catálogo versionado no código
     seen: set[str] = set()
     out: list[str] = []
@@ -807,9 +807,9 @@ def list_role_catalog(include_admin_equiv: bool = True) -> list[str]:
         for role in str(r["allowed_roles"] or "").split(','):
             add_role(role)
 
-    if include_admin_equiv:
+    if include_admin:
         return out
-    return [r for r in out if r not in ADMIN_EQUIV_ROLES]
+    return [r for r in out if r != "admin"]
 
 
 def list_app_modules(active_only: bool = False) -> list[dict]:
@@ -845,7 +845,7 @@ def list_role_module_matrix() -> list[dict]:
         access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
 
     matrix: list[dict] = []
-    for role in list_role_catalog(include_admin_equiv=True):
+    for role in list_role_catalog(include_admin=True):
         role_row = {
             "role": role,
             "immutable": role == "admin",
@@ -968,8 +968,8 @@ def _normalize_allowed_roles(raw: str | list | None) -> str:
         vals = [str(x or '').strip().lower() for x in raw]
     else:
         vals = [x.strip().lower() for x in str(raw or '').split(',')]
-    known_roles = set(list_role_catalog(include_admin_equiv=True))
-    allowed = [r for r in vals if r in known_roles and r not in ADMIN_EQUIV_ROLES]
+    known_roles = set(list_role_catalog(include_admin=True))
+    allowed = [r for r in vals if r in known_roles and r != 'admin']
     # remove duplicados preservando ordem
     out: list[str] = []
     for r in allowed:
@@ -3058,11 +3058,11 @@ class Handler(BaseHTTPRequestHandler):
                         "created_at": r["created_at"],
                         "associated_tasks": task_count,
                     })
-            return self._json(200, {"ok": True, "users": users, "roles": list_role_catalog(include_admin_equiv=True)})
+            return self._json(200, {"ok": True, "users": users, "roles": list_role_catalog(include_admin=True)})
 
         if p == "/api/admin/roles":
             if not self._require_module("projects.create_edit"): return
-            roles = list_role_catalog(include_admin_equiv=False)
+            roles = list_role_catalog(include_admin=False)
             return self._json(200, {"ok": True, "roles": roles})
 
         if p == "/api/admin/settings":
@@ -3077,14 +3077,14 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_root_admin(): return
             return self._json(200, {
                 "ok": True,
-                "roles": list_role_catalog(include_admin_equiv=True),
+                "roles": list_role_catalog(include_admin=True),
                 "modules": list_app_modules(active_only=False),
                 "matrix": list_role_module_matrix(),
             })
 
         if p == "/api/admin/reports":
             if not self._require_module("settings.periodic_reports"): return
-            return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": list_role_catalog(include_admin_equiv=True), "priorities": ["TODOS", *PRIORITIES]})
+            return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": list_role_catalog(include_admin=True), "priorities": ["TODOS", *PRIORITIES]})
 
         if p == "/api/admin/audit":
             user = self._require_auth()
