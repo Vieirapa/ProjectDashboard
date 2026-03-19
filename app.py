@@ -3323,7 +3323,22 @@ class Handler(BaseHTTPRequestHandler):
             done, msg = update_admin_settings(body, admin["username"])
             if done:
                 audit(admin["username"], "admin.settings.update", "app_settings", json.dumps({k: ("***" if "pass" in k else v) for k, v in body.items()}, ensure_ascii=False))
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "settings": get_admin_settings() if done else None})
+                settings_now = get_admin_settings()
+                backup_cfg = _backup_config(settings_now)
+                return self._json(200, {
+                    "ok": True,
+                    "error": None,
+                    "settings": settings_now,
+                    "saved": {
+                        "backup": {
+                            "enabled": bool(backup_cfg.get("enabled")),
+                            "path": str(backup_cfg.get("path") or ""),
+                            "weekdays": [str(x) for x in (backup_cfg.get("weekdays") or [])],
+                            "run_time": str(backup_cfg.get("run_time") or ""),
+                        }
+                    },
+                })
+            return self._json(400, {"ok": False, "error": msg, "settings": None})
 
         if p.startswith("/api/roles/") and p.endswith("/modules"):
             admin = self._require_root_admin()
