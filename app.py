@@ -2524,17 +2524,36 @@ def get_user_profile(username: str) -> dict | None:
     if not isinstance(parsed, dict):
         parsed = {}
 
+    normalized_parsed: dict[str, str] = {}
+    for k, v in parsed.items():
+        nk = _normalize_priority_label(str(k))
+        if nk:
+            normalized_parsed[nk] = str(v)
+
     colors = {
-        "Baixa": str(parsed.get("Baixa") or default_colors["Baixa"]),
-        "Média": str(parsed.get("Média") or default_colors["Média"]),
-        "Alta": str(parsed.get("Alta") or default_colors["Alta"]),
-        "Urgente": str(parsed.get("Urgente") or default_colors["Urgente"]),
+        "Baixa": str(normalized_parsed.get("Baixa") or default_colors["Baixa"]),
+        "Média": str(normalized_parsed.get("Média") or default_colors["Média"]),
+        "Alta": str(normalized_parsed.get("Alta") or default_colors["Alta"]),
+        "Urgente": str(normalized_parsed.get("Urgente") or default_colors["Urgente"]),
     }
 
     profile["priority_color_enabled"] = bool(int(profile.get("priority_color_enabled") or 0))
     profile["priority_colors"] = colors
     profile.pop("priority_colors_json", None)
     return profile
+
+
+def _normalize_priority_label(raw: str) -> str:
+    v = str(raw or "").strip().lower()
+    if v in {"baixa"}:
+        return "Baixa"
+    if v in {"media", "média"}:
+        return "Média"
+    if v in {"alta"}:
+        return "Alta"
+    if v in {"urgente"}:
+        return "Urgente"
+    return ""
 
 
 def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
@@ -2558,9 +2577,15 @@ def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
     if not isinstance(incoming_colors, dict):
         incoming_colors = {}
 
+    normalized_incoming: dict[str, str] = {}
+    for raw_k, raw_v in incoming_colors.items():
+        nk = _normalize_priority_label(str(raw_k))
+        if nk:
+            normalized_incoming[nk] = str(raw_v)
+
     colors = {}
     for key in ["Baixa", "Média", "Alta", "Urgente"]:
-        value = str(incoming_colors.get(key) or default_colors[key]).strip()
+        value = str(normalized_incoming.get(key) or default_colors[key]).strip()
         if not re.match(r"^#[0-9a-fA-F]{6}$", value):
             return False, f"Cor inválida para prioridade {key}"
         colors[key] = value

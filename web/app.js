@@ -44,6 +44,17 @@ let behavior = {
   },
 };
 
+function colorByPriorityKey(colors, key, fallback) {
+  const c = colors || {};
+  const direct = c[key];
+  if (direct) return direct;
+  if (key === 'Média') return c['Media'] || c['média'] || c['media'] || fallback;
+  if (key === 'Baixa') return c['baixa'] || fallback;
+  if (key === 'Alta') return c['alta'] || fallback;
+  if (key === 'Urgente') return c['urgente'] || fallback;
+  return fallback;
+}
+
 function projectIdFromUrlOrNull() {
   const rawPid = new URLSearchParams(window.location.search).get('project_id');
   const pid = Number(rawPid);
@@ -102,10 +113,10 @@ async function loadMe() {
     const colors = p.priority_colors || {};
     behavior.priorityColorEnabled = !!p.priority_color_enabled;
     behavior.priorityColors = {
-      'Baixa': colors['Baixa'] || '#dbeafe',
-      'Média': colors['Média'] || '#fef3c7',
-      'Alta': colors['Alta'] || '#fed7aa',
-      'Urgente': colors['Urgente'] || '#fecaca',
+      'Baixa': colorByPriorityKey(colors, 'Baixa', '#dbeafe'),
+      'Média': colorByPriorityKey(colors, 'Média', '#fef3c7'),
+      'Alta': colorByPriorityKey(colors, 'Alta', '#fed7aa'),
+      'Urgente': colorByPriorityKey(colors, 'Urgente', '#fecaca'),
     };
   } catch {
     // fallback silencioso para defaults
