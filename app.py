@@ -2751,9 +2751,15 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def _can_manage_setting_keys(self, user: dict, keys: list[str]) -> tuple[bool, str | None]:
+        # defensive canonicalization to tolerate cached/legacy frontend payload variations
+        canonical_map = {re.sub(r"[^a-z0-9._-]", "", str(k).strip().lower()): v for k, v in SETTING_KEY_TO_MODULE.items()}
+
         for key in keys:
-            normalized_key = str(key or "").strip()
-            module_id = SETTING_KEY_TO_MODULE.get(normalized_key)
+            raw_key = str(key or "")
+            normalized_key = raw_key.strip()
+            canonical_key = re.sub(r"[^a-z0-9._-]", "", normalized_key.lower())
+
+            module_id = SETTING_KEY_TO_MODULE.get(normalized_key) or canonical_map.get(canonical_key)
             if not module_id:
                 return False, f"chave de configuração não mapeada: {normalized_key}"
             if not self._has_module_access(module_id, user):
