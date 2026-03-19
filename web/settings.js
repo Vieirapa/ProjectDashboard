@@ -155,6 +155,12 @@ function weekdayLabel(v) {
   return m[String(v)] || String(v);
 }
 
+function summarizeWeekdays(values) {
+  const arr = (values || []).map((x) => String(x));
+  if (!arr.length) return 'nenhum dia selecionado';
+  return arr.map((d) => weekdayLabel(d)).join(', ');
+}
+
 function reportConfigLine(r) {
   const statuses = (r.statuses || []).join('; ') || '-';
   const priorities = (r.priorities || []).join('; ') || '-';
@@ -578,12 +584,13 @@ backupForm.onsubmit = async (e) => {
     f.backupRunTime.value = getSetting(savedSettings, 'backup.run_time', f.backupRunTime.value || '03:00');
     let days = [];
     try { days = JSON.parse(getSetting(savedSettings, 'backup.weekdays', '[]')); } catch { days = []; }
-    const setDays = new Set((days || []).map(String));
+    const normalizedDays = (days || []).map((x) => String(x)).filter((x) => ['0','1','2','3','4','5','6'].includes(x));
+    const setDays = new Set(normalizedDays);
     f.backupWeekdays.querySelectorAll('input[type="checkbox"]').forEach((el) => {
       el.checked = setDays.has(String(el.value));
     });
 
-    backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong></span>`;
+    backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong> · Horário: <strong>${escHtml(f.backupRunTime.value || '-')}</strong> · Dias: <strong>${escHtml(summarizeWeekdays(normalizedDays))}</strong></span>`;
   } catch (err) {
     backupFeedback.textContent = err.message;
   }
