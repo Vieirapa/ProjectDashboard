@@ -45,6 +45,20 @@ The application currently uses SQLite:
 
 This keeps deployment simple while preserving a future migration path to PostgreSQL/MySQL.
 
+## Runtime data policy
+
+This repository versions **source code only**.
+Runtime/business data must stay out of Git and be preserved in server storage during upgrades.
+
+Runtime paths (not source code):
+
+- `documents/`
+- `data/`
+- `uploads/`
+- `*.db`, `*.sqlite`, `*.sqlite3`, `*.log`
+
+See detailed note: `docs/RUNTIME_DATA_POLICY.md`
+
 ## Default user
 
 On first boot, the app creates an admin account:
