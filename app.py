@@ -953,6 +953,201 @@ def list_role_catalog(include_admin: bool = True) -> list[str]:
     return [r for r in out if r != "admin"]
 
 
+def role_exists(role_key: str, active_only: bool = True) -> bool:
+    role = str(role_key or "").strip().lower()
+    if not role:
+        return False
+    with db() as conn:
+        if active_only:
+            row = conn.execute("SELECT 1 FROM roles WHERE role_key=? AND active=1", (role,)).fetchone()
+        else:
+            row = conn.execute("SELECT 1 FROM roles WHERE role_key=?", (role,)).fetchone()
+    return row is not None
+
+
+def list_roles_admin_view() -> list[dict]:
+    with db() as conn:
+        role_rows = conn.execute(
+            """
+            SELECT id, role_key, display_name, is_system, is_superadmin, active, created_at, updated_at
+            FROM roles
+            ORDER BY id
+            """
+        ).fetchall()
+
+        user_counts = {
+            str(r["role"] or "").strip().lower(): int(r["c"] or 0)
+            for r in conn.execute(
+                "SELECT role, COUNT(*) AS c FROM users GROUP BY role"
+            ).fetchall()
+        }
+
+        module_counts = {
+            int(r["role_id"]): int(r["c"] or 0)
+            for r in conn.execute(
+                "SELECT role_id, COUNT(*) AS c FROM role_module_permissions WHERE can_access=1 GROUP BY role_id"
+            ).fetchall()
+        }
+
+    out = []
+    for r in role_rows:
+        role_key = str(r["role_key"])
+        out.append({
+            "id": int(r["id"]),
+            "role_key": role_key,
+            "display_name": str(r["display_name"] or role_key),
+            "is_system": bool(int(r["is_system"] or 0)),
+            "is_superadmin": bool(int(r["is_superadmin"] or 0)),
+            "active": bool(int(r["active"] or 0)),
+            "created_at": str(r["created_at"] or ""),
+            "updated_at": str(r["updated_at"] or ""),
+            "usage": {
+                "users": int(user_counts.get(role_key, 0)),
+                "enabled_modules": int(module_counts.get(int(r["id"]), 0)),
+            },
+        })
+    return out
+
+
+def create_role_admin(payload: dict, actor: str) -> tuple[bool, str, dict | None]:
+    role_key = str(payload.get("role_key") or payload.get("roleKey") or "").strip().lower()
+    display_name = str(payload.get("display_name") or payload.get("displayName") or role_key).strip()
+    if not role_key:
+        return False, "role_key é obrigatório", None
+    if not re.fullmatch(r"[a-z0-9_\-]{2,64}", role_key):
+        return False, "role_key inválido", None
+    if role_key == "admin":
+        return False, "role admin é reservada", None
+    if not display_name:
+        return False, "display_name é obrigatório", None
+
+    now = now_iso()
+    with db() as conn:
+        exists = conn.execute("SELECT id FROM roles WHERE role_key=?", (role_key,)).fetchone()
+        if exists:
+            return False, "role já existe", None
+
+        conn.execute(
+            """
+            INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+            VALUES (?, ?, 0, 0, 1, ?, ?, ?, ?)
+            """,
+            (role_key, display_name, now, now, actor, actor),
+        )
+        role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role_key,)).fetchone()
+        role_id = int(role_row["id"])
+
+        # defaults: novos módulos inicialmente false
+        modules = conn.execute("SELECT module_id FROM app_modules").fetchall()
+        for m in modules:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+                VALUES (?, ?, 0, ?, ?)
+                """,
+                (role_id, str(m["module_id"]), now, actor),
+            )
+
+    return True, "ok", {"id": role_id, "role_key": role_key, "display_name": display_name}
+
+
+def update_role_admin(selector: str, payload: dict, actor: str) -> tuple[bool, str, dict | None]:
+    sel = str(selector or "").strip()
+    if not sel:
+        return False, "role inválida", None
+
+    with db() as conn:
+        if sel.isdigit():
+            role_row = conn.execute("SELECT * FROM roles WHERE id=?", (int(sel),)).fetchone()
+        else:
+            role_row = conn.execute("SELECT * FROM roles WHERE role_key=?", (sel.lower(),)).fetchone()
+
+        if role_row is None:
+            return False, "role não encontrada", None
+
+        role_key = str(role_row["role_key"])
+        if role_key == "admin" or bool(int(role_row["is_superadmin"] or 0)):
+            # apenas allow active toggle=true (no-op) and display_name same; prática: imutável
+            return False, "role admin é imutável", None
+
+        updates = []
+        vals = []
+
+        if "display_name" in payload or "displayName" in payload:
+            display_name = str(payload.get("display_name") or payload.get("displayName") or "").strip()
+            if not display_name:
+                return False, "display_name inválido", None
+            updates.append("display_name=?")
+            vals.append(display_name)
+
+        if "active" in payload:
+            active = 1 if bool(payload.get("active")) else 0
+            updates.append("active=?")
+            vals.append(active)
+
+        if not updates:
+            return False, "nenhuma alteração informada", None
+
+        updates.append("updated_at=?")
+        vals.append(now_iso())
+        updates.append("updated_by=?")
+        vals.append(actor)
+        vals.append(int(role_row["id"]))
+
+        conn.execute(f"UPDATE roles SET {', '.join(updates)} WHERE id=?", tuple(vals))
+
+        out = conn.execute("SELECT id, role_key, display_name, active FROM roles WHERE id=?", (int(role_row["id"]),)).fetchone()
+    return True, "ok", dict(out) if out else None
+
+
+def delete_role_admin(selector: str, actor: str, reassign_to: str | None = None) -> tuple[bool, str]:
+    sel = str(selector or "").strip()
+    if not sel:
+        return False, "role inválida"
+    reass = str(reassign_to or "").strip().lower()
+
+    with db() as conn:
+        if sel.isdigit():
+            role_row = conn.execute("SELECT * FROM roles WHERE id=?", (int(sel),)).fetchone()
+        else:
+            role_row = conn.execute("SELECT * FROM roles WHERE role_key=?", (sel.lower(),)).fetchone()
+
+        if role_row is None:
+            return False, "role não encontrada"
+
+        role_key = str(role_row["role_key"])
+        if role_key == "admin" or bool(int(role_row["is_superadmin"] or 0)) or bool(int(role_row["is_system"] or 0)):
+            return False, "role protegida não pode ser removida"
+
+        users_count = int(conn.execute("SELECT COUNT(*) AS c FROM users WHERE role=?", (role_key,)).fetchone()["c"])
+        if users_count > 0:
+            if not reass:
+                return False, f"role em uso por {users_count} usuário(s); informe reassign_to"
+            target = conn.execute("SELECT role_key FROM roles WHERE role_key=? AND active=1", (reass,)).fetchone()
+            if target is None:
+                return False, "reassign_to inválida"
+            if reass == role_key:
+                return False, "reassign_to deve ser diferente da role removida"
+            conn.execute("UPDATE users SET role=? WHERE role=?", (reass, role_key))
+
+        # Limpa vínculos de permissões e legado
+        conn.execute("DELETE FROM role_module_permissions WHERE role_id=?", (int(role_row["id"]),))
+        conn.execute("DELETE FROM role_modules WHERE role_name=?", (role_key,))
+
+        # Remove role de projetos legados (CSV)
+        project_rows = conn.execute("SELECT project_id, allowed_roles FROM projects").fetchall()
+        for pr in project_rows:
+            vals = [x.strip().lower() for x in str(pr["allowed_roles"] or "").split(',') if x.strip()]
+            new_vals = [x for x in vals if x != role_key]
+            if new_vals != vals:
+                conn.execute("UPDATE projects SET allowed_roles=? WHERE project_id=?", (','.join(new_vals), int(pr["project_id"])))
+
+        conn.execute("DELETE FROM roles WHERE id=?", (int(role_row["id"]),))
+
+    audit(actor, "roles.delete", role_key, json.dumps({"reassign_to": reass or None}, ensure_ascii=False))
+    return True, "ok"
+
+
 def list_app_modules(active_only: bool = False) -> list[dict]:
     with db() as conn:
         if active_only:
@@ -3274,9 +3469,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "users": users, "roles": list_role_catalog(include_admin=True)})
 
         if p == "/api/admin/roles":
-            if not self._require_module("projects.create_edit"): return
-            roles = list_role_catalog(include_admin=False)
-            return self._json(200, {"ok": True, "roles": roles})
+            user = self._require_auth()
+            if not user: return
+            can_view = self._has_module_access("projects.create_edit", user)
+            if not can_view:
+                return self._json(403, {"ok": False, "error": "forbidden"})
+            items = list_roles_admin_view()
+            return self._json(200, {
+                "ok": True,
+                "roles": [r["role_key"] for r in items if r.get("role_key") != "admin" and bool(r.get("active", True))],
+                "items": items,
+                "can_manage": (str(user.get("role") or "").strip().lower() == "admin"),
+            })
 
         if p == "/api/admin/settings":
             if not self._require_any_module(["settings.smtp", "settings.system_behavior", "settings.backup", "settings.system_diagnostics", "settings.recoverable_documents"]): return
@@ -3603,6 +3807,16 @@ class Handler(BaseHTTPRequestHandler):
                 audit(admin["username"], "project.registry.clone_from_template", str(template_project_id), f"new_project_id={new_project_id}")
             return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
+        if p == "/api/admin/roles":
+            admin = self._require_root_admin()
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg, data = create_role_admin(body or {}, admin["username"])
+            if done:
+                audit(admin["username"], "roles.create", str(data.get("role_key") if data else ""), json.dumps(data or {}, ensure_ascii=False))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "role": data if done else None})
+
         if p == "/api/admin/users":
             admin = self._require_auth()
             if not admin: return
@@ -3612,7 +3826,8 @@ class Handler(BaseHTTPRequestHandler):
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             username = (body.get("username") or "").strip()
             password = body.get("password") or ""
-            role = body.get("role") if body.get("role") in ROLES else "member"
+            requested_role = str(body.get("role") or "").strip().lower()
+            role = requested_role if role_exists(requested_role, active_only=True) else "member"
             if not username or not password:
                 return self._json(400, {"ok": False, "error": "username e password são obrigatórios"})
             try:
@@ -3631,7 +3846,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(403, {"ok": False, "error": "forbidden"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            role = body.get("role") if body.get("role") in ROLES else "member"
+            requested_role = str(body.get("role") or "").strip().lower()
+            role = requested_role if role_exists(requested_role, active_only=True) else "member"
             token = secrets.token_urlsafe(24)
             exp = (datetime.utcnow() + timedelta(days=3)).replace(microsecond=0).isoformat() + "Z"
             invite_url = f"/signup.html?token={token}"
@@ -3763,6 +3979,21 @@ class Handler(BaseHTTPRequestHandler):
                 })
             return self._json(400, {"ok": False, "error": msg, "settings": None})
 
+        if p.startswith("/api/admin/roles/"):
+            admin = self._require_root_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            selector = str(parts[3] or "").strip()
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg, data = update_role_admin(selector, body or {}, admin["username"])
+            if done:
+                audit(admin["username"], "roles.update", selector, json.dumps(data or {}, ensure_ascii=False))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "role": data if done else None})
+
         if p.startswith("/api/roles/") and p.endswith("/modules"):
             admin = self._require_root_admin()
             if not admin: return
@@ -3868,8 +4099,8 @@ class Handler(BaseHTTPRequestHandler):
             updates = []
             params = []
             if "role" in body:
-                role = body.get("role")
-                if role not in ROLES:
+                role = str(body.get("role") or "").strip().lower()
+                if not role_exists(role, active_only=True):
                     return self._json(400, {"ok": False, "error": "role inválida"})
                 updates.append("role=?")
                 params.append(role)
@@ -3904,6 +4135,18 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
+
+        if p.startswith("/api/admin/roles/"):
+            admin = self._require_root_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            selector = str(parts[3] or "").strip()
+            reassign_to = (qs.get("reassign_to", [""])[0] or "").strip().lower()
+            done, msg = delete_role_admin(selector, admin["username"], reassign_to or None)
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
         if p.startswith("/api/documents/"):
             user = self._require_auth()
             if not user: return
