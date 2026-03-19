@@ -175,10 +175,11 @@ function escHtml(s) {
 
 function formatBackupRunMessage(message) {
   const raw = String(message || '').trim();
-  const m = raw.match(/backup salvo em\s+(.+?)\s*\(/i);
-  if (!m) return escHtml(raw || 'Backup manual executado ✅');
+  const concise = raw.split('| Obs:')[0].trim();
+  const m = concise.match(/backup salvo em\s+(.+?)\s*\(/i);
+  if (!m) return escHtml(concise || raw || 'Backup manual executado ✅');
   const backupPath = m[1].trim();
-  return `Backup salvo em <strong>${escHtml(backupPath)}</strong><br><span class="small">${escHtml(raw)}</span>`;
+  return `Backup salvo em <strong>${escHtml(backupPath)}</strong><br><span class="small">${escHtml(concise)}</span>`;
 }
 
 function renderDiagnostics(diagnostics) {
