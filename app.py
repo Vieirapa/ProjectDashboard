@@ -294,6 +294,135 @@ def can_delete_document(role: str, user: str, document: dict) -> bool:
     return False
 
 
+def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
+    # Fase 1: base de roles no banco (compatível com modelo atual)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_key TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            is_system INTEGER NOT NULL DEFAULT 0,
+            is_superadmin INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT '',
+            created_by TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_roles_active ON roles(active)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS role_module_permissions (
+            role_id INTEGER NOT NULL,
+            module_id TEXT NOT NULL,
+            can_access INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (role_id, module_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_role_module_permissions_module ON role_module_permissions(module_id)")
+
+    now = now_iso()
+
+    # Seed inicial do catálogo oficial
+    for role_key in ROLES:
+        is_super = 1 if role_key == "admin" else 0
+        is_system = 1 if role_key == "admin" else 0
+        conn.execute(
+            """
+            INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+            VALUES (?, ?, ?, ?, 1, ?, ?, 'system', 'system')
+            ON CONFLICT(role_key) DO UPDATE SET
+                display_name=excluded.display_name,
+                updated_at=excluded.updated_at,
+                updated_by='system'
+            """,
+            (role_key, role_key, is_system, is_super, now, now),
+        )
+
+    # Garante que roles já existentes em dados legados também existam no catálogo
+    legacy_roles = set()
+    for row in conn.execute("SELECT DISTINCT role FROM users WHERE role IS NOT NULL AND TRIM(role)<>''").fetchall():
+        legacy_roles.add(str(row[0]).strip().lower())
+    for row in conn.execute("SELECT DISTINCT role_name FROM role_modules WHERE role_name IS NOT NULL AND TRIM(role_name)<>''").fetchall():
+        legacy_roles.add(str(row[0]).strip().lower())
+    for row in conn.execute("SELECT DISTINCT allowed_roles FROM projects WHERE allowed_roles IS NOT NULL AND TRIM(allowed_roles)<>''").fetchall():
+        for role_name in str(row[0] or "").split(','):
+            role_name = role_name.strip().lower()
+            if role_name:
+                legacy_roles.add(role_name)
+
+    for role_key in sorted(legacy_roles):
+        conn.execute(
+            """
+            INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+            VALUES (?, ?, 0, 0, 1, ?, ?, 'migration', 'migration')
+            ON CONFLICT(role_key) DO NOTHING
+            """,
+            (role_key, role_key, now, now),
+        )
+
+    # Sincroniza permissões legadas para a nova tabela
+    role_map = {
+        str(r["role_key"]): int(r["id"])
+        for r in conn.execute("SELECT id, role_key FROM roles").fetchall()
+    }
+
+    legacy_permissions = conn.execute(
+        "SELECT role_name, module_id, can_access, updated_at, updated_by FROM role_modules"
+    ).fetchall()
+
+    for p in legacy_permissions:
+        role_key = str(p["role_name"] or "").strip().lower()
+        module_id = str(p["module_id"] or "").strip()
+        if not role_key or not module_id:
+            continue
+        role_id = role_map.get(role_key)
+        if not role_id:
+            continue
+        conn.execute(
+            """
+            INSERT INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(role_id, module_id) DO UPDATE SET
+                can_access=excluded.can_access,
+                updated_at=excluded.updated_at,
+                updated_by=excluded.updated_by
+            """,
+            (
+                role_id,
+                module_id,
+                int(p["can_access"] or 0),
+                str(p["updated_at"] or now),
+                str(p["updated_by"] or "migration"),
+            ),
+        )
+
+    # Regra de negócio: admin sempre com acesso total nos módulos ativos
+    admin_id = role_map.get("admin")
+    if admin_id:
+        modules = conn.execute("SELECT module_id FROM app_modules").fetchall()
+        for m in modules:
+            module_id = str(m["module_id"])
+            conn.execute(
+                """
+                INSERT INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+                VALUES (?, ?, 1, ?, 'system')
+                ON CONFLICT(role_id, module_id) DO UPDATE SET
+                    can_access=1,
+                    updated_at=excluded.updated_at,
+                    updated_by='system'
+                """,
+                (admin_id, module_id, now),
+            )
+
+
 def init_db():
     with db() as conn:
         conn.execute("""
@@ -518,6 +647,8 @@ def init_db():
                 """,
                 (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now_iso()),
             )
+
+        ensure_roles_foundation(conn)
 
         for k, v in [
             ("smtp.host", ""),
@@ -773,7 +904,6 @@ def list_usernames() -> list[str]:
 
 
 def list_role_catalog(include_admin: bool = True) -> list[str]:
-    # Base catálogo versionado no código
     seen: set[str] = set()
     out: list[str] = []
 
@@ -784,11 +914,22 @@ def list_role_catalog(include_admin: bool = True) -> list[str]:
         seen.add(role)
         out.append(role)
 
-    for role in ROLES:
-        add_role(role)
-
-    # Papéis dinâmicos já existentes no banco (futuro-friendly)
     with db() as conn:
+        # Fonte principal (fase 1): tabela roles
+        try:
+            role_rows = conn.execute(
+                "SELECT role_key FROM roles WHERE active=1 ORDER BY id"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            role_rows = []
+
+        for r in role_rows:
+            add_role(r["role_key"])
+
+        # Compatibilidade/fallback (bases legadas)
+        for role in ROLES:
+            add_role(role)
+
         user_roles = conn.execute(
             "SELECT DISTINCT role FROM users WHERE role IS NOT NULL AND TRIM(role)<>''"
         ).fetchall()
@@ -836,13 +977,26 @@ def list_app_modules(active_only: bool = False) -> list[dict]:
 def list_role_module_matrix() -> list[dict]:
     modules = list_app_modules(active_only=False)
     module_ids = [m["module_id"] for m in modules]
-    with db() as conn:
-        rows = conn.execute(
-            "SELECT role_name, module_id, can_access FROM role_modules"
-        ).fetchall()
+
     access_map: dict[tuple[str, str], bool] = {}
-    for r in rows:
-        access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
+    with db() as conn:
+        try:
+            rows = conn.execute(
+                """
+                SELECT r.role_key AS role_name, p.module_id, p.can_access
+                FROM role_module_permissions p
+                JOIN roles r ON r.id = p.role_id
+                """
+            ).fetchall()
+            for r in rows:
+                access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
+        except sqlite3.OperationalError:
+            # fallback legado
+            rows = conn.execute(
+                "SELECT role_name, module_id, can_access FROM role_modules"
+            ).fetchall()
+            for r in rows:
+                access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
 
     matrix: list[dict] = []
     for role in list_role_catalog(include_admin=True):
@@ -859,6 +1013,7 @@ def list_role_module_matrix() -> list[dict]:
 
 def sync_module_catalog() -> None:
     with db() as conn:
+        now = now_iso()
         for mod in MODULE_CATALOG_V1:
             conn.execute(
                 """
@@ -869,8 +1024,27 @@ def sync_module_catalog() -> None:
                     label=excluded.label,
                     active=excluded.active
                 """,
-                (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now_iso()),
+                (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now),
             )
+
+        # Fase 1: manter role foundation e default de permissões para módulos novos
+        ensure_roles_foundation(conn)
+
+        role_rows = conn.execute("SELECT id, role_key FROM roles WHERE active=1").fetchall()
+        module_rows = conn.execute("SELECT module_id FROM app_modules").fetchall()
+        for rr in role_rows:
+            role_id = int(rr["id"])
+            role_key = str(rr["role_key"])
+            for mm in module_rows:
+                module_id = str(mm["module_id"])
+                can_access = 1 if role_key == "admin" else 0
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+                    VALUES (?, ?, ?, ?, 'system')
+                    """,
+                    (role_id, module_id, can_access, now),
+                )
 
 
 def get_role_module_permissions(role_name: str) -> dict[str, bool]:
@@ -881,10 +1055,22 @@ def get_role_module_permissions(role_name: str) -> dict[str, bool]:
         return {k: True for k in out.keys()}
 
     with db() as conn:
-        rows = conn.execute(
-            "SELECT module_id, can_access FROM role_modules WHERE role_name=?",
-            (role,),
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """
+                SELECT p.module_id, p.can_access
+                FROM role_module_permissions p
+                JOIN roles r ON r.id = p.role_id
+                WHERE r.role_key=?
+                """,
+                (role,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            rows = conn.execute(
+                "SELECT module_id, can_access FROM role_modules WHERE role_name=?",
+                (role,),
+            ).fetchall()
+
     for r in rows:
         module_id = str(r["module_id"])
         if module_id in out:
@@ -947,7 +1133,21 @@ def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool
             return False, f"módulos inválidos: {', '.join(invalid)}"
 
         now = now_iso()
+        role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role,)).fetchone()
+        if role_row is None:
+            conn.execute(
+                """
+                INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+                VALUES (?, ?, 0, 0, 1, ?, ?, ?, ?)
+                """,
+                (role, role, now, now, actor, actor),
+            )
+            role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role,)).fetchone()
+
+        role_id = int(role_row["id"])
+
         for module_id, can_access in normalized.items():
+            # Legado (compatibilidade)
             conn.execute(
                 """
                 INSERT INTO role_modules (role_name, module_id, can_access, updated_at, updated_by)
@@ -958,6 +1158,19 @@ def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool
                     updated_by=excluded.updated_by
                 """,
                 (role, module_id, int(can_access), now, actor),
+            )
+
+            # Novo modelo (fase 1+)
+            conn.execute(
+                """
+                INSERT INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(role_id, module_id) DO UPDATE SET
+                    can_access=excluded.can_access,
+                    updated_at=excluded.updated_at,
+                    updated_by=excluded.updated_by
+                """,
+                (role_id, module_id, int(can_access), now, actor),
             )
 
     return True, "ok"
