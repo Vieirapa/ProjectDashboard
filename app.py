@@ -1768,6 +1768,41 @@ def _backup_config(settings: dict) -> dict:
     }
 
 
+def _backup_state(settings: dict | None = None) -> dict:
+    settings = settings or get_admin_settings()
+    cfg = _backup_config(settings)
+    keys = ["backup.enabled", "backup.path", "backup.weekdays", "backup.run_time"]
+    rows = [settings.get(k, {}) for k in keys]
+    updated_at = max([str((r or {}).get("updated_at") or "") for r in rows] + [""])
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "path": str(cfg.get("path") or ""),
+        "weekdays": [str(x) for x in (cfg.get("weekdays") or [])],
+        "run_time": str(cfg.get("run_time") or ""),
+        "config_updated_at": updated_at,
+    }
+
+
+def _normalize_setting_value_for_compare(key: str, value: str) -> str:
+    v = str(value or "")
+    if key == "backup.enabled":
+        return "true" if v.strip().lower() in {"1", "true", "yes", "on"} else "false"
+    if key == "backup.path":
+        return str(_resolve_backup_path(v))
+    if key == "backup.weekdays":
+        try:
+            arr = json.loads(v)
+            if not isinstance(arr, list):
+                arr = []
+        except Exception:
+            arr = []
+        clean = sorted({str(x) for x in arr if str(x) in {"0", "1", "2", "3", "4", "5", "6"}})
+        return json.dumps(clean, ensure_ascii=False)
+    if key == "backup.run_time":
+        return v.strip()
+    return v.strip()
+
+
 def _backup_permission_hint(path: Path) -> str:
     p = str(path)
     return (
@@ -1893,6 +1928,40 @@ def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict
             it["when"] = st
 
     return True, "ok", {"path": str(backup_dir), "items": items, "total": len(items)}
+
+
+def next_backup_run() -> dict:
+    settings = get_admin_settings()
+    cfg = _backup_config(settings)
+    result = {
+        "enabled": bool(cfg.get("enabled")),
+        "weekdays": [str(x) for x in (cfg.get("weekdays") or [])],
+        "run_time": str(cfg.get("run_time") or "03:00"),
+        "next_run_iso": None,
+        "next_run_human": None,
+    }
+    if not result["enabled"] or not result["weekdays"]:
+        return result
+
+    try:
+        hh, mm = result["run_time"].split(":")
+        hour = int(hh); minute = int(mm)
+    except Exception:
+        hour, minute = 3, 0
+
+    allowed = {int(x) for x in result["weekdays"] if str(x).isdigit()}
+    now = datetime.now()
+    for i in range(0, 15):
+        d = now + timedelta(days=i)
+        if d.weekday() not in allowed:
+            continue
+        candidate = d.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= now:
+            continue
+        result["next_run_iso"] = candidate.isoformat()
+        result["next_run_human"] = candidate.strftime("%Y-%m-%d %H:%M")
+        break
+    return result
 
 
 def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> tuple[bool, str]:
@@ -2978,6 +3047,10 @@ class Handler(BaseHTTPRequestHandler):
                 "error": None if done else msg,
             })
 
+        if p == "/api/admin/system/backup/next-run":
+            if not self._require_module("settings.backup"): return
+            return self._json(200, {"ok": True, "schedule": next_backup_run()})
+
         self.send_error(404)
 
     def do_POST(self):
@@ -3338,19 +3411,28 @@ class Handler(BaseHTTPRequestHandler):
             if done:
                 audit(admin["username"], "admin.settings.update", "app_settings", json.dumps({k: ("***" if "pass" in k else v) for k, v in body.items()}, ensure_ascii=False))
                 settings_now = get_admin_settings()
-                backup_cfg = _backup_config(settings_now)
+                backup_state = _backup_state(settings_now)
+
+                mismatches: list[dict] = []
+                for key, sent_value in (body or {}).items():
+                    persisted_raw = settings_now.get(key, {}).get("value", "")
+                    sent_norm = _normalize_setting_value_for_compare(str(key), str(sent_value))
+                    persisted_norm = _normalize_setting_value_for_compare(str(key), str(persisted_raw))
+                    if sent_norm != persisted_norm:
+                        mismatches.append({
+                            "key": str(key),
+                            "sent": sent_norm,
+                            "persisted": persisted_norm,
+                        })
+
                 return self._json(200, {
                     "ok": True,
                     "error": None,
                     "settings": settings_now,
                     "saved": {
-                        "backup": {
-                            "enabled": bool(backup_cfg.get("enabled")),
-                            "path": str(backup_cfg.get("path") or ""),
-                            "weekdays": [str(x) for x in (backup_cfg.get("weekdays") or [])],
-                            "run_time": str(backup_cfg.get("run_time") or ""),
-                        }
+                        "backup": backup_state,
                     },
+                    "mismatch": mismatches,
                 })
             return self._json(400, {"ok": False, "error": msg, "settings": None})
 

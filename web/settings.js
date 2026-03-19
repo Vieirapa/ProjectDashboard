@@ -9,6 +9,7 @@ const feedback = document.getElementById('feedback');
 const workflowFeedback = document.getElementById('workflowFeedback');
 const reportFeedback = document.getElementById('reportFeedback');
 const backupFeedback = document.getElementById('backupFeedback');
+const backupNextRun = document.getElementById('backupNextRun');
 const diagFeedback = document.getElementById('diagFeedback');
 const deletedPolicyFeedback = document.getElementById('deletedPolicyFeedback');
 const reportsList = document.getElementById('reportsList');
@@ -186,6 +187,23 @@ function formatBackupRunMessage(message) {
   if (!m) return escHtml(concise || raw || 'Backup manual executado ✅');
   const backupPath = m[1].trim();
   return `Backup salvo em <strong>${escHtml(backupPath)}</strong><br><span class="small">${escHtml(concise)}</span>`;
+}
+
+async function refreshBackupNextRun() {
+  if (!backupNextRun || !hasModule('settings.backup')) return;
+  try {
+    const d = await api('/api/admin/system/backup/next-run');
+    const s = d?.schedule || {};
+    if (!s.enabled) {
+      backupNextRun.innerHTML = '<span class="small">Agendamento automático: <strong>desabilitado</strong></span>';
+      return;
+    }
+    const days = summarizeWeekdays((s.weekdays || []).map((x) => String(x)));
+    const when = s.next_run_human || 'indisponível';
+    backupNextRun.innerHTML = `<span class="small">Próxima execução prevista: <strong>${escHtml(when)}</strong> · Dias: <strong>${escHtml(days)}</strong> · Horário: <strong>${escHtml(s.run_time || '-')}</strong></span>`;
+  } catch {
+    backupNextRun.textContent = '';
+  }
 }
 
 function renderDiagnostics(diagnostics) {
@@ -566,13 +584,20 @@ workflowForm.onsubmit = async (e) => {
 backupForm.onsubmit = async (e) => {
   e.preventDefault();
   backupFeedback.textContent = '';
+
+  const submitBtn = backupForm.querySelector('button[type="submit"]');
+  if (submitBtn?.disabled) return;
+
   const selectedDays = checkedValues(f.backupWeekdays);
   if (f.backupEnabled.checked && !selectedDays.length) {
     backupFeedback.textContent = 'Selecione ao menos um dia da semana para backup automático.';
     return;
   }
+
   try {
-    await api('/api/admin/settings', {
+    if (submitBtn) submitBtn.disabled = true;
+
+    const resp = await api('/api/admin/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -585,11 +610,19 @@ backupForm.onsubmit = async (e) => {
 
     // Source of truth after save: reload from backend and build confirmation from reloaded UI state.
     await loadSettings();
+    await refreshBackupNextRun();
     const persistedDays = checkedValues(f.backupWeekdays).map((x) => String(x));
 
-    backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong> · Horário: <strong>${escHtml(f.backupRunTime.value || '-')}</strong> · Dias: <strong>${escHtml(summarizeWeekdays(persistedDays))}</strong></span>`;
+    let suffix = '';
+    if (Array.isArray(resp?.mismatch) && resp.mismatch.length) {
+      suffix = `<br><span class="small" style="color:#b45309;">⚠️ Divergência detectada em: ${escHtml(resp.mismatch.map((m) => m.key).join(', '))}</span>`;
+    }
+
+    backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong> · Horário: <strong>${escHtml(f.backupRunTime.value || '-')}</strong> · Dias: <strong>${escHtml(summarizeWeekdays(persistedDays))}</strong></span>${suffix}`;
   } catch (err) {
     backupFeedback.textContent = err.message;
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
   }
 };
 
@@ -875,6 +908,10 @@ logoutBtn.onclick = async () => {
     } catch (e) {
       backupRestoreList.textContent = 'Não foi possível carregar a lista de backups nesta instância (endpoint indisponível ou serviço desatualizado).';
     }
+  }
+
+  if (hasModule('settings.backup')) {
+    await refreshBackupNextRun();
   }
 
   if (hasModule('settings.system_diagnostics')) {

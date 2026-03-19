@@ -83,6 +83,9 @@ Send SMTP test email.
 ### `POST /api/admin/system/backup/run`
 Run system backup now.
 
+### `GET /api/admin/system/backup/next-run`
+Returns computed next scheduled automatic backup execution from persisted settings.
+
 ### `GET /api/admin/system/diagnostics`
 Run system diagnostics.
 
