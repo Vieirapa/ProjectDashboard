@@ -20,6 +20,9 @@ let me = null;
 let projects = [];
 let selectedProjectId = null;
 let allowedModules = new Set();
+let projectRolesCatalog = [];
+
+const DEFAULT_PROJECT_ROLES = ['member', 'desenhista', 'colaborador', 'revisor', 'cliente'];
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -45,11 +48,56 @@ function fmtDate(v) {
   return d.toLocaleString('pt-BR');
 }
 
+function renderAllowedRolesChecks(roles) {
+  const normalized = Array.from(new Set(
+    (Array.isArray(roles) ? roles : [])
+      .map((r) => String(r || '').trim().toLowerCase())
+      .filter(Boolean),
+  ));
+
+  const fallback = DEFAULT_PROJECT_ROLES.filter((r) => !normalized.includes(r));
+  projectRolesCatalog = normalized.concat(fallback);
+
+  if (!allowedRolesBox) return;
+  if (!projectRolesCatalog.length) {
+    allowedRolesBox.innerHTML = '<span class="small">Nenhuma role disponível.</span>';
+    return;
+  }
+
+  allowedRolesBox.innerHTML = projectRolesCatalog.map((role) => (
+    `<label class="inline-check"><input type="checkbox" class="allowed-role" value="${esc(role)}" /> ${esc(role)}</label>`
+  )).join('');
+}
+
+async function loadProjectRolesCatalog() {
+  try {
+    const d = await api('/api/admin/roles');
+    renderAllowedRolesChecks(d?.roles || []);
+  } catch {
+    // fallback seguro para não bloquear a tela
+    renderAllowedRolesChecks(DEFAULT_PROJECT_ROLES);
+  }
+}
+
 function setAllowedRolesChecks(csvValue) {
-  const set = new Set(String(csvValue || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
+  const selectedRoles = Array.from(new Set(
+    String(csvValue || '')
+      .split(',')
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean),
+  ));
+
+  // Se houver role já salva no projeto mas ausente no catálogo atual,
+  // inclui dinamicamente no formulário para não perder dado ao salvar.
+  const missing = selectedRoles.filter((role) => !projectRolesCatalog.includes(role));
+  if (missing.length) {
+    renderAllowedRolesChecks(projectRolesCatalog.concat(missing));
+  }
+
+  const selectedSet = new Set(selectedRoles);
   const checks = allowedRolesBox?.querySelectorAll('.allowed-role') || [];
   checks.forEach((c) => {
-    c.checked = set.has(String(c.value || '').toLowerCase());
+    c.checked = selectedSet.has(String(c.value || '').toLowerCase());
   });
 }
 
@@ -319,6 +367,7 @@ logoutBtn.onclick = async () => {
 (async () => {
   try {
     await loadMe();
+    await loadProjectRolesCatalog();
     await refresh();
   } catch {
     window.location.href = '/login.html';
