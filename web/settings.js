@@ -44,6 +44,7 @@ const f = {
   inviteDefaultMessage: document.getElementById('invite_default_message'),
   smtpTestTo: document.getElementById('smtp_test_to'),
   defaultDueDays: document.getElementById('default_due_days'),
+  dependencyMaxStatus: document.getElementById('dependency_max_status'),
   backupEnabled: document.getElementById('backup_enabled'),
   backupPath: document.getElementById('backup_path'),
   backupWeekdays: document.getElementById('backup_weekdays'),
@@ -279,6 +280,7 @@ async function loadSettings() {
   f.tls.checked = String(getSetting(s, 'smtp.tls', 'true')).toLowerCase() !== 'false';
   f.inviteDefaultMessage.value = getSetting(s, 'invite.default_message', '');
   f.defaultDueDays.value = getSetting(s, 'workflow.default_due_days', '7');
+  f.dependencyMaxStatus.value = getSetting(s, 'workflow.dependency_max_status', 'Backlog');
   f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
   f.backupPath.value = getSetting(s, 'backup.path', '/opt/documentdashboard/data/backups');
   lastPersistedBackupPath = f.backupPath.value || '';
@@ -620,9 +622,11 @@ workflowForm.onsubmit = async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         'workflow.default_due_days': f.defaultDueDays.value,
+        'workflow.dependency_max_status': f.dependencyMaxStatus.value,
       }),
     });
-    workflowFeedback.textContent = 'Comportamento salvo ✅';
+    await loadSettings();
+    workflowFeedback.textContent = `Comportamento salvo ✅ (máximo com dependências pendentes: ${f.dependencyMaxStatus.value})`;
   } catch (err) {
     workflowFeedback.textContent = err.message;
   }

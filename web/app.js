@@ -32,7 +32,7 @@ const pDependsSearch = document.getElementById('pDependsSearch');
 const ownersList = document.getElementById('ownersList');
 
 let me = null;
-let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1 };
+let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1, dependencyMaxStatus: 'Backlog' };
 let createDependencyDocs = [];
 let createDependencySelected = new Set();
 let behavior = {
@@ -206,6 +206,19 @@ function canEditCard() {
   return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
 }
 
+function statusRank(status) {
+  return STATUSES_ORDER.indexOf(status);
+}
+
+const STATUSES_ORDER = ['Backlog', 'Em andamento', 'Em revisão', 'Concluído'];
+
+function statusAllowedWithDependencies(doc, targetStatus) {
+  const hasPendingDeps = !!doc?.isBlockedByDependencies;
+  if (!hasPendingDeps) return true;
+  const maxStatus = state?.dependencyMaxStatus || 'Backlog';
+  return statusRank(targetStatus) <= statusRank(maxStatus);
+}
+
 function makeCard(p, statuses, priorities) {
   const card = document.createElement('div');
   card.className = 'card';
@@ -241,10 +254,25 @@ function makeCard(p, statuses, priorities) {
   }
 
   const st = document.createElement('select');
-  statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; if (s === p.status) o.selected = true; st.appendChild(o); });
+  statuses.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s;
+    o.textContent = s;
+    if (!statusAllowedWithDependencies(p, s)) {
+      o.disabled = true;
+      o.textContent = `${s} 🔒`;
+    }
+    if (s === p.status) o.selected = true;
+    st.appendChild(o);
+  });
   st.disabled = !canEditCard();
   st.onchange = async () => {
     const prev = p.status;
+    if (!statusAllowedWithDependencies(p, st.value)) {
+      st.value = prev;
+      alert(`Status bloqueado por dependências pendentes. Máximo permitido: ${state?.dependencyMaxStatus || 'Backlog'}.`);
+      return;
+    }
     try {
       await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})});
       render();

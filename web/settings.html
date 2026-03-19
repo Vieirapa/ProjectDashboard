@@ -47,6 +47,16 @@
         <form id="workflowForm" class="form-grid" style="max-width:760px;">
           <label>Prazo padrão (dias)</label>
           <input id="default_due_days" type="number" min="0" max="3650" placeholder="7" />
+
+          <label>Status máximo permitido com dependências pendentes</label>
+          <select id="dependency_max_status">
+            <option value="Backlog">Backlog</option>
+            <option value="Em andamento">Em andamento</option>
+            <option value="Em revisão">Em revisão</option>
+            <option value="Concluído">Concluído</option>
+          </select>
+          <p class="small">Se um card tiver dependências em aberto, ele só poderá avançar até este status máximo.</p>
+
           <p class="small">Regra: ao criar um documento (ou alterar status sem informar prazo manual), o prazo será recalculado para hoje + X dias.</p>
           <div class="dialog-actions" style="justify-content:flex-start;">
             <button type="submit">Salvar comportamento</button>

@@ -41,6 +41,7 @@ SETTING_KEY_TO_MODULE = {
     "smtp.tls": "settings.smtp",
     "invite.default_message": "settings.smtp",
     "workflow.default_due_days": "settings.system_behavior",
+    "workflow.dependency_max_status": "settings.system_behavior",
     "backup.enabled": "settings.backup",
     "backup.path": "settings.backup",
     "backup.weekdays": "settings.backup",
@@ -525,6 +526,7 @@ def init_db():
             ("smtp.tls", "true"),
             ("invite.default_message", "Olá!\n\nVocê foi convidado(a) para acessar o ProjectDashboard.\n\nUse este link para concluir seu cadastro:\n{invite_link}\n\nEste convite expira em: {expires_at}\n\nBem-vindo(a) ao sistema!"),
             ("workflow.default_due_days", "7"),
+            ("workflow.dependency_max_status", "Backlog"),
         ]:
             conn.execute(
                 "INSERT OR IGNORE INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, '', '')",
@@ -1343,16 +1345,18 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
             return False, msg_deps, None
 
     unresolved = unresolved_dependencies(slug, project_id)
-    if status != "Backlog" and unresolved:
-        pend = ", ".join([f"{d['name']}" for d in unresolved][:5])
-        with db() as conn:
-            conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
-            conn.execute("DELETE FROM document_dependencies WHERE document_slug=?", (slug,))
-        try:
-            shutil.rmtree(proj_dir, ignore_errors=True)
-        except Exception:
-            pass
-        return False, f"Não é possível criar fora do Backlog: dependências pendentes ({pend})", None
+    if unresolved:
+        allowed, max_status = status_allowed_with_pending_dependencies(status)
+        if not allowed:
+            pend = ", ".join([f"{d['name']}" for d in unresolved][:5])
+            with db() as conn:
+                conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
+                conn.execute("DELETE FROM document_dependencies WHERE document_slug=?", (slug,))
+            try:
+                shutil.rmtree(proj_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return False, f"Não é possível criar com dependências pendentes além de '{max_status}' ({pend})", None
 
     sync_document_meta(document)
     return True, "ok", slug
@@ -1403,11 +1407,12 @@ def patch_document(slug: str, payload: dict, project_id: int | None = None, acto
         if not done_deps:
             return False, msg_deps
 
-    if old_status == "Backlog" and p.get("status") != "Backlog":
-        pend = unresolved_dependencies(slug, effective_project_id)
-        if pend:
+    pend = unresolved_dependencies(slug, effective_project_id)
+    if pend:
+        allowed, max_status = status_allowed_with_pending_dependencies(str(p.get("status") or "Backlog"))
+        if not allowed:
             blocked = ", ".join([f"{d['name']} ({d['status']})" for d in pend][:5])
-            return False, f"Card bloqueado por dependências não concluídas: {blocked}"
+            return False, f"Card bloqueado por dependências não concluídas: máximo permitido = '{max_status}'. Pendentes: {blocked}"
 
     with db() as conn:
         conn.execute("UPDATE documents SET name=?,status=?,priority=?,owner=?,due_date=?,description=?,document_status=?,updated_at=?,released_at=? WHERE slug=?",
@@ -1444,7 +1449,7 @@ def get_admin_settings() -> dict:
 def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
     allowed = {
         "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls",
-        "invite.default_message", "workflow.default_due_days",
+        "invite.default_message", "workflow.default_due_days", "workflow.dependency_max_status",
         "backup.enabled", "backup.path", "backup.weekdays", "backup.run_time",
         "system.git_repo", "system.git_branch",
         "deleted.retention_days",
@@ -1471,6 +1476,12 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
                 return False, "workflow.default_due_days inválido"
         except Exception:
             return False, "workflow.default_due_days inválido"
+
+    if "workflow.dependency_max_status" in incoming:
+        v = str(incoming["workflow.dependency_max_status"] or "").strip()
+        if v not in STATUSES:
+            return False, "workflow.dependency_max_status inválido"
+        incoming["workflow.dependency_max_status"] = v
 
     if "backup.enabled" in incoming:
         incoming["backup.enabled"] = "true" if incoming["backup.enabled"].strip().lower() in {"1", "true", "yes", "on"} else "false"
@@ -1560,6 +1571,26 @@ def default_due_date_iso() -> str:
         days = 7
     days = max(0, min(days, 3650))
     return (datetime.utcnow() + timedelta(days=days)).date().isoformat()
+
+
+def dependency_max_status(settings: dict | None = None) -> str:
+    settings = settings or get_admin_settings()
+    configured = _setting(settings, "workflow.dependency_max_status", "PDASH_DEPENDENCY_MAX_STATUS", "Backlog")
+    return configured if configured in STATUSES else "Backlog"
+
+
+def status_rank(status: str) -> int:
+    try:
+        return STATUSES.index(status)
+    except Exception:
+        return 0
+
+
+def status_allowed_with_pending_dependencies(target_status: str, settings: dict | None = None) -> tuple[bool, str]:
+    max_status = dependency_max_status(settings)
+    if status_rank(target_status) <= status_rank(max_status):
+        return True, max_status
+    return False, max_status
 
 
 def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
@@ -2885,6 +2916,7 @@ class Handler(BaseHTTPRequestHandler):
                 "users": list_usernames(),
                 "projects": self._projects_for_user(user),
                 "selectedProjectId": selected_project_id,
+                "dependencyMaxStatus": dependency_max_status(),
             })
 
         if p.startswith("/api/documents/") and p.endswith("/document/versions"):
@@ -2944,7 +2976,7 @@ class Handler(BaseHTTPRequestHandler):
             slug = p.split("/")[3]
             doc = self._get_document_in_scope(slug, qs, user)
             if not doc: return self._reply_document_scope_error(slug, qs, user)
-            return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames()})
+            return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames(), "dependencyMaxStatus": dependency_max_status()})
 
         if p == "/api/projects-registry":
             user = self._require_auth()
