@@ -566,6 +566,11 @@ workflowForm.onsubmit = async (e) => {
 backupForm.onsubmit = async (e) => {
   e.preventDefault();
   backupFeedback.textContent = '';
+  const selectedDays = checkedValues(f.backupWeekdays);
+  if (f.backupEnabled.checked && !selectedDays.length) {
+    backupFeedback.textContent = 'Selecione ao menos um dia da semana para backup automático.';
+    return;
+  }
   try {
     const d = await api('/api/admin/settings', {
       method: 'PATCH',
@@ -573,7 +578,7 @@ backupForm.onsubmit = async (e) => {
       body: JSON.stringify({
         'backup.enabled': f.backupEnabled.checked ? 'true' : 'false',
         'backup.path': f.backupPath.value,
-        'backup.weekdays': JSON.stringify(checkedValues(f.backupWeekdays)),
+        'backup.weekdays': JSON.stringify(selectedDays),
         'backup.run_time': f.backupRunTime.value,
       }),
     });

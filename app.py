@@ -1500,6 +1500,20 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
             return False, "backup.run_time inválido"
         incoming["backup.run_time"] = rt
 
+    # Consistency rule: automatic backup requires at least one weekday selected.
+    if incoming.get("backup.enabled") == "true":
+        raw_weekdays = incoming.get("backup.weekdays")
+        if raw_weekdays is None:
+            current = get_admin_settings().get("backup.weekdays", {}).get("value", "[]")
+            raw_weekdays = current
+        try:
+            vals = json.loads(raw_weekdays)
+            valid = [str(x) for x in vals if str(x) in {"0", "1", "2", "3", "4", "5", "6"}]
+        except Exception:
+            valid = []
+        if not valid:
+            return False, "Selecione ao menos um dia da semana para backup automático"
+
     if "system.git_repo" in incoming and incoming["system.git_repo"]:
         repo = incoming["system.git_repo"].strip()
         if not (repo.startswith("https://") or repo.startswith("git@") or repo.startswith("ssh://")):
