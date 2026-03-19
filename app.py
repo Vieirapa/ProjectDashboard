@@ -42,6 +42,8 @@ SETTING_KEY_TO_MODULE = {
     "invite.default_message": "settings.smtp",
     "workflow.default_due_days": "settings.system_behavior",
     "workflow.dependency_max_status": "settings.system_behavior",
+    # Defensive alias for possible old/typo payloads from cached frontends.
+    "workflow.dependency.max.status": "settings.system_behavior",
     "backup.enabled": "settings.backup",
     "backup.path": "settings.backup",
     "backup.weekdays": "settings.backup",
@@ -2750,11 +2752,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _can_manage_setting_keys(self, user: dict, keys: list[str]) -> tuple[bool, str | None]:
         for key in keys:
-            module_id = SETTING_KEY_TO_MODULE.get(str(key))
+            normalized_key = str(key or "").strip()
+            module_id = SETTING_KEY_TO_MODULE.get(normalized_key)
             if not module_id:
-                return False, f"chave de configuração não mapeada: {key}"
+                return False, f"chave de configuração não mapeada: {normalized_key}"
             if not self._has_module_access(module_id, user):
-                return False, f"forbidden: {key}"
+                return False, f"forbidden: {normalized_key}"
         return True, None
 
     def _projects_for_user(self, user: dict | None) -> list[dict]:
