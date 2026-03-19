@@ -83,6 +83,7 @@ let backupSnapshots = [];
 let rolesModulesMeta = [];
 let rolesMatrix = [];
 let allowedModules = new Set();
+let lastPersistedBackupPath = '';
 
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
@@ -189,6 +190,44 @@ function formatBackupRunMessage(message) {
   return `Backup salvo em <strong>${escHtml(backupPath)}</strong><br><span class="small">${escHtml(concise)}</span>`;
 }
 
+function resolveRelativeBackupPath(inputPath) {
+  const raw = String(inputPath || '').trim();
+  if (!raw || raw.startsWith('/')) return raw;
+  if (!raw.startsWith('./')) return raw;
+  const base = String(lastPersistedBackupPath || '').trim();
+  const marker = '/data/';
+  const idx = base.indexOf(marker);
+  if (idx <= 0) return raw;
+  const projectRoot = base.slice(0, idx);
+  return `${projectRoot}/${raw.slice(2)}`;
+}
+
+function fallbackNextRunFromForm() {
+  if (!f.backupEnabled.checked) {
+    return { enabled: false, weekdays: [], run_time: f.backupRunTime.value || '03:00', next_run_human: null };
+  }
+  const days = checkedValues(f.backupWeekdays).map((x) => Number(x)).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+  if (!days.length) return { enabled: true, weekdays: [], run_time: f.backupRunTime.value || '03:00', next_run_human: null };
+
+  const [hh, mm] = String(f.backupRunTime.value || '03:00').split(':');
+  const hour = Number(hh || 3);
+  const minute = Number(mm || 0);
+  const now = new Date();
+
+  for (let i = 0; i < 15; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() + i);
+    const wd = (d.getDay() + 6) % 7; // JS: Sunday=0 -> map to Monday=0
+    if (!days.includes(wd)) continue;
+    d.setHours(hour, minute, 0, 0);
+    if (d <= now) continue;
+    const fmt = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return { enabled: true, weekdays: days.map(String), run_time: f.backupRunTime.value || '03:00', next_run_human: fmt };
+  }
+
+  return { enabled: true, weekdays: days.map(String), run_time: f.backupRunTime.value || '03:00', next_run_human: null };
+}
+
 async function refreshBackupNextRun() {
   if (!backupNextRun || !hasModule('settings.backup')) return;
   try {
@@ -202,7 +241,14 @@ async function refreshBackupNextRun() {
     const when = s.next_run_human || 'indisponível';
     backupNextRun.innerHTML = `<span class="small">Próxima execução prevista: <strong>${escHtml(when)}</strong> · Dias: <strong>${escHtml(days)}</strong> · Horário: <strong>${escHtml(s.run_time || '-')}</strong></span>`;
   } catch {
-    backupNextRun.textContent = '';
+    const s = fallbackNextRunFromForm();
+    if (!s.enabled) {
+      backupNextRun.innerHTML = '<span class="small">Agendamento automático: <strong>desabilitado</strong></span>';
+      return;
+    }
+    const days = summarizeWeekdays((s.weekdays || []).map((x) => String(x)));
+    const when = s.next_run_human || 'indisponível';
+    backupNextRun.innerHTML = `<span class="small">Próxima execução prevista: <strong>${escHtml(when)}</strong> · Dias: <strong>${escHtml(days)}</strong> · Horário: <strong>${escHtml(s.run_time || '-')}</strong></span>`;
   }
 }
 
@@ -235,6 +281,7 @@ async function loadSettings() {
   f.defaultDueDays.value = getSetting(s, 'workflow.default_due_days', '7');
   f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
   f.backupPath.value = getSetting(s, 'backup.path', '/opt/documentdashboard/data/backups');
+  lastPersistedBackupPath = f.backupPath.value || '';
   f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
   f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
   f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'main');
@@ -597,12 +644,13 @@ backupForm.onsubmit = async (e) => {
   try {
     if (submitBtn) submitBtn.disabled = true;
 
+    const pathToSave = resolveRelativeBackupPath(f.backupPath.value || '');
     const resp = await api('/api/admin/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         'backup.enabled': f.backupEnabled.checked ? 'true' : 'false',
-        'backup.path': f.backupPath.value,
+        'backup.path': pathToSave,
         'backup.weekdays': JSON.stringify(selectedDays),
         'backup.run_time': f.backupRunTime.value,
       }),
