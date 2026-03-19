@@ -665,7 +665,11 @@ testBackupPathBtn.onclick = async () => {
 runBackupNowBtn.onclick = async () => {
   backupFeedback.textContent = '';
   try {
-    const d = await api('/api/admin/system/backup/run', { method: 'POST' });
+    const d = await api('/api/admin/system/backup/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: f.backupPath.value || '' }),
+    });
     backupFeedback.textContent = d.message || 'Backup manual executado ✅';
     await loadBackupSnapshots();
   } catch (err) {

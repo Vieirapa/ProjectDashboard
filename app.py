@@ -1476,10 +1476,7 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
         incoming["backup.enabled"] = "true" if incoming["backup.enabled"].strip().lower() in {"1", "true", "yes", "on"} else "false"
 
     if "backup.path" in incoming:
-        p = Path(incoming["backup.path"]).expanduser()
-        if not p.is_absolute():
-            return False, "backup.path deve ser caminho absoluto"
-        incoming["backup.path"] = str(p)
+        incoming["backup.path"] = str(_resolve_backup_path(incoming["backup.path"]))
 
     if "backup.weekdays" in incoming:
         try:
@@ -1766,10 +1763,20 @@ def _backup_permission_hint(path: Path) -> str:
     )
 
 
+def _resolve_backup_path(path_value: str | None) -> Path:
+    raw = str(path_value or "").strip()
+    if not raw:
+        return (DATA_DIR / "backups").resolve()
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = (APP_DIR / p).resolve()
+    return p
+
+
 def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str, dict]:
     settings = get_admin_settings()
     cfg = _backup_config(settings)
-    target = Path((path_raw or cfg["path"])).expanduser()
+    target = _resolve_backup_path(path_raw or cfg["path"])
     detail = {"path": str(target), "exists": False, "writable": False}
 
     try:
@@ -1786,11 +1793,11 @@ def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str
         return False, f"Falha ao validar caminho de backup '{target}': {e}", detail
 
 
-def run_system_backup(actor: str = "system") -> tuple[bool, str]:
+def run_system_backup(actor: str = "system", path_override: str | None = None) -> tuple[bool, str]:
     settings = get_admin_settings()
     cfg = _backup_config(settings)
-    primary_out_dir = Path(cfg["path"]).expanduser()
-    fallback_out_dir = DATA_DIR / "backups"
+    primary_out_dir = _resolve_backup_path(path_override or cfg["path"])
+    fallback_out_dir = (DATA_DIR / "backups").resolve()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     db_src = DATA_DIR / "projectdashboard.db"
     docs_src = DATA_DIR / "docs_repo"
@@ -1836,7 +1843,7 @@ def run_system_backup(actor: str = "system") -> tuple[bool, str]:
 def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict]:
     settings = get_admin_settings()
     cfg = _backup_config(settings)
-    backup_dir = Path((path_raw or cfg["path"])).expanduser()
+    backup_dir = _resolve_backup_path(path_raw or cfg["path"])
 
     if not backup_dir.exists() or not backup_dir.is_dir():
         return True, "ok", {"path": str(backup_dir), "items": [], "total": 0}
@@ -3069,7 +3076,11 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/admin/system/backup/run":
             admin = self._require_module("settings.backup")
             if not admin: return
-            done, msg = run_system_backup(admin["username"])
+            ok, body = self._read_json()
+            if not ok:
+                body = {}
+            path_raw = str((body or {}).get("path") or "").strip() or None
+            done, msg = run_system_backup(admin["username"], path_raw)
             return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
 
         if p == "/api/admin/system/backup/test-path":
