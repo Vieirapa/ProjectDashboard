@@ -164,6 +164,23 @@ function reportConfigLine(r) {
   return `{${statuses}} {${priorities}} {${roles}} {${days}} {${time}}`;
 }
 
+function escHtml(s) {
+  return String(s || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatBackupRunMessage(message) {
+  const raw = String(message || '').trim();
+  const m = raw.match(/backup salvo em\s+(.+?)\s*\(/i);
+  if (!m) return escHtml(raw || 'Backup manual executado ✅');
+  const backupPath = m[1].trim();
+  return `Backup salvo em <strong>${escHtml(backupPath)}</strong><br><span class="small">${escHtml(raw)}</span>`;
+}
+
 function renderDiagnostics(diagnostics) {
   const lines = [];
   lines.push(`Data/Hora: ${diagnostics?.timestamp || '-'}`);
@@ -670,7 +687,7 @@ runBackupNowBtn.onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: f.backupPath.value || '' }),
     });
-    backupFeedback.textContent = d.message || 'Backup manual executado ✅';
+    backupFeedback.innerHTML = formatBackupRunMessage(d.message || 'Backup manual executado ✅');
     await loadBackupSnapshots();
   } catch (err) {
     backupFeedback.textContent = err.message;
