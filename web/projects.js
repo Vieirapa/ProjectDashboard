@@ -24,6 +24,24 @@ let projectRolesCatalog = [];
 
 const DEFAULT_PROJECT_ROLES = ['member', 'desenhista', 'colaborador', 'revisor', 'cliente'];
 
+function normalizeRoleCatalog(items) {
+  const out = [];
+  const seen = new Set();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const roleKey = String(item?.role_key ?? item?.role ?? item ?? '').trim().toLowerCase();
+    if (!roleKey || roleKey === 'admin' || seen.has(roleKey)) return;
+    seen.add(roleKey);
+    const displayName = String(item?.display_name ?? item?.displayName ?? roleKey).trim() || roleKey;
+    out.push({ role_key: roleKey, display_name: displayName });
+  });
+  DEFAULT_PROJECT_ROLES.forEach((roleKey) => {
+    if (seen.has(roleKey)) return;
+    seen.add(roleKey);
+    out.push({ role_key: roleKey, display_name: roleKey });
+  });
+  return out;
+}
+
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
@@ -49,14 +67,7 @@ function fmtDate(v) {
 }
 
 function renderAllowedRolesChecks(roles) {
-  const normalized = Array.from(new Set(
-    (Array.isArray(roles) ? roles : [])
-      .map((r) => String(r || '').trim().toLowerCase())
-      .filter(Boolean),
-  ));
-
-  const fallback = DEFAULT_PROJECT_ROLES.filter((r) => !normalized.includes(r));
-  projectRolesCatalog = normalized.concat(fallback);
+  projectRolesCatalog = normalizeRoleCatalog(roles);
 
   if (!allowedRolesBox) return;
   if (!projectRolesCatalog.length) {
@@ -65,14 +76,15 @@ function renderAllowedRolesChecks(roles) {
   }
 
   allowedRolesBox.innerHTML = projectRolesCatalog.map((role) => (
-    `<label class="inline-check"><input type="checkbox" class="allowed-role" value="${esc(role)}" /> ${esc(role)}</label>`
+    `<label class="inline-check"><input type="checkbox" class="allowed-role" value="${esc(role.role_key)}" /> ${esc(role.display_name)} <span class="small">(${esc(role.role_key)})</span></label>`
   )).join('');
 }
 
 async function loadProjectRolesCatalog() {
   try {
     const d = await api('/api/admin/roles');
-    renderAllowedRolesChecks(d?.roles || []);
+    const activeItems = (d?.items || []).filter((r) => !!r?.active && String(r?.role_key || '').toLowerCase() !== 'admin');
+    renderAllowedRolesChecks(activeItems.length ? activeItems : (d?.roles || []));
     return;
   } catch (errPrimary) {
     // Compat fallback para versões que ainda não expõem /api/admin/roles
@@ -101,9 +113,10 @@ function setAllowedRolesChecks(csvValue) {
 
   // Se houver role já salva no projeto mas ausente no catálogo atual,
   // inclui dinamicamente no formulário para não perder dado ao salvar.
-  const missing = selectedRoles.filter((role) => !projectRolesCatalog.includes(role));
+  const knownKeys = new Set(projectRolesCatalog.map((r) => String(r.role_key || '').toLowerCase()));
+  const missing = selectedRoles.filter((role) => !knownKeys.has(role));
   if (missing.length) {
-    renderAllowedRolesChecks(projectRolesCatalog.concat(missing));
+    renderAllowedRolesChecks(projectRolesCatalog.concat(missing.map((role) => ({ role_key: role, display_name: role }))));
   }
 
   const selectedSet = new Set(selectedRoles);
