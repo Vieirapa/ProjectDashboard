@@ -241,7 +241,7 @@ function makeCard(p, statuses, priorities) {
     ? p.dependencies.filter((d) => String(d.status || '') !== 'Concluído')
     : [];
   const depBadge = blockedDeps.length
-    ? `<div class="dep-alert" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Dependências pendentes (${blockedDeps.length})</div>`
+    ? `<div class="dep-alert" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Aguardando pendências (${blockedDeps.length})</div>`
     : (Array.isArray(p.dependencies) && p.dependencies.length ? '<div class="dep-ok">✅ Dependências resolvidas</div>' : '');
 
   card.innerHTML = `
