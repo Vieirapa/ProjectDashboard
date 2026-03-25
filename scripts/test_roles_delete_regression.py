@@ -50,6 +50,42 @@ class RolesDeleteRegressionTest(unittest.TestCase):
         self.assertNotIn("desenhista", catalog)
         self.assertIn("admin", catalog)
 
+    def test_case_insensitive_cleanup_and_tombstone_blocks_resurrection(self):
+        # Simula lixo legado com casing/spacing diferente
+        with app.db() as conn:
+            now = app.now_iso()
+            conn.execute(
+                "INSERT OR IGNORE INTO role_modules (role_name, module_id, can_access, updated_at, updated_by) VALUES (?, ?, 1, ?, 'legacy')",
+                ("Member ", "documents.view", now),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO role_modules (role_name, module_id, can_access, updated_at, updated_by) VALUES (?, ?, 1, ?, 'legacy')",
+                (" Desenhista", "documents.view", now),
+            )
+
+        ok, msg = app.delete_role_admin("member", "tester", reassign_to="admin")
+        self.assertTrue(ok, msg)
+        ok, msg = app.delete_role_admin("desenhista", "tester", reassign_to="admin")
+        self.assertTrue(ok, msg)
+
+        with app.db() as conn:
+            rm_member = conn.execute("SELECT COUNT(*) AS c FROM role_modules WHERE LOWER(TRIM(role_name))='member'").fetchone()["c"]
+            rm_desenhista = conn.execute("SELECT COUNT(*) AS c FROM role_modules WHERE LOWER(TRIM(role_name))='desenhista'").fetchone()["c"]
+            self.assertEqual(rm_member, 0)
+            self.assertEqual(rm_desenhista, 0)
+
+            dr_member = conn.execute("SELECT 1 FROM deleted_roles WHERE role_key='member'").fetchone()
+            dr_desenhista = conn.execute("SELECT 1 FROM deleted_roles WHERE role_key='desenhista'").fetchone()
+            self.assertIsNotNone(dr_member)
+            self.assertIsNotNone(dr_desenhista)
+
+            app.ensure_roles_foundation(conn)
+
+        app.sync_module_catalog()
+        roles_after_sync = self._roles_table()
+        self.assertNotIn("member", roles_after_sync)
+        self.assertNotIn("desenhista", roles_after_sync)
+
     def test_admin_protection_kept(self):
         ok, msg = app.delete_role_admin("admin", "tester")
         self.assertFalse(ok)

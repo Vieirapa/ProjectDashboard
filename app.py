@@ -314,6 +314,17 @@ def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_roles_active ON roles(active)")
 
+    # Tombstones: bloqueia ressurreição automática de roles removidas manualmente
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS deleted_roles (
+            role_key TEXT PRIMARY KEY,
+            deleted_at TEXT NOT NULL DEFAULT '',
+            deleted_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS role_module_permissions (
@@ -329,12 +340,18 @@ def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_role_module_permissions_module ON role_module_permissions(module_id)")
 
     now = now_iso()
+    deleted_roles = {
+        str(r[0] or "").strip().lower()
+        for r in conn.execute("SELECT role_key FROM deleted_roles WHERE role_key IS NOT NULL AND TRIM(role_key)<>''").fetchall()
+    }
 
     existing_roles_count = int(conn.execute("SELECT COUNT(*) AS c FROM roles").fetchone()["c"] or 0)
 
     # Seed oficial apenas no bootstrap inicial (evita ressuscitar roles apagadas manualmente)
     if existing_roles_count == 0:
         for role_key in ROLES:
+            if role_key != "admin" and role_key in deleted_roles:
+                continue
             is_super = 1 if role_key == "admin" else 0
             is_system = 1 if role_key == "admin" else 0
             conn.execute(
@@ -373,6 +390,8 @@ def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
                 legacy_roles.add(role_name)
 
     for role_key in sorted(legacy_roles):
+        if role_key != "admin" and role_key in deleted_roles:
+            continue
         conn.execute(
             """
             INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
@@ -1063,6 +1082,9 @@ def create_role_admin(payload: dict, actor: str) -> tuple[bool, str, dict | None
         if exists:
             return False, "role já existe", None
 
+        # criação explícita remove tombstone (permite recriar role intencionalmente)
+        conn.execute("DELETE FROM deleted_roles WHERE role_key=?", (role_key,))
+
         conn.execute(
             """
             INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
@@ -1155,7 +1177,12 @@ def delete_role_admin(selector: str, actor: str, reassign_to: str | None = None)
         if role_key == "admin" or bool(int(role_row["is_superadmin"] or 0)) or bool(int(role_row["is_system"] or 0)):
             return False, "role protegida não pode ser removida"
 
-        users_count = int(conn.execute("SELECT COUNT(*) AS c FROM users WHERE role=?", (role_key,)).fetchone()["c"])
+        users_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM users WHERE LOWER(TRIM(role))=?",
+                (role_key,),
+            ).fetchone()["c"]
+        )
         if users_count > 0:
             if not reass:
                 return False, f"role em uso por {users_count} usuário(s); informe reassign_to"
@@ -1164,11 +1191,14 @@ def delete_role_admin(selector: str, actor: str, reassign_to: str | None = None)
                 return False, "reassign_to inválida"
             if reass == role_key:
                 return False, "reassign_to deve ser diferente da role removida"
-            conn.execute("UPDATE users SET role=? WHERE role=?", (reass, role_key))
+            conn.execute(
+                "UPDATE users SET role=? WHERE LOWER(TRIM(role))=?",
+                (reass, role_key),
+            )
 
         # Limpa vínculos de permissões e legado
         conn.execute("DELETE FROM role_module_permissions WHERE role_id=?", (int(role_row["id"]),))
-        conn.execute("DELETE FROM role_modules WHERE role_name=?", (role_key,))
+        conn.execute("DELETE FROM role_modules WHERE LOWER(TRIM(role_name))=?", (role_key,))
 
         # Remove role de projetos legados (CSV)
         project_rows = conn.execute("SELECT project_id, allowed_roles FROM projects").fetchall()
@@ -1177,6 +1207,18 @@ def delete_role_admin(selector: str, actor: str, reassign_to: str | None = None)
             new_vals = [x for x in vals if x != role_key]
             if new_vals != vals:
                 conn.execute("UPDATE projects SET allowed_roles=? WHERE project_id=?", (','.join(new_vals), int(pr["project_id"])))
+
+        now = now_iso()
+        conn.execute(
+            """
+            INSERT INTO deleted_roles (role_key, deleted_at, deleted_by)
+            VALUES (?, ?, ?)
+            ON CONFLICT(role_key) DO UPDATE SET
+                deleted_at=excluded.deleted_at,
+                deleted_by=excluded.deleted_by
+            """,
+            (role_key, now, actor),
+        )
 
         conn.execute("DELETE FROM roles WHERE id=?", (int(role_row["id"]),))
 
@@ -1366,6 +1408,9 @@ def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool
         now = now_iso()
         role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role,)).fetchone()
         if role_row is None:
+            deleted = conn.execute("SELECT 1 FROM deleted_roles WHERE role_key=?", (role,)).fetchone()
+            if deleted is not None:
+                return False, "role foi removida e não pode ser recriada por atualização de permissões"
             conn.execute(
                 """
                 INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
