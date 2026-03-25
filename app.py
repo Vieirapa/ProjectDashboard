@@ -999,6 +999,21 @@ def role_exists(role_key: str, active_only: bool = True) -> bool:
     return row is not None
 
 
+def role_is_active(role_key: str) -> bool:
+    role = str(role_key or "").strip().lower()
+    if not role:
+        return False
+    try:
+        with db() as conn:
+            row = conn.execute("SELECT active FROM roles WHERE role_key=?", (role,)).fetchone()
+            if row is None:
+                return False
+            return bool(int(row["active"] or 0))
+    except sqlite3.OperationalError:
+        # fallback defensivo durante bootstrap/migração
+        return role in {"admin", *{r.lower() for r in ROLES}}
+
+
 def resolve_fallback_role(preferred: str = "member") -> str:
     pref = str(preferred or "").strip().lower()
     with db() as conn:
@@ -1353,8 +1368,16 @@ def get_role_module_permissions(role_name: str) -> dict[str, bool]:
 
 def get_effective_permissions(user: dict | None) -> dict:
     if not user:
-        return {"role": "", "allowedModules": [], "allowedPages": []}
+        return {"role": "", "roleActive": False, "allowedModules": [], "allowedPages": []}
     role = str(user.get("role") or "").strip().lower()
+    if not role_is_active(role):
+        return {
+            "role": role,
+            "roleActive": False,
+            "allowedModules": [],
+            "allowedPages": [],
+        }
+
     modules = list_app_modules(active_only=True)
     mod_by_id = {m["module_id"]: m for m in modules}
     role_perms = get_role_module_permissions(role)
@@ -1362,6 +1385,7 @@ def get_effective_permissions(user: dict | None) -> dict:
     allowed_pages = sorted({mod_by_id[mid]["page_key"] for mid in allowed_modules if mid in mod_by_id})
     return {
         "role": role,
+        "roleActive": True,
         "allowedModules": allowed_modules,
         "allowedPages": allowed_pages,
     }
@@ -3244,10 +3268,36 @@ class Handler(BaseHTTPRequestHandler):
     def _user(self):
         return current_user_from_cookie(self.headers.get("Cookie"))
 
-    def _require_auth(self):
+    def _is_user_role_active(self, user: dict | None = None) -> bool:
+        u = user or self._user()
+        if not u:
+            return False
+        return role_is_active(u.get("role") or "")
+
+    def _inactive_role_payload(self, user: dict | None) -> dict:
+        username = ""
+        role = ""
+        if user:
+            username = str(user.get("username") or "")
+            role = str(user.get("role") or "")
+        return {
+            "ok": False,
+            "error": "role_inactive",
+            "message": "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+            "user": {"username": username, "role": role},
+        }
+
+    def _require_auth(self, allow_inactive: bool = False):
         u = self._user()
-        if u: return u
-        self._json(401, {"ok": False, "error": "unauthorized"}); return None
+        if not u:
+            self._json(401, {"ok": False, "error": "unauthorized"})
+            return None
+        is_active = self._is_user_role_active(u)
+        merged = {**u, "role_active": is_active}
+        if not is_active and not allow_inactive:
+            self._json(403, self._inactive_role_payload(merged))
+            return None
+        return merged
 
     def _require_admin(self):
         u = self._require_auth()
@@ -3392,6 +3442,21 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
+
+        u = self._user()
+        is_inactive = bool(u) and (not self._is_user_role_active(u))
+
+        if p == "/inactive.html":
+            return self._serve(WEB_DIR / "inactive.html", "text/html; charset=utf-8")
+
+        if is_inactive and p in [
+            "/", "/index.html", "/kanban.html", "/edit.html", "/projects.html", "/admin-users.html", "/profile.html", "/settings.html"
+        ]:
+            self.send_response(302)
+            self.send_header("Location", "/inactive.html")
+            self.end_headers()
+            return
+
         if p in ["/", "/index.html"]: return self._serve(WEB_DIR / "index.html", "text/html; charset=utf-8")
         if p == "/login.html": return self._serve(WEB_DIR / "login.html", "text/html; charset=utf-8")
         if p == "/signup.html": return self._serve(WEB_DIR / "signup.html", "text/html; charset=utf-8")
@@ -3428,13 +3493,32 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/me":
             u = self._user()
-            return self._json(200 if u else 401, {"ok": bool(u), "user": {"username": u["username"], "role": u["role"]} if u else None})
+            if not u:
+                return self._json(401, {"ok": False, "user": None})
+            active = self._is_user_role_active(u)
+            return self._json(200, {
+                "ok": True,
+                "user": {
+                    "username": u["username"],
+                    "role": u["role"],
+                    "role_active": active,
+                },
+                "role_active": active,
+                "inactive_message": None if active else "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+            })
 
         if p == "/api/me/permissions":
-            u = self._require_auth()
+            u = self._require_auth(allow_inactive=True)
             if not u: return
             perms = self._effective_permissions(u)
-            return self._json(200, {"ok": True, "permissions": perms})
+            if not bool(u.get("role_active")):
+                return self._json(200, {
+                    "ok": True,
+                    "permissions": perms,
+                    "role_active": False,
+                    "inactive_message": "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+                })
+            return self._json(200, {"ok": True, "permissions": perms, "role_active": True})
 
         if p == "/api/me/profile":
             u = self._require_auth()
@@ -3681,7 +3765,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(401, {"ok": False, "error": "Credenciais inválidas"})
             tok = create_session(row["username"], row["role"])
             cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
-            return self._json(200, {"ok": True, "user": {"username": row["username"], "role": row["role"]}}, set_cookie=cookie)
+            role_active = role_is_active(row["role"])
+            return self._json(200, {
+                "ok": True,
+                "user": {
+                    "username": row["username"],
+                    "role": row["role"],
+                    "role_active": role_active,
+                },
+                "role_active": role_active,
+                "inactive_message": None if role_active else "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+            }, set_cookie=cookie)
 
         if p == "/api/logout":
             u = self._user()
