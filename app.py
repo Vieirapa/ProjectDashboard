@@ -3795,7 +3795,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/documents":
             user = self._require_auth()
             if not user: return
-            if not can_create_document(user["role"]):
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_create_document(user["role"]) or can_via_module):
                 return self._json(403, {"ok": False, "error": "Sem permissão para criar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3817,7 +3818,8 @@ class Handler(BaseHTTPRequestHandler):
             proj = self._get_document_in_scope(slug, qs, user)
             if not proj:
                 return self._reply_document_scope_error(slug, qs, user)
-            if not can_upload_document(user["role"]):
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_upload_document(user["role"]) or can_via_module):
                 return self._json(403, {"ok": False, "error": "Sem permissão para anexar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3839,7 +3841,8 @@ class Handler(BaseHTTPRequestHandler):
             proj = self._get_document_in_scope(slug, qs, user)
             if not proj:
                 return self._reply_document_scope_error(slug, qs, user)
-            if not can_add_review_note(user["role"]):
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_add_review_note(user["role"]) or can_via_module):
                 return self._json(403, {"ok": False, "error": "Sem permissão para adicionar nota de revisão"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -4200,8 +4203,9 @@ class Handler(BaseHTTPRequestHandler):
             if not self._get_document_in_scope(slug, qs, user):
                 return self._reply_document_scope_error(slug, qs, user)
 
-            if not can_resolve_review_note(user["role"]):
-                return self._json(403, {"ok": False, "error": "Apenas desenhista ou admin pode alterar status da revisão"})
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_resolve_review_note(user["role"]) or can_via_module):
+                return self._json(403, {"ok": False, "error": "Sem permissão para alterar status da revisão"})
 
             ok, body = self._read_json()
             if not ok:
@@ -4217,7 +4221,8 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/documents/"):
             user = self._require_auth()
             if not user: return
-            if not can_edit_document(user["role"]):
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_edit_document(user["role"]) or can_via_module):
                 return self._json(403, {"ok": False, "error": "Sem permissão para editar documento"})
             slug = p.split("/")[3]
             if not self._get_document_in_scope(slug, qs, user):

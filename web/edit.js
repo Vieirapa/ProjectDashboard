@@ -37,6 +37,7 @@ const f = {
 };
 
 let me = null;
+let allowedModules = new Set();
 let doc = null;
 let isDirty = false;
 let isSaving = false;
@@ -56,16 +57,20 @@ async function api(url, opts={}) {
   return d;
 }
 
+function hasModule(moduleId) {
+  return allowedModules.has(String(moduleId || '').trim());
+}
+
 function canEditCard() {
-  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '') || hasModule('projects.cards_list');
 }
 
 function canUploadDocument() {
-  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '') || hasModule('projects.cards_list');
 }
 
 function canAddReviewNotes() {
-  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador', 'revisor'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador', 'revisor'].includes(me?.role || '') || hasModule('projects.cards_list');
 }
 
 function getMultiSelectedValues(containerEl) {
@@ -99,8 +104,12 @@ function setScopeBlocked(message) {
 }
 
 async function initMe() {
-  const d = await api('/api/me');
+  const [d, permsResp] = await Promise.all([
+    api('/api/me'),
+    api('/api/me/permissions').catch(() => ({ permissions: { allowedModules: [] } })),
+  ]);
   me = d.user;
+  allowedModules = new Set((permsResp?.permissions?.allowedModules || []).map((x) => String(x || '').trim()));
   deleteBtn.style.display = 'none';
 }
 
@@ -109,7 +118,9 @@ function canEditReviewNotes() {
 }
 
 function canResolveReviewNotes() {
-  return ['desenhista', 'colaborador', 'admin', 'lider_projeto'].includes(me?.role || '') && (f.status.value || '').trim().toLowerCase() === 'em revisão';
+  const canByRole = ['desenhista', 'colaborador', 'admin', 'lider_projeto'].includes(me?.role || '');
+  const canByModule = hasModule('projects.cards_list');
+  return (canByRole || canByModule) && (f.status.value || '').trim().toLowerCase() === 'em revisão';
 }
 
 function updateReviewNotesAvailability() {
@@ -200,16 +211,18 @@ function renderDependencyChecklist() {
     return;
   }
 
+  const editable = canEditCard();
   dependsOnSelect.innerHTML = shown
     .map((d) => `
       <label class="small">
-        <input type="checkbox" data-dep-slug="${String(d.slug)}" ${dependencySelected.has(String(d.slug)) ? 'checked' : ''} /> ${d.name} [${d.status}]
+        <input type="checkbox" data-dep-slug="${String(d.slug)}" ${dependencySelected.has(String(d.slug)) ? 'checked' : ''} ${editable ? '' : 'disabled'} /> ${d.name} [${d.status}]
       </label>
     `)
     .join('');
 
   Array.from(dependsOnSelect.querySelectorAll('input[type="checkbox"][data-dep-slug]')).forEach((el) => {
     el.addEventListener('change', () => {
+      if (!canEditCard()) return;
       const slug = String(el.getAttribute('data-dep-slug') || '');
       if (!slug) return;
       if (el.checked) dependencySelected.add(slug);
