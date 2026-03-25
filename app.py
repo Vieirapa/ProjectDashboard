@@ -330,20 +330,34 @@ def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
 
     now = now_iso()
 
-    # Seed inicial do catálogo oficial
-    for role_key in ROLES:
-        is_super = 1 if role_key == "admin" else 0
-        is_system = 1 if role_key == "admin" else 0
+    existing_roles_count = int(conn.execute("SELECT COUNT(*) AS c FROM roles").fetchone()["c"] or 0)
+
+    # Seed oficial apenas no bootstrap inicial (evita ressuscitar roles apagadas manualmente)
+    if existing_roles_count == 0:
+        for role_key in ROLES:
+            is_super = 1 if role_key == "admin" else 0
+            is_system = 1 if role_key == "admin" else 0
+            conn.execute(
+                """
+                INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+                VALUES (?, ?, ?, ?, 1, ?, ?, 'system', 'system')
+                """,
+                (role_key, role_key, is_system, is_super, now, now),
+            )
+    else:
+        # Garantia mínima: admin sempre existe/protegido
         conn.execute(
             """
             INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
-            VALUES (?, ?, ?, ?, 1, ?, ?, 'system', 'system')
+            VALUES ('admin', 'admin', 1, 1, 1, ?, ?, 'system', 'system')
             ON CONFLICT(role_key) DO UPDATE SET
-                display_name=excluded.display_name,
+                is_system=1,
+                is_superadmin=1,
+                active=1,
                 updated_at=excluded.updated_at,
                 updated_by='system'
             """,
-            (role_key, role_key, is_system, is_super, now, now),
+            (now, now),
         )
 
     # Garante que roles já existentes em dados legados também existam no catálogo
@@ -915,7 +929,7 @@ def list_role_catalog(include_admin: bool = True) -> list[str]:
         out.append(role)
 
     with db() as conn:
-        # Fonte principal (fase 1): tabela roles
+        # Fonte principal: catálogo oficial de roles ativas
         try:
             role_rows = conn.execute(
                 "SELECT role_key FROM roles WHERE active=1 ORDER BY id"
@@ -923,30 +937,31 @@ def list_role_catalog(include_admin: bool = True) -> list[str]:
         except sqlite3.OperationalError:
             role_rows = []
 
-        for r in role_rows:
-            add_role(r["role_key"])
+        if role_rows:
+            for r in role_rows:
+                add_role(r["role_key"])
+        else:
+            # Fallback legado somente quando a tabela roles ainda não está disponível/populada
+            for role in ROLES:
+                add_role(role)
 
-        # Compatibilidade/fallback (bases legadas)
-        for role in ROLES:
-            add_role(role)
+            user_roles = conn.execute(
+                "SELECT DISTINCT role FROM users WHERE role IS NOT NULL AND TRIM(role)<>''"
+            ).fetchall()
+            module_roles = conn.execute(
+                "SELECT DISTINCT role_name FROM role_modules WHERE role_name IS NOT NULL AND TRIM(role_name)<>''"
+            ).fetchall()
+            project_roles = conn.execute(
+                "SELECT DISTINCT allowed_roles FROM projects WHERE allowed_roles IS NOT NULL AND TRIM(allowed_roles)<>''"
+            ).fetchall()
 
-        user_roles = conn.execute(
-            "SELECT DISTINCT role FROM users WHERE role IS NOT NULL AND TRIM(role)<>''"
-        ).fetchall()
-        module_roles = conn.execute(
-            "SELECT DISTINCT role_name FROM role_modules WHERE role_name IS NOT NULL AND TRIM(role_name)<>''"
-        ).fetchall()
-        project_roles = conn.execute(
-            "SELECT DISTINCT allowed_roles FROM projects WHERE allowed_roles IS NOT NULL AND TRIM(allowed_roles)<>''"
-        ).fetchall()
-
-    for r in user_roles:
-        add_role(r["role"])
-    for r in module_roles:
-        add_role(r["role_name"])
-    for r in project_roles:
-        for role in str(r["allowed_roles"] or "").split(','):
-            add_role(role)
+            for r in user_roles:
+                add_role(r["role"])
+            for r in module_roles:
+                add_role(r["role_name"])
+            for r in project_roles:
+                for role in str(r["allowed_roles"] or "").split(','):
+                    add_role(role)
 
     if include_admin:
         return out
@@ -963,6 +978,27 @@ def role_exists(role_key: str, active_only: bool = True) -> bool:
         else:
             row = conn.execute("SELECT 1 FROM roles WHERE role_key=?", (role,)).fetchone()
     return row is not None
+
+
+def resolve_fallback_role(preferred: str = "member") -> str:
+    pref = str(preferred or "").strip().lower()
+    with db() as conn:
+        if pref:
+            row = conn.execute("SELECT role_key FROM roles WHERE role_key=? AND active=1", (pref,)).fetchone()
+            if row:
+                return str(row["role_key"])
+
+        row = conn.execute(
+            "SELECT role_key FROM roles WHERE active=1 AND role_key!='admin' ORDER BY id LIMIT 1"
+        ).fetchone()
+        if row:
+            return str(row["role_key"])
+
+        admin_row = conn.execute("SELECT role_key FROM roles WHERE role_key='admin' LIMIT 1").fetchone()
+        if admin_row:
+            return str(admin_row["role_key"])
+
+    return "admin"
 
 
 def list_roles_admin_view() -> list[dict]:
@@ -3827,7 +3863,7 @@ class Handler(BaseHTTPRequestHandler):
             username = (body.get("username") or "").strip()
             password = body.get("password") or ""
             requested_role = str(body.get("role") or "").strip().lower()
-            role = requested_role if role_exists(requested_role, active_only=True) else "member"
+            role = requested_role if role_exists(requested_role, active_only=True) else resolve_fallback_role("member")
             if not username or not password:
                 return self._json(400, {"ok": False, "error": "username e password são obrigatórios"})
             try:
@@ -3847,7 +3883,7 @@ class Handler(BaseHTTPRequestHandler):
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             requested_role = str(body.get("role") or "").strip().lower()
-            role = requested_role if role_exists(requested_role, active_only=True) else "member"
+            role = requested_role if role_exists(requested_role, active_only=True) else resolve_fallback_role("member")
             token = secrets.token_urlsafe(24)
             exp = (datetime.utcnow() + timedelta(days=3)).replace(microsecond=0).isoformat() + "Z"
             invite_url = f"/signup.html?token={token}"
