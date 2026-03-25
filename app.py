@@ -2603,7 +2603,7 @@ def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> t
 def run_system_diagnostics() -> dict:
     settings = get_admin_settings()
     repo_url = _setting(settings, "system.git_repo", "PDASH_GIT_REPO", "https://github.com/Vieirapa/ProjectDashboard.git")
-    repo_branch = _setting(settings, "system.git_branch", "PDASH_GIT_BRANCH", "main")
+    repo_branch = _setting(settings, "system.git_branch", "PDASH_GIT_BRANCH", "develop")
 
     diagnostics = {
         "timestamp": now_iso(),

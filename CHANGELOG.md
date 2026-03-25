@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- System diagnostics now default to the `develop` branch when no explicit `system.git_branch` setting is stored, aligning version checks with the active development flow.
+
 ## v0.9.0-beta.2 (2026-03-09)
 
 ### Added
