@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 import base64
-import hashlib
-import hmac
 import json
 import os
 import re
-import secrets
 import sqlite3
 import subprocess
 import smtplib
@@ -14,11 +11,17 @@ import threading
 import time
 from email.message import EmailMessage
 from datetime import datetime, timedelta
-from http import cookies
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from backend.auth.session import (
+    create_session as create_auth_session,
+    current_user_from_cookie as current_user_from_session_cookie,
+    hash_password,
+    parse_cookie,
+    verify_password,
+)
 from backend.core.db import column_exists, connect_db, ensure_column, table_exists
 
 APP_DIR = Path(__file__).parent
@@ -109,20 +112,6 @@ def slugify(name: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name.strip())
     slug = re.sub(r"-+", "-", slug).strip("-")
     return slug.lower() or "documento"
-
-
-def hash_password(password: str, salt_hex: str | None = None) -> str:
-    salt = bytes.fromhex(salt_hex) if salt_hex else os.urandom(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
-    return f"{salt.hex()}${digest.hex()}"
-
-
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        salt_hex, digest_hex = stored.split("$", 1)
-        return hmac.compare_digest(hash_password(password, salt_hex), f"{salt_hex}${digest_hex}")
-    except Exception:
-        return False
 
 
 def read_text_if_exists(path: Path) -> str:
@@ -3191,27 +3180,11 @@ def change_own_password(username: str, current_password: str, new_password: str)
 
 
 def create_session(username: str, role: str) -> str:
-    token = secrets.token_hex(24)
-    SESSIONS[token] = {"username": username, "role": role, "exp": datetime.utcnow().timestamp() + SESSION_TTL_SECONDS}
-    return token
-
-
-def parse_cookie(raw: str | None) -> dict:
-    if not raw:
-        return {}
-    jar = cookies.SimpleCookie(); jar.load(raw)
-    return {k: v.value for k, v in jar.items()}
+    return create_auth_session(SESSIONS, SESSION_TTL_SECONDS, username, role)
 
 
 def current_user_from_cookie(raw_cookie: str | None) -> dict | None:
-    tok = parse_cookie(raw_cookie).get(SESSION_COOKIE)
-    if not tok or tok not in SESSIONS:
-        return None
-    s = SESSIONS[tok]
-    if datetime.utcnow().timestamp() > s["exp"]:
-        SESSIONS.pop(tok, None)
-        return None
-    return {"username": s["username"], "role": s["role"], "token": tok}
+    return current_user_from_session_cookie(SESSIONS, SESSION_COOKIE, raw_cookie)
 
 
 class Handler(BaseHTTPRequestHandler):
