@@ -19,6 +19,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from backend.core.db import column_exists, connect_db, ensure_column, table_exists
+
 APP_DIR = Path(__file__).parent
 BASE_DIR = Path(os.getenv("PDASH_DOCUMENTS_DIR", str(APP_DIR / "documents")))
 WEB_DIR = APP_DIR / "web"
@@ -138,35 +140,15 @@ def infer_description(project_dir: Path) -> str:
 
 
 def db() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_db(DATA_DIR, DB_PATH)
 
-
-def ensure_column(conn: sqlite3.Connection, table: str, col: str, ddl: str):
-    cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-    if col not in cols:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
 
 # --- Legacy migrations: projects -> documents ---
-
-def _table_exists(conn, name: str) -> bool:
-    row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
-    return bool(row)
-
-
-def _column_exists(conn, table: str, col: str) -> bool:
-    try:
-        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-    except Exception:
-        return False
-    return col in cols
 
 
 def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
     # Migrate legacy projects table into documents table (only if legacy schema exists)
-    if _table_exists(conn, 'projects') and _column_exists(conn, 'projects', 'slug'):
+    if table_exists(conn, 'projects') and column_exists(conn, 'projects', 'slug'):
         total_docs = conn.execute("SELECT COUNT(*) AS c FROM documents").fetchone()[0]
         total_projects = conn.execute("SELECT COUNT(*) AS c FROM projects").fetchone()[0]
         if total_projects and total_docs == 0:
