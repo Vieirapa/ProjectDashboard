@@ -23,6 +23,12 @@ from backend.auth.session import (
     verify_password,
 )
 from backend.core.db import column_exists, connect_db, ensure_column, table_exists
+from backend.rbac.roles import (
+    list_role_catalog as list_rbac_role_catalog,
+    resolve_fallback_role as resolve_rbac_fallback_role,
+    role_exists as rbac_role_exists,
+    role_is_active as rbac_role_is_active,
+)
 
 APP_DIR = Path(__file__).parent
 BASE_DIR = Path(os.getenv("PDASH_DOCUMENTS_DIR", str(APP_DIR / "documents")))
@@ -908,102 +914,19 @@ def list_usernames() -> list[str]:
 
 
 def list_role_catalog(include_admin: bool = True) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-
-    def add_role(value: str | None) -> None:
-        role = str(value or "").strip().lower()
-        if not role or role in seen:
-            return
-        seen.add(role)
-        out.append(role)
-
-    with db() as conn:
-        # Fonte principal: catálogo oficial de roles ativas
-        try:
-            role_rows = conn.execute(
-                "SELECT role_key FROM roles WHERE active=1 ORDER BY id"
-            ).fetchall()
-        except sqlite3.OperationalError:
-            role_rows = []
-
-        if role_rows:
-            for r in role_rows:
-                add_role(r["role_key"])
-        else:
-            # Fallback legado somente quando a tabela roles ainda não está disponível/populada
-            for role in ROLES:
-                add_role(role)
-
-            user_roles = conn.execute(
-                "SELECT DISTINCT role FROM users WHERE role IS NOT NULL AND TRIM(role)<>''"
-            ).fetchall()
-            module_roles = conn.execute(
-                "SELECT DISTINCT role_name FROM role_modules WHERE role_name IS NOT NULL AND TRIM(role_name)<>''"
-            ).fetchall()
-            project_roles = conn.execute(
-                "SELECT DISTINCT allowed_roles FROM projects WHERE allowed_roles IS NOT NULL AND TRIM(allowed_roles)<>''"
-            ).fetchall()
-
-            for r in user_roles:
-                add_role(r["role"])
-            for r in module_roles:
-                add_role(r["role_name"])
-            for r in project_roles:
-                for role in str(r["allowed_roles"] or "").split(','):
-                    add_role(role)
-
-    if include_admin:
-        return out
-    return [r for r in out if r != "admin"]
+    return list_rbac_role_catalog(db, ROLES, include_admin=include_admin)
 
 
 def role_exists(role_key: str, active_only: bool = True) -> bool:
-    role = str(role_key or "").strip().lower()
-    if not role:
-        return False
-    with db() as conn:
-        if active_only:
-            row = conn.execute("SELECT 1 FROM roles WHERE role_key=? AND active=1", (role,)).fetchone()
-        else:
-            row = conn.execute("SELECT 1 FROM roles WHERE role_key=?", (role,)).fetchone()
-    return row is not None
+    return rbac_role_exists(db, role_key, active_only=active_only)
 
 
 def role_is_active(role_key: str) -> bool:
-    role = str(role_key or "").strip().lower()
-    if not role:
-        return False
-    try:
-        with db() as conn:
-            row = conn.execute("SELECT active FROM roles WHERE role_key=?", (role,)).fetchone()
-            if row is None:
-                return False
-            return bool(int(row["active"] or 0))
-    except sqlite3.OperationalError:
-        # fallback defensivo durante bootstrap/migração
-        return role in {"admin", *{r.lower() for r in ROLES}}
+    return rbac_role_is_active(db, role_key, ROLES)
 
 
 def resolve_fallback_role(preferred: str = "member") -> str:
-    pref = str(preferred or "").strip().lower()
-    with db() as conn:
-        if pref:
-            row = conn.execute("SELECT role_key FROM roles WHERE role_key=? AND active=1", (pref,)).fetchone()
-            if row:
-                return str(row["role_key"])
-
-        row = conn.execute(
-            "SELECT role_key FROM roles WHERE active=1 AND role_key!='admin' ORDER BY id LIMIT 1"
-        ).fetchone()
-        if row:
-            return str(row["role_key"])
-
-        admin_row = conn.execute("SELECT role_key FROM roles WHERE role_key='admin' LIMIT 1").fetchone()
-        if admin_row:
-            return str(admin_row["role_key"])
-
-    return "admin"
+    return resolve_rbac_fallback_role(db, preferred=preferred)
 
 
 def list_roles_admin_view() -> list[dict]:
