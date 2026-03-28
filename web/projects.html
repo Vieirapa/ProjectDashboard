@@ -11,19 +11,39 @@
     <aside class="sidebar" id="sidebar-root" data-active="projects"></aside>
 
     <main class="content">
-      <header>
-        <h1>🗂️ Projetos</h1>
-        <div class="header-actions">
+      <section class="page-hero">
+        <div>
+          <p class="eyebrow">Catálogo de projetos</p>
+          <h1>🗂️ Projetos</h1>
+          <p class="page-subtitle">Gerencie projetos, templates e regras de acesso com uma visão mais clara entre cadastro, catálogo e cards vinculados.</p>
+        </div>
+        <div class="header-actions hero-actions">
           <button id="logoutBtn" class="secondary">Logout</button>
         </div>
-      </header>
+      </section>
 
       <section class="edit-wrap projects-page-wrap">
-        <div class="edit-two-cols projects-top-cols">
-          <form id="projectForm" class="edit-form" data-module-id="projects.create_edit">
-            <h3 style="margin-top:0;">Criar/Editar Projeto</h3>
-            <label>ID do Projeto</label>
-            <input id="projectId" type="number" readonly placeholder="(auto)" />
+        <div class="projects-shell-grid">
+          <form id="projectForm" class="edit-form project-form-card" data-module-id="projects.create_edit">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Cadastro</p>
+                <h3 class="mt-0">Criar ou editar projeto</h3>
+              </div>
+              <span class="small">Defina escopo, datas e visibilidade.</span>
+            </div>
+
+            <div class="project-form-grid">
+              <div>
+                <label>ID do Projeto</label>
+                <input id="projectId" type="number" readonly placeholder="(auto)" />
+              </div>
+              <div>
+                <label>Data de Início</label>
+                <input id="startDate" type="date" />
+              </div>
+            </div>
+
             <label>Nome do Projeto</label>
             <div class="project-name-row">
               <input id="projectName" required />
@@ -32,15 +52,18 @@
                 Projeto template
               </label>
             </div>
-            <label>Data de Início</label>
-            <input id="startDate" type="date" />
+
             <label>Notas</label>
-            <textarea id="notes" rows="6"></textarea>
-            <label>Acessível por (além de admin):</label>
-            <div id="allowedRolesBox" class="allowed-roles-box">
-              <span class="small">Carregando roles...</span>
+            <textarea id="notes" rows="7" placeholder="Contexto, escopo, observações operacionais..."></textarea>
+
+            <div>
+              <label>Acessível por (além de admin)</label>
+              <div id="allowedRolesBox" class="allowed-roles-box role-chip-grid">
+                <span class="small">Carregando roles...</span>
+              </div>
             </div>
-            <div class="dialog-actions" style="justify-content:flex-start; flex-wrap: wrap;">
+
+            <div class="dialog-actions projects-form-actions" style="justify-content:flex-start; flex-wrap: wrap;">
               <button type="button" id="newBtn" class="secondary">Novo</button>
               <button type="button" id="saveBtn">Salvar</button>
               <button type="button" id="cloneBtn" class="secondary">Criar a partir do template</button>
@@ -49,21 +72,39 @@
             <p id="feedback" class="small"></p>
           </form>
 
-          <section class="review-panel" data-module-id="projects.list">
-            <h3>Projetos cadastrados</h3>
-            <label for="templateFilter" class="small">Filtro de template</label>
-            <select id="templateFilter">
-              <option value="all">Todos</option>
-              <option value="template">Apenas templates</option>
-              <option value="non-template">Apenas não-templates</option>
-            </select>
-            <div id="projectsList" class="small">Carregando...</div>
+          <section class="review-panel projects-list-card" data-module-id="projects.list">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Catálogo</p>
+                <h3>Projetos cadastrados</h3>
+              </div>
+              <span class="small">Selecione um item para carregar no formulário.</span>
+            </div>
+
+            <div class="projects-filter-bar">
+              <div>
+                <label for="templateFilter" class="small">Filtro de template</label>
+                <select id="templateFilter">
+                  <option value="all">Todos</option>
+                  <option value="template">Apenas templates</option>
+                  <option value="non-template">Apenas não-templates</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="projectsList" class="small projects-table-wrap">Carregando...</div>
           </section>
         </div>
 
-        <section class="panel projects-cards-panel" style="margin-top: 14px;" data-module-id="projects.cards_list">
-          <h3>Lista de Cards</h3>
-          <div id="projectCardsList" class="small">Selecione um projeto para listar os cards.</div>
+        <section class="panel projects-cards-panel" data-module-id="projects.cards_list">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Cards vinculados</p>
+              <h3>Lista de Cards do projeto</h3>
+            </div>
+            <span class="small">Use esta área para inspecionar rapidamente os itens associados.</span>
+          </div>
+          <div id="projectCardsList" class="small projects-table-wrap">Selecione um projeto para listar os cards.</div>
         </section>
       </section>
     </main>

@@ -758,6 +758,64 @@ dialog form {
   padding: var(--space-5);
 }
 
+.projects-shell-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.95fr);
+  gap: var(--space-4);
+}
+
+.project-form-card,
+.projects-list-card {
+  min-height: 100%;
+}
+
+.project-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.project-name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.project-template-check {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.role-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+}
+
+.role-chip-grid .inline-check {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.projects-filter-bar {
+  margin-bottom: var(--space-4);
+}
+
+.projects-table-wrap {
+  min-height: 180px;
+}
+
+.projects-form-actions {
+  margin-top: var(--space-2);
+}
+
 .edit-two-cols,
 .backup-grid {
   display: grid;
@@ -842,7 +900,9 @@ dialog form {
   #board,
   .edit-two-cols,
   .backup-grid,
-  .dashboard-grid {
+  .dashboard-grid,
+  .projects-shell-grid,
+  .project-form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -866,7 +926,9 @@ dialog form {
   #board,
   .edit-two-cols,
   .backup-grid,
-  .dashboard-grid {
+  .dashboard-grid,
+  .projects-shell-grid,
+  .project-form-grid {
     grid-template-columns: 1fr;
   }
 
@@ -900,5 +962,9 @@ dialog form {
   .header-actions > *,
   .dialog-actions > * {
     flex: 1 1 100%;
+  }
+
+  .project-name-row {
+    grid-template-columns: 1fr;
   }
 }
