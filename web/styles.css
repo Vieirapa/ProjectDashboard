@@ -919,6 +919,27 @@ dialog form {
   background: #fbfdff;
 }
 
+.priority-toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  min-height: 0;
+}
+
+.priority-toggle-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.priority-toggle-row span {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
 .settings-check-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
