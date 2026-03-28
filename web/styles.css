@@ -241,20 +241,20 @@ button:disabled {
   box-shadow: none;
 }
 
-input,
+input:not([type="color"]),
 select,
 textarea,
-.auth-card input,
+.auth-card input:not([type="color"]),
 .auth-card textarea,
-.edit-form input,
+.edit-form input:not([type="color"]),
 .edit-form select,
 .edit-form textarea,
-.form-grid input,
+.form-grid input:not([type="color"]),
 .form-grid select,
 .form-grid textarea,
-#filters input,
+#filters input:not([type="color"]),
 #filters select,
-dialog input,
+dialog input:not([type="color"]),
 dialog select,
 dialog textarea {
   width: 100%;
@@ -263,6 +263,34 @@ dialog textarea {
   border-radius: 10px;
   background: #fff;
   color: var(--color-text);
+}
+
+input[type="color"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+input[type="color"]:disabled {
+  cursor: not-allowed;
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 8px;
+}
+
+input[type="color"]::-moz-color-swatch {
+  border: 0;
+  border-radius: 8px;
 }
 
 label {
