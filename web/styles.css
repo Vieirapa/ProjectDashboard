@@ -860,6 +860,90 @@ dialog form {
   padding: var(--space-5);
 }
 
+.settings-page-wrap {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.settings-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.settings-panel {
+  overflow: hidden;
+}
+
+.settings-form-grid {
+  max-width: 760px;
+}
+
+.settings-form-grid-wide {
+  max-width: 900px;
+}
+
+.settings-inline-check {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.settings-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+}
+
+.settings-check-grid .inline-check {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.settings-backup-grid {
+  align-items: start;
+}
+
+.settings-side-card,
+.settings-side-panel-inner {
+  height: 100%;
+}
+
+.settings-subsection {
+  margin-top: var(--space-5);
+}
+
+.settings-data-box {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fbfdff;
+  padding: var(--space-4);
+}
+
+.settings-filter-grid {
+  margin-bottom: var(--space-3);
+}
+
+.settings-side-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.settings-role-form {
+  margin: 10px 0 14px;
+  max-width: 720px;
+}
+
+.settings-matrix-wrap {
+  overflow: auto;
+  max-width: 100%;
+}
+
 .projects-shell-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.95fr);
@@ -1004,7 +1088,8 @@ dialog form {
   .backup-grid,
   .dashboard-grid,
   .projects-shell-grid,
-  .project-form-grid {
+  .project-form-grid,
+  .settings-section-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1032,7 +1117,9 @@ dialog form {
   .projects-shell-grid,
   .project-form-grid,
   .kanban-summary-metrics,
-  .kanban-summary-status-grid {
+  .kanban-summary-status-grid,
+  .settings-section-grid,
+  .settings-check-grid {
     grid-template-columns: 1fr;
   }
 
