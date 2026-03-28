@@ -147,7 +147,7 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
             )
 
     # Migrate deleted table (project_json -> document_json)
-    if _table_exists(conn, 'deleted_projects') or _table_exists(conn, 'deleted_documents'):
+    if table_exists(conn, 'deleted_projects') or table_exists(conn, 'deleted_documents'):
         # create new table with correct column name
         conn.execute("""
             CREATE TABLE IF NOT EXISTS deleted_documents_new (
@@ -164,13 +164,13 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
         """)
 
         # from deleted_projects
-        if _table_exists(conn, 'deleted_projects'):
+        if table_exists(conn, 'deleted_projects'):
             conn.execute(
                 "INSERT INTO deleted_documents_new (id, slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json) "
                 "SELECT id, slug, name, deleted_at, deleted_by, trash_path, project_json, review_notes_json, document_versions_json FROM deleted_projects"
             )
         # from old deleted_documents (if it had project_json)
-        if _table_exists(conn, 'deleted_documents'):
+        if table_exists(conn, 'deleted_documents'):
             cols = [r[1] for r in conn.execute("PRAGMA table_info(deleted_documents)").fetchall()]
             if 'project_json' in cols:
                 conn.execute(
@@ -184,12 +184,12 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
                 )
 
         # swap tables
-        if _table_exists(conn, 'deleted_documents'):
+        if table_exists(conn, 'deleted_documents'):
             conn.execute("DROP TABLE deleted_documents")
         conn.execute("ALTER TABLE deleted_documents_new RENAME TO deleted_documents")
 
     # Migrate review_notes.project_slug -> document_slug
-    if _table_exists(conn, 'review_notes') and _column_exists(conn, 'review_notes', 'project_slug') and not _column_exists(conn, 'review_notes', 'document_slug'):
+    if table_exists(conn, 'review_notes') and column_exists(conn, 'review_notes', 'project_slug') and not column_exists(conn, 'review_notes', 'document_slug'):
         conn.execute("""
             CREATE TABLE IF NOT EXISTS review_notes_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,7 +210,7 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE review_notes_new RENAME TO review_notes")
 
     # Migrate document_versions.project_slug -> document_slug
-    if _table_exists(conn, 'document_versions') and _column_exists(conn, 'document_versions', 'project_slug') and not _column_exists(conn, 'document_versions', 'document_slug'):
+    if table_exists(conn, 'document_versions') and column_exists(conn, 'document_versions', 'project_slug') and not column_exists(conn, 'document_versions', 'document_slug'):
         conn.execute("""
             CREATE TABLE IF NOT EXISTS document_versions_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

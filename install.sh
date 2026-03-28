@@ -101,6 +101,7 @@ echo "[3/10] Copying application to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}"
 rsync -a --delete \
   --exclude '.git' \
+  --exclude '.venv' \
   --exclude '__pycache__' \
   --exclude 'data/server.log' \
   --exclude 'data/projectdashboard.db' \
@@ -127,7 +128,8 @@ if [[ "${PYTHON_OK}" != "ok" ]]; then
   echo "Use Ubuntu 22.04+ (or install python3.10+) and rerun install."
   exit 1
 fi
-if [[ ! -d "${INSTALL_DIR}/.venv" ]]; then
+if [[ ! -d "${INSTALL_DIR}/.venv" || ! -x "${INSTALL_DIR}/.venv/bin/python" ]]; then
+  rm -rf "${INSTALL_DIR}/.venv"
   sudo -u "${APP_USER}" "${PYTHON_BIN}" -m venv "${INSTALL_DIR}/.venv"
 fi
 
