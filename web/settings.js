@@ -33,6 +33,11 @@ const rolesSaveBtn = document.getElementById('rolesSaveBtn');
 const rolesSyncCatalogBtn = document.getElementById('rolesSyncCatalogBtn');
 const rolesFeedback = document.getElementById('rolesFeedback');
 const rolesMatrixWrap = document.getElementById('rolesMatrixWrap');
+const roleCreateForm = document.getElementById('roleCreateForm');
+const roleKeyInput = document.getElementById('roleKeyInput');
+const roleDisplayNameInput = document.getElementById('roleDisplayNameInput');
+const roleCreateBtn = document.getElementById('roleCreateBtn');
+const rolesCatalogWrap = document.getElementById('rolesCatalogWrap');
 
 const f = {
   host: document.getElementById('smtp_host'),
@@ -83,6 +88,8 @@ let deletedPager = {
 let backupSnapshots = [];
 let rolesModulesMeta = [];
 let rolesMatrix = [];
+let rolesCatalogItems = [];
+let canManageRoles = false;
 let allowedModules = new Set();
 let lastPersistedBackupPath = '';
 
@@ -528,6 +535,119 @@ async function loadReports() {
   });
 }
 
+function escHtml(s) {
+  return String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function renderRolesCatalog() {
+  if (!rolesCatalogWrap) return;
+  if (!rolesCatalogItems.length) {
+    rolesCatalogWrap.innerHTML = '<div class="small">Nenhuma role cadastrada.</div>';
+    return;
+  }
+
+  const rows = rolesCatalogItems.map((r) => {
+    const key = String(r.role_key || '');
+    const isProtected = key === 'admin' || !!r.is_system || !!r.is_superadmin;
+    const status = r.active ? 'Ativa' : 'Inativa';
+    const users = Number(r?.usage?.users || 0);
+    const modules = Number(r?.usage?.enabled_modules || 0);
+
+    const actionButtons = !canManageRoles
+      ? '-'
+      : isProtected
+        ? '<span class="small">Protegida</span>'
+        : [
+            `<button type="button" class="secondary role-rename-btn" data-role="${escHtml(key)}">Renomear</button>`,
+            `<button type="button" class="secondary role-toggle-btn" data-role="${escHtml(key)}" data-active="${r.active ? '1' : '0'}">${r.active ? 'Inativar' : 'Ativar'}</button>`,
+            `<button type="button" class="danger role-delete-btn" data-role="${escHtml(key)}">Apagar</button>`,
+          ].join(' ');
+
+    return `<tr>
+      <td><strong>${escHtml(key)}</strong></td>
+      <td>${escHtml(r.display_name || key)}</td>
+      <td>${status}</td>
+      <td>${users}</td>
+      <td>${modules}</td>
+      <td>${actionButtons}</td>
+    </tr>`;
+  }).join('');
+
+  rolesCatalogWrap.innerHTML = `<table>
+    <tr><th>Role key</th><th>Nome</th><th>Status</th><th>Usuários</th><th>Módulos ON</th><th>Ações</th></tr>
+    ${rows}
+  </table>`;
+
+  rolesCatalogWrap.querySelectorAll('.role-rename-btn').forEach((btn) => {
+    btn.onclick = async () => {
+      const role = String(btn.dataset.role || '').trim();
+      if (!role) return;
+      const current = rolesCatalogItems.find((x) => String(x.role_key) === role);
+      const suggested = String(current?.display_name || role);
+      const name = window.prompt(`Novo nome de exibição para ${role}:`, suggested);
+      if (!name || !String(name).trim()) return;
+      try {
+        await api(`/api/admin/roles/${encodeURIComponent(role)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: String(name).trim() }),
+        });
+        rolesFeedback.textContent = `Role ${role} renomeada ✅`;
+        await loadRolesAdmin();
+      } catch (err) {
+        rolesFeedback.textContent = err.message;
+      }
+    };
+  });
+
+  rolesCatalogWrap.querySelectorAll('.role-toggle-btn').forEach((btn) => {
+    btn.onclick = async () => {
+      const role = String(btn.dataset.role || '').trim();
+      const active = String(btn.dataset.active || '0') === '1';
+      if (!role) return;
+      try {
+        await api(`/api/admin/roles/${encodeURIComponent(role)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ active: !active }),
+        });
+        rolesFeedback.textContent = `Role ${role} ${active ? 'inativada' : 'ativada'} ✅`;
+        await loadRolesAdmin();
+      } catch (err) {
+        rolesFeedback.textContent = err.message;
+      }
+    };
+  });
+
+  rolesCatalogWrap.querySelectorAll('.role-delete-btn').forEach((btn) => {
+    btn.onclick = async () => {
+      const role = String(btn.dataset.role || '').trim();
+      if (!role) return;
+      const roleItem = rolesCatalogItems.find((x) => String(x.role_key) === role);
+      const users = Number(roleItem?.usage?.users || 0);
+      let url = `/api/admin/roles/${encodeURIComponent(role)}`;
+      if (users > 0) {
+        const reassign = window.prompt(`A role ${role} está em uso por ${users} usuário(s).\nInforme a role de reatribuição (ex.: member):`, 'member');
+        if (!reassign || !String(reassign).trim()) return;
+        url += `?reassign_to=${encodeURIComponent(String(reassign).trim().toLowerCase())}`;
+      }
+      if (!confirm(`Apagar role ${role}?`)) return;
+      try {
+        await api(url, { method: 'DELETE' });
+        rolesFeedback.textContent = `Role ${role} apagada ✅`;
+        await loadRolesAdmin();
+      } catch (err) {
+        rolesFeedback.textContent = err.message;
+      }
+    };
+  });
+}
+
 function renderRolesMatrix() {
   if (!rolesMatrixWrap) return;
   if (!rolesModulesMeta.length || !rolesMatrix.length) {
@@ -561,6 +681,19 @@ async function loadRolesMatrix() {
   rolesModulesMeta = d.modules || [];
   rolesMatrix = d.matrix || [];
   renderRolesMatrix();
+}
+
+async function loadRolesAdmin() {
+  const d = await api('/api/admin/roles');
+  rolesCatalogItems = d.items || [];
+  canManageRoles = !!d.can_manage;
+
+  if (roleCreateBtn) roleCreateBtn.disabled = !canManageRoles;
+  if (roleKeyInput) roleKeyInput.disabled = !canManageRoles;
+  if (roleDisplayNameInput) roleDisplayNameInput.disabled = !canManageRoles;
+
+  renderRolesCatalog();
+  await loadRolesMatrix();
 }
 
 async function saveRolesMatrix() {
@@ -893,8 +1026,8 @@ if (rolesRefreshBtn) {
   rolesRefreshBtn.onclick = async () => {
     rolesFeedback.textContent = '';
     try {
-      await loadRolesMatrix();
-      rolesFeedback.textContent = 'Matriz atualizada.';
+      await loadRolesAdmin();
+      rolesFeedback.textContent = 'Catálogo e matriz atualizados.';
     } catch (err) {
       rolesFeedback.textContent = err.message;
     }
@@ -906,7 +1039,7 @@ if (rolesSaveBtn) {
     rolesFeedback.textContent = '';
     try {
       await saveRolesMatrix();
-      await loadRolesMatrix();
+      await loadRolesAdmin();
       rolesFeedback.textContent = 'Permissões salvas ✅';
     } catch (err) {
       rolesFeedback.textContent = err.message;
@@ -919,8 +1052,40 @@ if (rolesSyncCatalogBtn) {
     rolesFeedback.textContent = '';
     try {
       await api('/api/modules/catalog/sync', { method: 'POST' });
-      await loadRolesMatrix();
+      await loadRolesAdmin();
       rolesFeedback.textContent = 'Catálogo sincronizado ✅';
+    } catch (err) {
+      rolesFeedback.textContent = err.message;
+    }
+  };
+}
+
+if (roleCreateForm) {
+  roleCreateForm.onsubmit = async (e) => {
+    e.preventDefault();
+    rolesFeedback.textContent = '';
+    if (!canManageRoles) {
+      rolesFeedback.textContent = 'Apenas admin pode criar roles.';
+      return;
+    }
+
+    const roleKey = String(roleKeyInput?.value || '').trim().toLowerCase();
+    const displayName = String(roleDisplayNameInput?.value || '').trim();
+    if (!roleKey || !displayName) {
+      rolesFeedback.textContent = 'Preencha role key e nome de exibição.';
+      return;
+    }
+
+    try {
+      await api('/api/admin/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role_key: roleKey, display_name: displayName }),
+      });
+      if (roleKeyInput) roleKeyInput.value = '';
+      if (roleDisplayNameInput) roleDisplayNameInput.value = '';
+      rolesFeedback.textContent = `Role ${roleKey} criada ✅`;
+      await loadRolesAdmin();
     } catch (err) {
       rolesFeedback.textContent = err.message;
     }
@@ -946,7 +1111,7 @@ logoutBtn.onclick = async () => {
   }
   if (hasModule('settings.periodic_reports')) loads.push(loadReports());
   if (hasModule('settings.recoverable_documents')) loads.push(loadDeletedDocuments());
-  if (hasModule('settings.roles_control')) loads.push(loadRolesMatrix());
+  if (hasModule('settings.roles_control')) loads.push(loadRolesAdmin());
 
   try {
     if (loads.length) await Promise.all(loads);

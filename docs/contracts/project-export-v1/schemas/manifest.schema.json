@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectdashboard.local/schemas/project-export-v1/manifest.schema.json",
+  "title": "Project Export Manifest v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_version",
+    "exported_at",
+    "exported_by",
+    "project",
+    "source",
+    "counts",
+    "paths",
+    "checksums_ref"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "artifact_version": { "type": "string", "const": "v1" },
+    "exported_at": { "type": "string", "format": "date-time" },
+    "exported_by": {
+      "type": "object",
+      "required": ["user_id", "display_name"],
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "project": {
+      "type": "object",
+      "required": ["project_id", "project_name", "project_slug"],
+      "properties": {
+        "project_id": { "type": "string", "minLength": 1 },
+        "project_name": { "type": "string", "minLength": 1 },
+        "project_slug": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["app_version"],
+      "properties": {
+        "app_version": { "type": "string", "minLength": 1 },
+        "git_commit": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "counts": {
+      "type": "object",
+      "required": ["cards", "dependencies", "history_entries", "reviews", "files"],
+      "properties": {
+        "cards": { "type": "integer", "minimum": 0 },
+        "dependencies": { "type": "integer", "minimum": 0 },
+        "history_entries": { "type": "integer", "minimum": 0 },
+        "reviews": { "type": "integer", "minimum": 0 },
+        "files": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "required": ["project_data", "files_manifest"],
+      "properties": {
+        "project_data": { "type": "string", "const": "data/project-data.json" },
+        "files_manifest": { "type": "string", "const": "files/manifest-files.json" }
+      },
+      "additionalProperties": false
+    },
+    "checksums_ref": { "type": "string", "const": "checksums/sha256.txt" }
+  },
+  "additionalProperties": false
+}

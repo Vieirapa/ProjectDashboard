@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 import base64
-import hashlib
-import hmac
 import json
 import os
 import re
-import secrets
 import sqlite3
 import subprocess
 import smtplib
@@ -14,10 +11,24 @@ import threading
 import time
 from email.message import EmailMessage
 from datetime import datetime, timedelta
-from http import cookies
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+from backend.auth.session import (
+    create_session as create_auth_session,
+    current_user_from_cookie as current_user_from_session_cookie,
+    hash_password,
+    parse_cookie,
+    verify_password,
+)
+from backend.core.db import column_exists, connect_db, ensure_column, table_exists
+from backend.rbac.roles import (
+    list_role_catalog as list_rbac_role_catalog,
+    resolve_fallback_role as resolve_rbac_fallback_role,
+    role_exists as rbac_role_exists,
+    role_is_active as rbac_role_is_active,
+)
 
 APP_DIR = Path(__file__).parent
 BASE_DIR = Path(os.getenv("PDASH_DOCUMENTS_DIR", str(APP_DIR / "documents")))
@@ -109,20 +120,6 @@ def slugify(name: str) -> str:
     return slug.lower() or "documento"
 
 
-def hash_password(password: str, salt_hex: str | None = None) -> str:
-    salt = bytes.fromhex(salt_hex) if salt_hex else os.urandom(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
-    return f"{salt.hex()}${digest.hex()}"
-
-
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        salt_hex, digest_hex = stored.split("$", 1)
-        return hmac.compare_digest(hash_password(password, salt_hex), f"{salt_hex}${digest_hex}")
-    except Exception:
-        return False
-
-
 def read_text_if_exists(path: Path) -> str:
     if path.exists() and path.is_file():
         return path.read_text(encoding="utf-8", errors="ignore")
@@ -138,35 +135,15 @@ def infer_description(project_dir: Path) -> str:
 
 
 def db() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_db(DATA_DIR, DB_PATH)
 
-
-def ensure_column(conn: sqlite3.Connection, table: str, col: str, ddl: str):
-    cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-    if col not in cols:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
 
 # --- Legacy migrations: projects -> documents ---
-
-def _table_exists(conn, name: str) -> bool:
-    row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
-    return bool(row)
-
-
-def _column_exists(conn, table: str, col: str) -> bool:
-    try:
-        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-    except Exception:
-        return False
-    return col in cols
 
 
 def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
     # Migrate legacy projects table into documents table (only if legacy schema exists)
-    if _table_exists(conn, 'projects') and _column_exists(conn, 'projects', 'slug'):
+    if table_exists(conn, 'projects') and column_exists(conn, 'projects', 'slug'):
         total_docs = conn.execute("SELECT COUNT(*) AS c FROM documents").fetchone()[0]
         total_projects = conn.execute("SELECT COUNT(*) AS c FROM projects").fetchone()[0]
         if total_projects and total_docs == 0:
@@ -176,7 +153,7 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
             )
 
     # Migrate deleted table (project_json -> document_json)
-    if _table_exists(conn, 'deleted_projects') or _table_exists(conn, 'deleted_documents'):
+    if table_exists(conn, 'deleted_projects') or table_exists(conn, 'deleted_documents'):
         # create new table with correct column name
         conn.execute("""
             CREATE TABLE IF NOT EXISTS deleted_documents_new (
@@ -193,13 +170,13 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
         """)
 
         # from deleted_projects
-        if _table_exists(conn, 'deleted_projects'):
+        if table_exists(conn, 'deleted_projects'):
             conn.execute(
                 "INSERT INTO deleted_documents_new (id, slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json) "
                 "SELECT id, slug, name, deleted_at, deleted_by, trash_path, project_json, review_notes_json, document_versions_json FROM deleted_projects"
             )
         # from old deleted_documents (if it had project_json)
-        if _table_exists(conn, 'deleted_documents'):
+        if table_exists(conn, 'deleted_documents'):
             cols = [r[1] for r in conn.execute("PRAGMA table_info(deleted_documents)").fetchall()]
             if 'project_json' in cols:
                 conn.execute(
@@ -213,12 +190,12 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
                 )
 
         # swap tables
-        if _table_exists(conn, 'deleted_documents'):
+        if table_exists(conn, 'deleted_documents'):
             conn.execute("DROP TABLE deleted_documents")
         conn.execute("ALTER TABLE deleted_documents_new RENAME TO deleted_documents")
 
     # Migrate review_notes.project_slug -> document_slug
-    if _table_exists(conn, 'review_notes') and _column_exists(conn, 'review_notes', 'project_slug') and not _column_exists(conn, 'review_notes', 'document_slug'):
+    if table_exists(conn, 'review_notes') and column_exists(conn, 'review_notes', 'project_slug') and not column_exists(conn, 'review_notes', 'document_slug'):
         conn.execute("""
             CREATE TABLE IF NOT EXISTS review_notes_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,7 +216,7 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE review_notes_new RENAME TO review_notes")
 
     # Migrate document_versions.project_slug -> document_slug
-    if _table_exists(conn, 'document_versions') and _column_exists(conn, 'document_versions', 'project_slug') and not _column_exists(conn, 'document_versions', 'document_slug'):
+    if table_exists(conn, 'document_versions') and column_exists(conn, 'document_versions', 'project_slug') and not column_exists(conn, 'document_versions', 'document_slug'):
         conn.execute("""
             CREATE TABLE IF NOT EXISTS document_versions_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -292,6 +269,168 @@ def can_delete_document(role: str, user: str, document: dict) -> bool:
     if role == "member":
         return (document.get("createdBy") or "").strip().lower() == user.strip().lower()
     return False
+
+
+def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
+    # Fase 1: base de roles no banco (compatível com modelo atual)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_key TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            is_system INTEGER NOT NULL DEFAULT 0,
+            is_superadmin INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT '',
+            created_by TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_roles_active ON roles(active)")
+
+    # Tombstones: bloqueia ressurreição automática de roles removidas manualmente
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS deleted_roles (
+            role_key TEXT PRIMARY KEY,
+            deleted_at TEXT NOT NULL DEFAULT '',
+            deleted_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS role_module_permissions (
+            role_id INTEGER NOT NULL,
+            module_id TEXT NOT NULL,
+            can_access INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (role_id, module_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_role_module_permissions_module ON role_module_permissions(module_id)")
+
+    now = now_iso()
+    deleted_roles = {
+        str(r[0] or "").strip().lower()
+        for r in conn.execute("SELECT role_key FROM deleted_roles WHERE role_key IS NOT NULL AND TRIM(role_key)<>''").fetchall()
+    }
+
+    existing_roles_count = int(conn.execute("SELECT COUNT(*) AS c FROM roles").fetchone()["c"] or 0)
+
+    # Seed oficial apenas no bootstrap inicial (evita ressuscitar roles apagadas manualmente)
+    if existing_roles_count == 0:
+        for role_key in ROLES:
+            if role_key != "admin" and role_key in deleted_roles:
+                continue
+            is_super = 1 if role_key == "admin" else 0
+            is_system = 1 if role_key == "admin" else 0
+            conn.execute(
+                """
+                INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+                VALUES (?, ?, ?, ?, 1, ?, ?, 'system', 'system')
+                """,
+                (role_key, role_key, is_system, is_super, now, now),
+            )
+    else:
+        # Garantia mínima: admin sempre existe/protegido
+        conn.execute(
+            """
+            INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+            VALUES ('admin', 'admin', 1, 1, 1, ?, ?, 'system', 'system')
+            ON CONFLICT(role_key) DO UPDATE SET
+                is_system=1,
+                is_superadmin=1,
+                active=1,
+                updated_at=excluded.updated_at,
+                updated_by='system'
+            """,
+            (now, now),
+        )
+
+    # Garante que roles já existentes em dados legados também existam no catálogo
+    legacy_roles = set()
+    for row in conn.execute("SELECT DISTINCT role FROM users WHERE role IS NOT NULL AND TRIM(role)<>''").fetchall():
+        legacy_roles.add(str(row[0]).strip().lower())
+    for row in conn.execute("SELECT DISTINCT role_name FROM role_modules WHERE role_name IS NOT NULL AND TRIM(role_name)<>''").fetchall():
+        legacy_roles.add(str(row[0]).strip().lower())
+    for row in conn.execute("SELECT DISTINCT allowed_roles FROM projects WHERE allowed_roles IS NOT NULL AND TRIM(allowed_roles)<>''").fetchall():
+        for role_name in str(row[0] or "").split(','):
+            role_name = role_name.strip().lower()
+            if role_name:
+                legacy_roles.add(role_name)
+
+    for role_key in sorted(legacy_roles):
+        if role_key != "admin" and role_key in deleted_roles:
+            continue
+        conn.execute(
+            """
+            INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+            VALUES (?, ?, 0, 0, 1, ?, ?, 'migration', 'migration')
+            ON CONFLICT(role_key) DO NOTHING
+            """,
+            (role_key, role_key, now, now),
+        )
+
+    # Sincroniza permissões legadas para a nova tabela
+    role_map = {
+        str(r["role_key"]): int(r["id"])
+        for r in conn.execute("SELECT id, role_key FROM roles").fetchall()
+    }
+
+    legacy_permissions = conn.execute(
+        "SELECT role_name, module_id, can_access, updated_at, updated_by FROM role_modules"
+    ).fetchall()
+
+    for p in legacy_permissions:
+        role_key = str(p["role_name"] or "").strip().lower()
+        module_id = str(p["module_id"] or "").strip()
+        if not role_key or not module_id:
+            continue
+        role_id = role_map.get(role_key)
+        if not role_id:
+            continue
+        conn.execute(
+            """
+            INSERT INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(role_id, module_id) DO UPDATE SET
+                can_access=excluded.can_access,
+                updated_at=excluded.updated_at,
+                updated_by=excluded.updated_by
+            """,
+            (
+                role_id,
+                module_id,
+                int(p["can_access"] or 0),
+                str(p["updated_at"] or now),
+                str(p["updated_by"] or "migration"),
+            ),
+        )
+
+    # Regra de negócio: admin sempre com acesso total nos módulos ativos
+    admin_id = role_map.get("admin")
+    if admin_id:
+        modules = conn.execute("SELECT module_id FROM app_modules").fetchall()
+        for m in modules:
+            module_id = str(m["module_id"])
+            conn.execute(
+                """
+                INSERT INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+                VALUES (?, ?, 1, ?, 'system')
+                ON CONFLICT(role_id, module_id) DO UPDATE SET
+                    can_access=1,
+                    updated_at=excluded.updated_at,
+                    updated_by='system'
+                """,
+                (admin_id, module_id, now),
+            )
 
 
 def init_db():
@@ -518,6 +657,8 @@ def init_db():
                 """,
                 (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now_iso()),
             )
+
+        ensure_roles_foundation(conn)
 
         for k, v in [
             ("smtp.host", ""),
@@ -772,6 +913,228 @@ def list_usernames() -> list[str]:
     return [r["username"] for r in rows]
 
 
+def list_role_catalog(include_admin: bool = True) -> list[str]:
+    return list_rbac_role_catalog(db, ROLES, include_admin=include_admin)
+
+
+def role_exists(role_key: str, active_only: bool = True) -> bool:
+    return rbac_role_exists(db, role_key, active_only=active_only)
+
+
+def role_is_active(role_key: str) -> bool:
+    return rbac_role_is_active(db, role_key, ROLES)
+
+
+def resolve_fallback_role(preferred: str = "member") -> str:
+    return resolve_rbac_fallback_role(db, preferred=preferred)
+
+
+def list_roles_admin_view() -> list[dict]:
+    with db() as conn:
+        role_rows = conn.execute(
+            """
+            SELECT id, role_key, display_name, is_system, is_superadmin, active, created_at, updated_at
+            FROM roles
+            ORDER BY id
+            """
+        ).fetchall()
+
+        user_counts = {
+            str(r["role"] or "").strip().lower(): int(r["c"] or 0)
+            for r in conn.execute(
+                "SELECT role, COUNT(*) AS c FROM users GROUP BY role"
+            ).fetchall()
+        }
+
+        module_counts = {
+            int(r["role_id"]): int(r["c"] or 0)
+            for r in conn.execute(
+                "SELECT role_id, COUNT(*) AS c FROM role_module_permissions WHERE can_access=1 GROUP BY role_id"
+            ).fetchall()
+        }
+
+    out = []
+    for r in role_rows:
+        role_key = str(r["role_key"])
+        out.append({
+            "id": int(r["id"]),
+            "role_key": role_key,
+            "display_name": str(r["display_name"] or role_key),
+            "is_system": bool(int(r["is_system"] or 0)),
+            "is_superadmin": bool(int(r["is_superadmin"] or 0)),
+            "active": bool(int(r["active"] or 0)),
+            "created_at": str(r["created_at"] or ""),
+            "updated_at": str(r["updated_at"] or ""),
+            "usage": {
+                "users": int(user_counts.get(role_key, 0)),
+                "enabled_modules": int(module_counts.get(int(r["id"]), 0)),
+            },
+        })
+    return out
+
+
+def create_role_admin(payload: dict, actor: str) -> tuple[bool, str, dict | None]:
+    role_key = str(payload.get("role_key") or payload.get("roleKey") or "").strip().lower()
+    display_name = str(payload.get("display_name") or payload.get("displayName") or role_key).strip()
+    if not role_key:
+        return False, "role_key é obrigatório", None
+    if not re.fullmatch(r"[a-z0-9_\-]{2,64}", role_key):
+        return False, "role_key inválido", None
+    if role_key == "admin":
+        return False, "role admin é reservada", None
+    if not display_name:
+        return False, "display_name é obrigatório", None
+
+    now = now_iso()
+    with db() as conn:
+        exists = conn.execute("SELECT id FROM roles WHERE role_key=?", (role_key,)).fetchone()
+        if exists:
+            return False, "role já existe", None
+
+        # criação explícita remove tombstone (permite recriar role intencionalmente)
+        conn.execute("DELETE FROM deleted_roles WHERE role_key=?", (role_key,))
+
+        conn.execute(
+            """
+            INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+            VALUES (?, ?, 0, 0, 1, ?, ?, ?, ?)
+            """,
+            (role_key, display_name, now, now, actor, actor),
+        )
+        role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role_key,)).fetchone()
+        role_id = int(role_row["id"])
+
+        # defaults: novos módulos inicialmente false
+        modules = conn.execute("SELECT module_id FROM app_modules").fetchall()
+        for m in modules:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+                VALUES (?, ?, 0, ?, ?)
+                """,
+                (role_id, str(m["module_id"]), now, actor),
+            )
+
+    return True, "ok", {"id": role_id, "role_key": role_key, "display_name": display_name}
+
+
+def update_role_admin(selector: str, payload: dict, actor: str) -> tuple[bool, str, dict | None]:
+    sel = str(selector or "").strip()
+    if not sel:
+        return False, "role inválida", None
+
+    with db() as conn:
+        if sel.isdigit():
+            role_row = conn.execute("SELECT * FROM roles WHERE id=?", (int(sel),)).fetchone()
+        else:
+            role_row = conn.execute("SELECT * FROM roles WHERE role_key=?", (sel.lower(),)).fetchone()
+
+        if role_row is None:
+            return False, "role não encontrada", None
+
+        role_key = str(role_row["role_key"])
+        if role_key == "admin" or bool(int(role_row["is_superadmin"] or 0)):
+            # apenas allow active toggle=true (no-op) and display_name same; prática: imutável
+            return False, "role admin é imutável", None
+
+        updates = []
+        vals = []
+
+        if "display_name" in payload or "displayName" in payload:
+            display_name = str(payload.get("display_name") or payload.get("displayName") or "").strip()
+            if not display_name:
+                return False, "display_name inválido", None
+            updates.append("display_name=?")
+            vals.append(display_name)
+
+        if "active" in payload:
+            active = 1 if bool(payload.get("active")) else 0
+            updates.append("active=?")
+            vals.append(active)
+
+        if not updates:
+            return False, "nenhuma alteração informada", None
+
+        updates.append("updated_at=?")
+        vals.append(now_iso())
+        updates.append("updated_by=?")
+        vals.append(actor)
+        vals.append(int(role_row["id"]))
+
+        conn.execute(f"UPDATE roles SET {', '.join(updates)} WHERE id=?", tuple(vals))
+
+        out = conn.execute("SELECT id, role_key, display_name, active FROM roles WHERE id=?", (int(role_row["id"]),)).fetchone()
+    return True, "ok", dict(out) if out else None
+
+
+def delete_role_admin(selector: str, actor: str, reassign_to: str | None = None) -> tuple[bool, str]:
+    sel = str(selector or "").strip()
+    if not sel:
+        return False, "role inválida"
+    reass = str(reassign_to or "").strip().lower()
+
+    with db() as conn:
+        if sel.isdigit():
+            role_row = conn.execute("SELECT * FROM roles WHERE id=?", (int(sel),)).fetchone()
+        else:
+            role_row = conn.execute("SELECT * FROM roles WHERE role_key=?", (sel.lower(),)).fetchone()
+
+        if role_row is None:
+            return False, "role não encontrada"
+
+        role_key = str(role_row["role_key"])
+        if role_key == "admin" or bool(int(role_row["is_superadmin"] or 0)) or bool(int(role_row["is_system"] or 0)):
+            return False, "role protegida não pode ser removida"
+
+        users_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM users WHERE LOWER(TRIM(role))=?",
+                (role_key,),
+            ).fetchone()["c"]
+        )
+        if users_count > 0:
+            if not reass:
+                return False, f"role em uso por {users_count} usuário(s); informe reassign_to"
+            target = conn.execute("SELECT role_key FROM roles WHERE role_key=? AND active=1", (reass,)).fetchone()
+            if target is None:
+                return False, "reassign_to inválida"
+            if reass == role_key:
+                return False, "reassign_to deve ser diferente da role removida"
+            conn.execute(
+                "UPDATE users SET role=? WHERE LOWER(TRIM(role))=?",
+                (reass, role_key),
+            )
+
+        # Limpa vínculos de permissões e legado
+        conn.execute("DELETE FROM role_module_permissions WHERE role_id=?", (int(role_row["id"]),))
+        conn.execute("DELETE FROM role_modules WHERE LOWER(TRIM(role_name))=?", (role_key,))
+
+        # Remove role de projetos legados (CSV)
+        project_rows = conn.execute("SELECT project_id, allowed_roles FROM projects").fetchall()
+        for pr in project_rows:
+            vals = [x.strip().lower() for x in str(pr["allowed_roles"] or "").split(',') if x.strip()]
+            new_vals = [x for x in vals if x != role_key]
+            if new_vals != vals:
+                conn.execute("UPDATE projects SET allowed_roles=? WHERE project_id=?", (','.join(new_vals), int(pr["project_id"])))
+
+        now = now_iso()
+        conn.execute(
+            """
+            INSERT INTO deleted_roles (role_key, deleted_at, deleted_by)
+            VALUES (?, ?, ?)
+            ON CONFLICT(role_key) DO UPDATE SET
+                deleted_at=excluded.deleted_at,
+                deleted_by=excluded.deleted_by
+            """,
+            (role_key, now, actor),
+        )
+
+        conn.execute("DELETE FROM roles WHERE id=?", (int(role_row["id"]),))
+
+    audit(actor, "roles.delete", role_key, json.dumps({"reassign_to": reass or None}, ensure_ascii=False))
+    return True, "ok"
+
+
 def list_app_modules(active_only: bool = False) -> list[dict]:
     with db() as conn:
         if active_only:
@@ -796,16 +1159,29 @@ def list_app_modules(active_only: bool = False) -> list[dict]:
 def list_role_module_matrix() -> list[dict]:
     modules = list_app_modules(active_only=False)
     module_ids = [m["module_id"] for m in modules]
-    with db() as conn:
-        rows = conn.execute(
-            "SELECT role_name, module_id, can_access FROM role_modules"
-        ).fetchall()
+
     access_map: dict[tuple[str, str], bool] = {}
-    for r in rows:
-        access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
+    with db() as conn:
+        try:
+            rows = conn.execute(
+                """
+                SELECT r.role_key AS role_name, p.module_id, p.can_access
+                FROM role_module_permissions p
+                JOIN roles r ON r.id = p.role_id
+                """
+            ).fetchall()
+            for r in rows:
+                access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
+        except sqlite3.OperationalError:
+            # fallback legado
+            rows = conn.execute(
+                "SELECT role_name, module_id, can_access FROM role_modules"
+            ).fetchall()
+            for r in rows:
+                access_map[(str(r["role_name"]), str(r["module_id"]))] = bool(int(r["can_access"] or 0))
 
     matrix: list[dict] = []
-    for role in ROLES:
+    for role in list_role_catalog(include_admin=True):
         role_row = {
             "role": role,
             "immutable": role == "admin",
@@ -819,6 +1195,7 @@ def list_role_module_matrix() -> list[dict]:
 
 def sync_module_catalog() -> None:
     with db() as conn:
+        now = now_iso()
         for mod in MODULE_CATALOG_V1:
             conn.execute(
                 """
@@ -829,8 +1206,27 @@ def sync_module_catalog() -> None:
                     label=excluded.label,
                     active=excluded.active
                 """,
-                (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now_iso()),
+                (mod["module_id"], mod["page_key"], mod["label"], int(mod.get("active", 1)), now),
             )
+
+        # Fase 1: manter role foundation e default de permissões para módulos novos
+        ensure_roles_foundation(conn)
+
+        role_rows = conn.execute("SELECT id, role_key FROM roles WHERE active=1").fetchall()
+        module_rows = conn.execute("SELECT module_id FROM app_modules").fetchall()
+        for rr in role_rows:
+            role_id = int(rr["id"])
+            role_key = str(rr["role_key"])
+            for mm in module_rows:
+                module_id = str(mm["module_id"])
+                can_access = 1 if role_key == "admin" else 0
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+                    VALUES (?, ?, ?, ?, 'system')
+                    """,
+                    (role_id, module_id, can_access, now),
+                )
 
 
 def get_role_module_permissions(role_name: str) -> dict[str, bool]:
@@ -841,10 +1237,22 @@ def get_role_module_permissions(role_name: str) -> dict[str, bool]:
         return {k: True for k in out.keys()}
 
     with db() as conn:
-        rows = conn.execute(
-            "SELECT module_id, can_access FROM role_modules WHERE role_name=?",
-            (role,),
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """
+                SELECT p.module_id, p.can_access
+                FROM role_module_permissions p
+                JOIN roles r ON r.id = p.role_id
+                WHERE r.role_key=?
+                """,
+                (role,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            rows = conn.execute(
+                "SELECT module_id, can_access FROM role_modules WHERE role_name=?",
+                (role,),
+            ).fetchall()
+
     for r in rows:
         module_id = str(r["module_id"])
         if module_id in out:
@@ -854,8 +1262,16 @@ def get_role_module_permissions(role_name: str) -> dict[str, bool]:
 
 def get_effective_permissions(user: dict | None) -> dict:
     if not user:
-        return {"role": "", "allowedModules": [], "allowedPages": []}
+        return {"role": "", "roleActive": False, "allowedModules": [], "allowedPages": []}
     role = str(user.get("role") or "").strip().lower()
+    if not role_is_active(role):
+        return {
+            "role": role,
+            "roleActive": False,
+            "allowedModules": [],
+            "allowedPages": [],
+        }
+
     modules = list_app_modules(active_only=True)
     mod_by_id = {m["module_id"]: m for m in modules}
     role_perms = get_role_module_permissions(role)
@@ -863,6 +1279,7 @@ def get_effective_permissions(user: dict | None) -> dict:
     allowed_pages = sorted({mod_by_id[mid]["page_key"] for mid in allowed_modules if mid in mod_by_id})
     return {
         "role": role,
+        "roleActive": True,
         "allowedModules": allowed_modules,
         "allowedPages": allowed_pages,
     }
@@ -870,7 +1287,9 @@ def get_effective_permissions(user: dict | None) -> dict:
 
 def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool, str]:
     role = str(role_name or "").strip().lower()
-    if role not in ROLES:
+    if not role:
+        return False, "role inválida"
+    if not re.fullmatch(r"[a-z0-9_\-]{2,64}", role):
         return False, "role inválida"
     if role == "admin":
         return False, "role admin é imutável"
@@ -905,7 +1324,24 @@ def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool
             return False, f"módulos inválidos: {', '.join(invalid)}"
 
         now = now_iso()
+        role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role,)).fetchone()
+        if role_row is None:
+            deleted = conn.execute("SELECT 1 FROM deleted_roles WHERE role_key=?", (role,)).fetchone()
+            if deleted is not None:
+                return False, "role foi removida e não pode ser recriada por atualização de permissões"
+            conn.execute(
+                """
+                INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
+                VALUES (?, ?, 0, 0, 1, ?, ?, ?, ?)
+                """,
+                (role, role, now, now, actor, actor),
+            )
+            role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role,)).fetchone()
+
+        role_id = int(role_row["id"])
+
         for module_id, can_access in normalized.items():
+            # Legado (compatibilidade)
             conn.execute(
                 """
                 INSERT INTO role_modules (role_name, module_id, can_access, updated_at, updated_by)
@@ -918,6 +1354,19 @@ def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool
                 (role, module_id, int(can_access), now, actor),
             )
 
+            # Novo modelo (fase 1+)
+            conn.execute(
+                """
+                INSERT INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(role_id, module_id) DO UPDATE SET
+                    can_access=excluded.can_access,
+                    updated_at=excluded.updated_at,
+                    updated_by=excluded.updated_by
+                """,
+                (role_id, module_id, int(can_access), now, actor),
+            )
+
     return True, "ok"
 
 
@@ -926,7 +1375,8 @@ def _normalize_allowed_roles(raw: str | list | None) -> str:
         vals = [str(x or '').strip().lower() for x in raw]
     else:
         vals = [x.strip().lower() for x in str(raw or '').split(',')]
-    allowed = [r for r in vals if r in ROLES and r not in ADMIN_EQUIV_ROLES]
+    known_roles = set(list_role_catalog(include_admin=True))
+    allowed = [r for r in vals if r in known_roles and r != 'admin']
     # remove duplicados preservando ordem
     out: list[str] = []
     for r in allowed:
@@ -2047,7 +2497,7 @@ def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> t
 def run_system_diagnostics() -> dict:
     settings = get_admin_settings()
     repo_url = _setting(settings, "system.git_repo", "PDASH_GIT_REPO", "https://github.com/Vieirapa/ProjectDashboard.git")
-    repo_branch = _setting(settings, "system.git_branch", "PDASH_GIT_BRANCH", "main")
+    repo_branch = _setting(settings, "system.git_branch", "PDASH_GIT_BRANCH", "develop")
 
     diagnostics = {
         "timestamp": now_iso(),
@@ -2653,27 +3103,11 @@ def change_own_password(username: str, current_password: str, new_password: str)
 
 
 def create_session(username: str, role: str) -> str:
-    token = secrets.token_hex(24)
-    SESSIONS[token] = {"username": username, "role": role, "exp": datetime.utcnow().timestamp() + SESSION_TTL_SECONDS}
-    return token
-
-
-def parse_cookie(raw: str | None) -> dict:
-    if not raw:
-        return {}
-    jar = cookies.SimpleCookie(); jar.load(raw)
-    return {k: v.value for k, v in jar.items()}
+    return create_auth_session(SESSIONS, SESSION_TTL_SECONDS, username, role)
 
 
 def current_user_from_cookie(raw_cookie: str | None) -> dict | None:
-    tok = parse_cookie(raw_cookie).get(SESSION_COOKIE)
-    if not tok or tok not in SESSIONS:
-        return None
-    s = SESSIONS[tok]
-    if datetime.utcnow().timestamp() > s["exp"]:
-        SESSIONS.pop(tok, None)
-        return None
-    return {"username": s["username"], "role": s["role"], "token": tok}
+    return current_user_from_session_cookie(SESSIONS, SESSION_COOKIE, raw_cookie)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2712,10 +3146,36 @@ class Handler(BaseHTTPRequestHandler):
     def _user(self):
         return current_user_from_cookie(self.headers.get("Cookie"))
 
-    def _require_auth(self):
+    def _is_user_role_active(self, user: dict | None = None) -> bool:
+        u = user or self._user()
+        if not u:
+            return False
+        return role_is_active(u.get("role") or "")
+
+    def _inactive_role_payload(self, user: dict | None) -> dict:
+        username = ""
+        role = ""
+        if user:
+            username = str(user.get("username") or "")
+            role = str(user.get("role") or "")
+        return {
+            "ok": False,
+            "error": "role_inactive",
+            "message": "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+            "user": {"username": username, "role": role},
+        }
+
+    def _require_auth(self, allow_inactive: bool = False):
         u = self._user()
-        if u: return u
-        self._json(401, {"ok": False, "error": "unauthorized"}); return None
+        if not u:
+            self._json(401, {"ok": False, "error": "unauthorized"})
+            return None
+        is_active = self._is_user_role_active(u)
+        merged = {**u, "role_active": is_active}
+        if not is_active and not allow_inactive:
+            self._json(403, self._inactive_role_payload(merged))
+            return None
+        return merged
 
     def _require_admin(self):
         u = self._require_auth()
@@ -2860,6 +3320,21 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
+
+        u = self._user()
+        is_inactive = bool(u) and (not self._is_user_role_active(u))
+
+        if p == "/inactive.html":
+            return self._serve(WEB_DIR / "inactive.html", "text/html; charset=utf-8")
+
+        if is_inactive and p in [
+            "/", "/index.html", "/kanban.html", "/edit.html", "/projects.html", "/admin-users.html", "/profile.html", "/settings.html"
+        ]:
+            self.send_response(302)
+            self.send_header("Location", "/inactive.html")
+            self.end_headers()
+            return
+
         if p in ["/", "/index.html"]: return self._serve(WEB_DIR / "index.html", "text/html; charset=utf-8")
         if p == "/login.html": return self._serve(WEB_DIR / "login.html", "text/html; charset=utf-8")
         if p == "/signup.html": return self._serve(WEB_DIR / "signup.html", "text/html; charset=utf-8")
@@ -2896,13 +3371,32 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/me":
             u = self._user()
-            return self._json(200 if u else 401, {"ok": bool(u), "user": {"username": u["username"], "role": u["role"]} if u else None})
+            if not u:
+                return self._json(401, {"ok": False, "user": None})
+            active = self._is_user_role_active(u)
+            return self._json(200, {
+                "ok": True,
+                "user": {
+                    "username": u["username"],
+                    "role": u["role"],
+                    "role_active": active,
+                },
+                "role_active": active,
+                "inactive_message": None if active else "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+            })
 
         if p == "/api/me/permissions":
-            u = self._require_auth()
+            u = self._require_auth(allow_inactive=True)
             if not u: return
             perms = self._effective_permissions(u)
-            return self._json(200, {"ok": True, "permissions": perms})
+            if not bool(u.get("role_active")):
+                return self._json(200, {
+                    "ok": True,
+                    "permissions": perms,
+                    "role_active": False,
+                    "inactive_message": "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+                })
+            return self._json(200, {"ok": True, "permissions": perms, "role_active": True})
 
         if p == "/api/me/profile":
             u = self._require_auth()
@@ -3015,7 +3509,21 @@ class Handler(BaseHTTPRequestHandler):
                         "created_at": r["created_at"],
                         "associated_tasks": task_count,
                     })
-            return self._json(200, {"ok": True, "users": users, "roles": ROLES})
+            return self._json(200, {"ok": True, "users": users, "roles": list_role_catalog(include_admin=True)})
+
+        if p == "/api/admin/roles":
+            user = self._require_auth()
+            if not user: return
+            can_view = self._has_module_access("projects.create_edit", user)
+            if not can_view:
+                return self._json(403, {"ok": False, "error": "forbidden"})
+            items = list_roles_admin_view()
+            return self._json(200, {
+                "ok": True,
+                "roles": [r["role_key"] for r in items if r.get("role_key") != "admin" and bool(r.get("active", True))],
+                "items": items,
+                "can_manage": (str(user.get("role") or "").strip().lower() == "admin"),
+            })
 
         if p == "/api/admin/settings":
             if not self._require_any_module(["settings.smtp", "settings.system_behavior", "settings.backup", "settings.system_diagnostics", "settings.recoverable_documents"]): return
@@ -3029,14 +3537,14 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_root_admin(): return
             return self._json(200, {
                 "ok": True,
-                "roles": ROLES,
+                "roles": list_role_catalog(include_admin=True),
                 "modules": list_app_modules(active_only=False),
                 "matrix": list_role_module_matrix(),
             })
 
         if p == "/api/admin/reports":
             if not self._require_module("settings.periodic_reports"): return
-            return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": ROLES, "priorities": ["TODOS", *PRIORITIES]})
+            return self._json(200, {"ok": True, "reports": list_periodic_reports(), "statuses": STATUSES, "roles": list_role_catalog(include_admin=True), "priorities": ["TODOS", *PRIORITIES]})
 
         if p == "/api/admin/audit":
             user = self._require_auth()
@@ -3135,7 +3643,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(401, {"ok": False, "error": "Credenciais inválidas"})
             tok = create_session(row["username"], row["role"])
             cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
-            return self._json(200, {"ok": True, "user": {"username": row["username"], "role": row["role"]}}, set_cookie=cookie)
+            role_active = role_is_active(row["role"])
+            return self._json(200, {
+                "ok": True,
+                "user": {
+                    "username": row["username"],
+                    "role": row["role"],
+                    "role_active": role_active,
+                },
+                "role_active": role_active,
+                "inactive_message": None if role_active else "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+            }, set_cookie=cookie)
 
         if p == "/api/logout":
             u = self._user()
@@ -3155,7 +3673,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/documents":
             user = self._require_auth()
             if not user: return
-            if not can_create_document(user["role"]):
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_create_document(user["role"]) or can_via_module):
                 return self._json(403, {"ok": False, "error": "Sem permissão para criar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3177,7 +3696,8 @@ class Handler(BaseHTTPRequestHandler):
             proj = self._get_document_in_scope(slug, qs, user)
             if not proj:
                 return self._reply_document_scope_error(slug, qs, user)
-            if not can_upload_document(user["role"]):
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_upload_document(user["role"]) or can_via_module):
                 return self._json(403, {"ok": False, "error": "Sem permissão para anexar documento"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3199,7 +3719,8 @@ class Handler(BaseHTTPRequestHandler):
             proj = self._get_document_in_scope(slug, qs, user)
             if not proj:
                 return self._reply_document_scope_error(slug, qs, user)
-            if not can_add_review_note(user["role"]):
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_add_review_note(user["role"]) or can_via_module):
                 return self._json(403, {"ok": False, "error": "Sem permissão para adicionar nota de revisão"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
@@ -3342,6 +3863,16 @@ class Handler(BaseHTTPRequestHandler):
                 audit(admin["username"], "project.registry.clone_from_template", str(template_project_id), f"new_project_id={new_project_id}")
             return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
+        if p == "/api/admin/roles":
+            admin = self._require_root_admin()
+            if not admin: return
+            ok, body = self._read_json()
+            if not ok: return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg, data = create_role_admin(body or {}, admin["username"])
+            if done:
+                audit(admin["username"], "roles.create", str(data.get("role_key") if data else ""), json.dumps(data or {}, ensure_ascii=False))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "role": data if done else None})
+
         if p == "/api/admin/users":
             admin = self._require_auth()
             if not admin: return
@@ -3351,7 +3882,8 @@ class Handler(BaseHTTPRequestHandler):
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             username = (body.get("username") or "").strip()
             password = body.get("password") or ""
-            role = body.get("role") if body.get("role") in ROLES else "member"
+            requested_role = str(body.get("role") or "").strip().lower()
+            role = requested_role if role_exists(requested_role, active_only=True) else resolve_fallback_role("member")
             if not username or not password:
                 return self._json(400, {"ok": False, "error": "username e password são obrigatórios"})
             try:
@@ -3370,7 +3902,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(403, {"ok": False, "error": "forbidden"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            role = body.get("role") if body.get("role") in ROLES else "member"
+            requested_role = str(body.get("role") or "").strip().lower()
+            role = requested_role if role_exists(requested_role, active_only=True) else resolve_fallback_role("member")
             token = secrets.token_urlsafe(24)
             exp = (datetime.utcnow() + timedelta(days=3)).replace(microsecond=0).isoformat() + "Z"
             invite_url = f"/signup.html?token={token}"
@@ -3502,6 +4035,21 @@ class Handler(BaseHTTPRequestHandler):
                 })
             return self._json(400, {"ok": False, "error": msg, "settings": None})
 
+        if p.startswith("/api/admin/roles/"):
+            admin = self._require_root_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            selector = str(parts[3] or "").strip()
+            ok, body = self._read_json()
+            if not ok:
+                return self._json(400, {"ok": False, "error": body["error"]})
+            done, msg, data = update_role_admin(selector, body or {}, admin["username"])
+            if done:
+                audit(admin["username"], "roles.update", selector, json.dumps(data or {}, ensure_ascii=False))
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "role": data if done else None})
+
         if p.startswith("/api/roles/") and p.endswith("/modules"):
             admin = self._require_root_admin()
             if not admin: return
@@ -3533,8 +4081,9 @@ class Handler(BaseHTTPRequestHandler):
             if not self._get_document_in_scope(slug, qs, user):
                 return self._reply_document_scope_error(slug, qs, user)
 
-            if not can_resolve_review_note(user["role"]):
-                return self._json(403, {"ok": False, "error": "Apenas desenhista ou admin pode alterar status da revisão"})
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_resolve_review_note(user["role"]) or can_via_module):
+                return self._json(403, {"ok": False, "error": "Sem permissão para alterar status da revisão"})
 
             ok, body = self._read_json()
             if not ok:
@@ -3550,7 +4099,8 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/documents/"):
             user = self._require_auth()
             if not user: return
-            if not can_edit_document(user["role"]):
+            can_via_module = self._has_module_access("projects.cards_list", user)
+            if not (can_edit_document(user["role"]) or can_via_module):
                 return self._json(403, {"ok": False, "error": "Sem permissão para editar documento"})
             slug = p.split("/")[3]
             if not self._get_document_in_scope(slug, qs, user):
@@ -3607,8 +4157,8 @@ class Handler(BaseHTTPRequestHandler):
             updates = []
             params = []
             if "role" in body:
-                role = body.get("role")
-                if role not in ROLES:
+                role = str(body.get("role") or "").strip().lower()
+                if not role_exists(role, active_only=True):
                     return self._json(400, {"ok": False, "error": "role inválida"})
                 updates.append("role=?")
                 params.append(role)
@@ -3643,6 +4193,18 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
+
+        if p.startswith("/api/admin/roles/"):
+            admin = self._require_root_admin()
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 4:
+                return self._json(404, {"ok": False, "error": "not found"})
+            selector = str(parts[3] or "").strip()
+            reassign_to = (qs.get("reassign_to", [""])[0] or "").strip().lower()
+            done, msg = delete_role_admin(selector, admin["username"], reassign_to or None)
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
         if p.startswith("/api/documents/"):
             user = self._require_auth()
             if not user: return

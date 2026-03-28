@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "artifact_version": "v1",
+  "exported_at": "2026-03-25T13:02:10Z",
+  "exported_by": {
+    "user_id": "USR-001",
+    "display_name": "Admin User"
+  },
+  "project": {
+    "project_id": "PRJ-0021",
+    "project_name": "CRM Rollout",
+    "project_slug": "crm-rollout"
+  },
+  "source": {
+    "app_version": "0.9.0-beta.3",
+    "git_commit": "acfce56"
+  },
+  "counts": {
+    "cards": 24,
+    "dependencies": 31,
+    "history_entries": 180,
+    "reviews": 14,
+    "files": 52
+  },
+  "paths": {
+    "project_data": "data/project-data.json",
+    "files_manifest": "files/manifest-files.json"
+  },
+  "checksums_ref": "checksums/sha256.txt"
+}

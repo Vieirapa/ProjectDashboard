@@ -1,3 +1,14 @@
 __pycache__/
+
+# Runtime/data (never version)
 data/
 *.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Business content generated at runtime
+documents/
+
+# Runtime uploads/cache
+uploads/

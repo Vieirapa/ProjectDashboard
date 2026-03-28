@@ -20,6 +20,27 @@ let me = null;
 let projects = [];
 let selectedProjectId = null;
 let allowedModules = new Set();
+let projectRolesCatalog = [];
+
+const DEFAULT_PROJECT_ROLES = ['member', 'desenhista', 'colaborador', 'revisor', 'cliente'];
+
+function normalizeRoleCatalog(items) {
+  const out = [];
+  const seen = new Set();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const roleKey = String(item?.role_key ?? item?.role ?? item ?? '').trim().toLowerCase();
+    if (!roleKey || roleKey === 'admin' || seen.has(roleKey)) return;
+    seen.add(roleKey);
+    const displayName = String(item?.display_name ?? item?.displayName ?? roleKey).trim() || roleKey;
+    out.push({ role_key: roleKey, display_name: displayName });
+  });
+  DEFAULT_PROJECT_ROLES.forEach((roleKey) => {
+    if (seen.has(roleKey)) return;
+    seen.add(roleKey);
+    out.push({ role_key: roleKey, display_name: roleKey });
+  });
+  return out;
+}
 
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
@@ -45,11 +66,63 @@ function fmtDate(v) {
   return d.toLocaleString('pt-BR');
 }
 
+function renderAllowedRolesChecks(roles) {
+  projectRolesCatalog = normalizeRoleCatalog(roles);
+
+  if (!allowedRolesBox) return;
+  if (!projectRolesCatalog.length) {
+    allowedRolesBox.innerHTML = '<span class="small">Nenhuma role disponível.</span>';
+    return;
+  }
+
+  allowedRolesBox.innerHTML = projectRolesCatalog.map((role) => (
+    `<label class="inline-check"><input type="checkbox" class="allowed-role" value="${esc(role.role_key)}" /> ${esc(role.display_name)} <span class="small">(${esc(role.role_key)})</span></label>`
+  )).join('');
+}
+
+async function loadProjectRolesCatalog() {
+  try {
+    const d = await api('/api/admin/roles');
+    const activeItems = (d?.items || []).filter((r) => !!r?.active && String(r?.role_key || '').toLowerCase() !== 'admin');
+    renderAllowedRolesChecks(activeItems.length ? activeItems : (d?.roles || []));
+    return;
+  } catch (errPrimary) {
+    // Compat fallback para versões que ainda não expõem /api/admin/roles
+    try {
+      const dUsers = await api('/api/admin/users');
+      if (Array.isArray(dUsers?.roles) && dUsers.roles.length) {
+        renderAllowedRolesChecks(dUsers.roles);
+        return;
+      }
+    } catch (errSecondary) {
+      console.warn('Falha ao carregar catálogo dinâmico de roles:', errPrimary, errSecondary);
+    }
+
+    // fallback seguro final para não bloquear a tela
+    renderAllowedRolesChecks(DEFAULT_PROJECT_ROLES);
+  }
+}
+
 function setAllowedRolesChecks(csvValue) {
-  const set = new Set(String(csvValue || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
+  const selectedRoles = Array.from(new Set(
+    String(csvValue || '')
+      .split(',')
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean),
+  ));
+
+  // Se houver role já salva no projeto mas ausente no catálogo atual,
+  // inclui dinamicamente no formulário para não perder dado ao salvar.
+  const knownKeys = new Set(projectRolesCatalog.map((r) => String(r.role_key || '').toLowerCase()));
+  const missing = selectedRoles.filter((role) => !knownKeys.has(role));
+  if (missing.length) {
+    renderAllowedRolesChecks(projectRolesCatalog.concat(missing.map((role) => ({ role_key: role, display_name: role }))));
+  }
+
+  const selectedSet = new Set(selectedRoles);
   const checks = allowedRolesBox?.querySelectorAll('.allowed-role') || [];
   checks.forEach((c) => {
-    c.checked = set.has(String(c.value || '').toLowerCase());
+    c.checked = selectedSet.has(String(c.value || '').toLowerCase());
   });
 }
 
@@ -319,6 +392,7 @@ logoutBtn.onclick = async () => {
 (async () => {
   try {
     await loadMe();
+    await loadProjectRolesCatalog();
     await refresh();
   } catch {
     window.location.href = '/login.html';

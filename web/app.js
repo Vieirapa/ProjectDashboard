@@ -32,6 +32,7 @@ const pDependsSearch = document.getElementById('pDependsSearch');
 const ownersList = document.getElementById('ownersList');
 
 let me = null;
+let allowedModules = new Set();
 let state = { documents: [], statuses: [], priorities: [], projects: [], selectedProjectId: 1, dependencyMaxStatus: 'Backlog' };
 let createDependencyDocs = [];
 let createDependencySelected = new Set();
@@ -111,8 +112,12 @@ function fileToBase64(file) {
 }
 
 async function loadMe() {
-  const data = await api('/api/me');
+  const [data, permsResp] = await Promise.all([
+    api('/api/me'),
+    api('/api/me/permissions').catch(() => ({ permissions: { allowedModules: [] } })),
+  ]);
   me = data.user;
+  allowedModules = new Set((permsResp?.permissions?.allowedModules || []).map((x) => String(x || '').trim()));
   newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
 
   try {
@@ -198,12 +203,16 @@ function docStatusMeta(cardStatus) {
   return map[cardStatus] || map['Backlog'];
 }
 
+function hasModule(moduleId) {
+  return allowedModules.has(String(moduleId || '').trim());
+}
+
 function canCreateCard() {
-  return ['admin', 'lider_projeto', 'member'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member'].includes(me?.role || '') || hasModule('projects.cards_list');
 }
 
 function canEditCard() {
-  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '');
+  return ['admin', 'lider_projeto', 'member', 'desenhista', 'colaborador'].includes(me?.role || '') || hasModule('projects.cards_list');
 }
 
 function statusRank(status) {
@@ -232,7 +241,7 @@ function makeCard(p, statuses, priorities) {
     ? p.dependencies.filter((d) => String(d.status || '') !== 'Concluído')
     : [];
   const depBadge = blockedDeps.length
-    ? `<div class="dep-alert" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Dependências pendentes (${blockedDeps.length})</div>`
+    ? `<div class="dep-alert" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Aguardando pendências (${blockedDeps.length})</div>`
     : (Array.isArray(p.dependencies) && p.dependencies.length ? '<div class="dep-ok">✅ Dependências resolvidas</div>' : '');
 
   card.innerHTML = `

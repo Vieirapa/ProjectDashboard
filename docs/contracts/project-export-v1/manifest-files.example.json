@@ -1,0 +1,19 @@
+{
+  "project_id": "PRJ-0021",
+  "generated_at": "2026-03-25T13:02:10Z",
+  "files": [
+    {
+      "file_id": "file-98ab12cd",
+      "card_id": 123,
+      "original_name": "doc_tecnico_v3.pdf",
+      "stored_name": "20260320T101530Z_doc_tecnico_v3.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 153204,
+      "sha256": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd0f0c6a5d73f6f6f9a",
+      "version": 3,
+      "uploaded_at": "2026-03-20T10:15:30Z",
+      "path_by_card": "files/by-card/card-000123/20260320T101530Z_doc_tecnico_v3.pdf",
+      "path_by_id": "files/by-id/file-98ab12cd.bin"
+    }
+  ]
+}

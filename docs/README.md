@@ -24,7 +24,18 @@ This directory contains the current technical and operational documentation for 
 18. [18-manual-pratico-usuarios-v0.9.0-beta.2.md](./18-manual-pratico-usuarios-v0.9.0-beta.2.md)
 19. [19-backlog-executavel-sprint-proxima.md](./19-backlog-executavel-sprint-proxima.md)
 20. [20-plano-diario-execucao-sprint.md](./20-plano-diario-execucao-sprint.md)
-21. [tests/README.md](./tests/README.md)
+21. [21-role-module-access-control-plan.md](./21-role-module-access-control-plan.md)
+22. [22-technical-execution-plan-role-modules.md](./22-technical-execution-plan-role-modules.md)
+23. [23-module-catalog-v1.md](./23-module-catalog-v1.md)
+24. [24-release-checklist-roles-delete-fix-2026-03-24.md](./24-release-checklist-roles-delete-fix-2026-03-24.md)
+25. [25-qa-note-manual-roles-delete-fix-2026-03-24.md](./25-qa-note-manual-roles-delete-fix-2026-03-24.md)
+26. [26-rbac-module-first-custom-roles.md](./26-rbac-module-first-custom-roles.md)
+
+### Operational appendices
+
+- [ROLE_SYSTEM_REFACTOR_PLAN.md](./ROLE_SYSTEM_REFACTOR_PLAN.md)
+- [RUNTIME_DATA_POLICY.md](./RUNTIME_DATA_POLICY.md)
+- [tests/README.md](./tests/README.md)
 
 ## Scope
 
