@@ -59,23 +59,7 @@ function colorByPriorityKey(colors, key, fallback) {
 
 function updatePriorityColorStatus() {
   if (!priorityColorStatus) return;
-  const mode = behavior.priorityColorEnabled ? 'ATIVO' : 'INATIVO';
-
-  if (!behavior.priorityColorEnabled) {
-    priorityColorStatus.innerHTML = `Cores por prioridade: <strong>${mode}</strong>`;
-    return;
-  }
-
-  const chips = [
-    ['Baixa', behavior.priorityColors['Baixa']],
-    ['Média', behavior.priorityColors['Média']],
-    ['Alta', behavior.priorityColors['Alta']],
-    ['Urgente', behavior.priorityColors['Urgente']],
-  ].map(([label, color]) => (
-    `<span class="priority-color-preview-chip"><span class="priority-color-preview-swatch" style="background:${String(color)}"></span>${label}</span>`
-  )).join('');
-
-  priorityColorStatus.innerHTML = `Cores por prioridade: <strong>${mode}</strong> <span class="priority-color-preview-row">${chips}</span>`;
+  priorityColorStatus.innerHTML = '';
 }
 
 function projectIdFromUrlOrNull() {
