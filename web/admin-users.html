@@ -11,33 +11,57 @@
     <aside class="sidebar" id="sidebar-root" data-active="users"></aside>
 
     <main class="content">
-      <header>
-        <h1>👥 Usuários & Convites</h1>
-        <div class="header-actions"><button id="logoutBtn" class="secondary">Logout</button></div>
-      </header>
+      <section class="page-hero">
+        <div>
+          <p class="eyebrow">Administração</p>
+          <h1>👥 Usuários & Convites</h1>
+          <p class="page-subtitle">Gerencie criação de usuários, convites e auditoria com uma leitura mais organizada entre operação diária e governança.</p>
+        </div>
+        <div class="header-actions hero-actions"><button id="logoutBtn" class="secondary">Logout</button></div>
+      </section>
 
-      <section class="panel-grid">
-        <section class="panel" data-module-id="admin_users.create">
-          <h3>Criar usuário</h3>
-          <form id="createUserForm" class="form-grid">
-            <input id="newUsername" placeholder="username" required />
-            <input id="newPassword" placeholder="senha" required />
-            <select id="newRole"><option value="member">member</option><option value="admin">admin</option></select>
-            <button type="submit">Criar usuário</button>
-          </form>
-        </section>
+      <section class="edit-wrap settings-page-wrap">
+        <div class="settings-section-grid">
+          <section class="panel settings-panel" data-module-id="admin_users.create">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Acesso direto</p>
+                <h3>Criar usuário</h3>
+              </div>
+              <span class="small">Cadastro manual para acesso imediato.</span>
+            </div>
+            <form id="createUserForm" class="form-grid settings-form-grid">
+              <label>Usuário</label>
+              <input id="newUsername" placeholder="username" required />
+              <label>Senha</label>
+              <input id="newPassword" placeholder="senha" required />
+              <label>Role</label>
+              <select id="newRole"><option value="member">member</option><option value="admin">admin</option></select>
+              <div class="dialog-actions" style="justify-content:flex-start;">
+                <button type="submit">Criar usuário</button>
+              </div>
+            </form>
+          </section>
 
-        <section class="panel" data-module-id="admin_users.invite">
-          <h3>Convidar novo usuário</h3>
-          <form id="inviteForm" class="form-grid">
-            <select id="inviteRole"><option value="member">member</option><option value="admin">admin</option></select>
-            <input id="inviteEmail" type="email" placeholder="email do convidado (opcional)" />
-            <label class="inline-check">
-              <input id="sendInviteEmail" type="checkbox" />
-              <span>Enviar por e-mail</span>
-            </label>
-            <label>Mensagem</label>
-            <textarea id="inviteMessage" rows="6">Olá!
+          <section class="panel settings-panel" data-module-id="admin_users.invite">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Onboarding</p>
+                <h3>Convidar novo usuário</h3>
+              </div>
+              <span class="small">Gere convites e opcionalmente envie por e-mail.</span>
+            </div>
+            <form id="inviteForm" class="form-grid settings-form-grid settings-form-grid-wide">
+              <label>Role do convite</label>
+              <select id="inviteRole"><option value="member">member</option><option value="admin">admin</option></select>
+              <label>E-mail do convidado (opcional)</label>
+              <input id="inviteEmail" type="email" placeholder="email do convidado (opcional)" />
+              <label class="inline-check settings-inline-check">
+                <input id="sendInviteEmail" type="checkbox" />
+                <span>Enviar por e-mail</span>
+              </label>
+              <label>Mensagem</label>
+              <textarea id="inviteMessage" rows="6">Olá!
 
 Você foi convidado(a) para acessar o ProjectDashboard.
 
@@ -47,20 +71,35 @@ Use este link para concluir seu cadastro:
 Este convite expira em: {expires_at}
 
 Bem-vindo(a) ao sistema!</textarea>
-            <button type="submit">Gerar link de convite</button>
-          </form>
-          <p id="inviteOut" class="small"></p>
+              <div class="dialog-actions" style="justify-content:flex-start;">
+                <button type="submit">Gerar link de convite</button>
+              </div>
+            </form>
+            <p id="inviteOut" class="small settings-data-box">Nenhum convite gerado ainda.</p>
+          </section>
+        </div>
+
+        <section class="panel settings-panel" data-module-id="admin_users.list">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Catálogo</p>
+              <h3>Usuários cadastrados</h3>
+            </div>
+            <span class="small">Visualize papéis, faça manutenção e acompanhe o estado atual.</span>
+          </div>
+          <div id="usersList" class="settings-data-box"></div>
         </section>
-      </section>
 
-      <section class="panel" data-module-id="admin_users.list">
-        <h3>Usuários cadastrados</h3>
-        <div id="usersList"></div>
-      </section>
-
-      <section class="panel" data-module-id="admin_users.audit_log">
-        <h3>Log de auditoria</h3>
-        <div id="auditList"></div>
+        <section class="panel settings-panel" data-module-id="admin_users.audit_log">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Governança</p>
+              <h3>Log de auditoria</h3>
+            </div>
+            <span class="small">Acompanhe eventos sensíveis para rastreabilidade.</span>
+          </div>
+          <div id="auditList" class="settings-data-box"></div>
+        </section>
       </section>
     </main>
   </div>
