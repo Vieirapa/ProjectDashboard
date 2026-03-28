@@ -946,6 +946,10 @@ dialog form {
   background: #fbfdff;
 }
 
+.settings-check-grid-single-column {
+  grid-template-columns: 1fr;
+}
+
 .settings-backup-grid {
   align-items: start;
 }
