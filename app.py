@@ -69,6 +69,19 @@ from backend.ops.system_ops import (
     run_system_diagnostics as ops_run_system_diagnostics,
     test_backup_path_permissions as ops_test_backup_path_permissions,
 )
+from backend.reports.service import (
+    create_periodic_report as reports_create_periodic_report,
+    delete_periodic_report as reports_delete_periodic_report,
+    list_periodic_reports as reports_list_periodic_reports,
+    update_periodic_report as reports_update_periodic_report,
+)
+    list_available_backups as ops_list_available_backups,
+    next_backup_run as ops_next_backup_run,
+    restore_backup_from_stamp as ops_restore_backup_from_stamp,
+    run_system_backup as ops_run_system_backup,
+    run_system_diagnostics as ops_run_system_diagnostics,
+    test_backup_path_permissions as ops_test_backup_path_permissions,
+)
 from backend.rbac.roles import (
     list_role_catalog as list_rbac_role_catalog,
     resolve_fallback_role as resolve_rbac_fallback_role,
@@ -2490,7 +2503,7 @@ def list_periodic_reports() -> list[dict]:
                 item[k.replace("_json", "")] = []
             item.pop(k, None)
         out.append(item)
-    return out
+    return reports_list_periodic_reports(db)
 
 
 # ---------------------------------------------------------------------------
@@ -2512,6 +2525,7 @@ def create_periodic_report(payload: dict, actor: str) -> tuple[bool, str]:
     tuple[bool, str]
         Resultado da operação.
     """
+    return reports_create_periodic_report(db, now_iso, STATUSES, PRIORITIES, payload, actor)
     name = str(payload.get("name") or "").strip()
     statuses = payload.get("statuses") or []
     priorities = payload.get("priorities") or []
@@ -2567,6 +2581,7 @@ def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[b
     tuple[bool, str]
         Resultado da operação.
     """
+    return reports_update_periodic_report(db, now_iso, STATUSES, PRIORITIES, report_id, payload, actor)
     fields = {}
     mapping = {
         "name": "name", "run_time": "run_time", "message": "message", "active": "active",
@@ -2612,6 +2627,7 @@ def delete_periodic_report(report_id: int) -> tuple[bool, str]:
     tuple[bool, str]
         Resultado da operação.
     """
+    return reports_delete_periodic_report(db, report_id)
     with db() as conn:
         exists = conn.execute("SELECT id FROM periodic_reports WHERE id=?", (report_id,)).fetchone()
         if not exists:
@@ -2897,45 +2913,9 @@ def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict
     tuple[bool, str, dict]
         `(ok, message, payload)` com itens agrupados por snapshot.
     """
-    settings = get_admin_settings()
-    cfg = _backup_config(settings)
-    backup_dir = _resolve_backup_path(path_raw or cfg["path"])
+    return ops_list_available_backups(get_admin_settings, _backup_config, _resolve_backup_path, path_raw)
 
-    if not backup_dir.exists() or not backup_dir.is_dir():
-        return True, "ok", {"path": str(backup_dir), "items": [], "total": 0}
-
-    db_re = re.compile(r"^projectdashboard-db-(\d{8}-\d{6})\.sqlite3$")
-    docs_re = re.compile(r"^projectdashboard-docs-(\d{8}-\d{6})\.tar\.gz$")
-
-    grouped: dict[str, dict] = {}
-    for p in backup_dir.iterdir():
-        if not p.is_file():
-            continue
-        mdb = db_re.match(p.name)
-        if mdb:
-            stamp = mdb.group(1)
-            item = grouped.setdefault(stamp, {"stamp": stamp, "db_backup": None, "docs_backup": None})
-            item["db_backup"] = str(p)
-            continue
-        mdocs = docs_re.match(p.name)
-        if mdocs:
-            stamp = mdocs.group(1)
-            item = grouped.setdefault(stamp, {"stamp": stamp, "db_backup": None, "docs_backup": None})
-            item["docs_backup"] = str(p)
-
-    items = [v for v in grouped.values() if v.get("db_backup")]
-    items.sort(key=lambda x: x.get("stamp") or "", reverse=True)
-
-    for it in items:
-        st = str(it.get("stamp") or "")
-        try:
-            dt = datetime.strptime(st, "%Y%m%d-%H%M%S")
-            it["when"] = dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            it["when"] = st
-
-    return True, "ok", {"path": str(backup_dir), "items": items, "total": len(items)}
-
+# __PDASH_REPLACED__ list_available_backups
 
 # ---------------------------------------------------------------------------
 # Cálculo do próximo backup agendado
@@ -2950,38 +2930,9 @@ def next_backup_run() -> dict:
         Estrutura com estado, dias configurados, horário e próximo horário
         resolvido quando houver.
     """
-    settings = get_admin_settings()
-    cfg = _backup_config(settings)
-    result = {
-        "enabled": bool(cfg.get("enabled")),
-        "weekdays": [str(x) for x in (cfg.get("weekdays") or [])],
-        "run_time": str(cfg.get("run_time") or "03:00"),
-        "next_run_iso": None,
-        "next_run_human": None,
-    }
-    if not result["enabled"] or not result["weekdays"]:
-        return result
+    return ops_next_backup_run(get_admin_settings, _backup_config)
 
-    try:
-        hh, mm = result["run_time"].split(":")
-        hour = int(hh); minute = int(mm)
-    except Exception:
-        hour, minute = 3, 0
-
-    allowed = {int(x) for x in result["weekdays"] if str(x).isdigit()}
-    now = datetime.now()
-    for i in range(0, 15):
-        d = now + timedelta(days=i)
-        if d.weekday() not in allowed:
-            continue
-        candidate = d.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if candidate <= now:
-            continue
-        result["next_run_iso"] = candidate.isoformat()
-        result["next_run_human"] = candidate.strftime("%Y-%m-%d %H:%M")
-        break
-    return result
-
+# __PDASH_REPLACED__ next_backup_run
 
 # ---------------------------------------------------------------------------
 # Restauração de backup por snapshot
@@ -3004,51 +2955,9 @@ def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> t
     tuple[bool, str]
         Resultado textual da restauração.
     """
-    ok, msg, payload = list_available_backups(path_raw)
-    if not ok:
-        return False, msg
+    return ops_restore_backup_from_stamp(list_available_backups, audit, APP_DIR, stamp, path_raw, actor)
 
-    target = None
-    for it in payload.get("items", []):
-        if str(it.get("stamp") or "") == str(stamp or ""):
-            target = it
-            break
-    if not target:
-        return False, "Backup selecionado não encontrado"
-
-    db_backup = str(target.get("db_backup") or "").strip()
-    docs_backup = str(target.get("docs_backup") or "").strip()
-    if not db_backup:
-        return False, "Backup de banco não encontrado para o snapshot selecionado"
-
-    script = APP_DIR / "scripts" / "restore_backup.sh"
-    if not script.exists():
-        return False, f"Script de restore não encontrado: {script}"
-
-    cmd = [
-        str(script),
-        "--db-backup", db_backup,
-        "--install-dir", str(APP_DIR),
-        "--allow-non-root",
-    ]
-    if docs_backup:
-        cmd.extend(["--docs-backup", docs_backup])
-
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    except Exception as e:
-        return False, f"Falha ao executar restore: {e}"
-
-    out = (r.stdout or "").strip()
-    err = (r.stderr or "").strip()
-    detail = (out + ("\n" + err if err else "")).strip()
-
-    if r.returncode != 0:
-        return False, f"Restore falhou (code={r.returncode}). {detail[:1200]}"
-
-    audit(actor, "system.backup.restore", str(stamp), f"path={payload.get('path')} docs={bool(docs_backup)}")
-    return True, f"Restore concluído para {stamp}. {detail[:800]}"
-
+# __PDASH_REPLACED__ restore_backup_from_stamp
 
 # ---------------------------------------------------------------------------
 # Diagnóstico geral do sistema
@@ -3066,56 +2975,9 @@ def run_system_diagnostics() -> dict:
     -------------------
     Base para a tela de diagnóstico, badge de saúde e troubleshooting operacional.
     """
-    settings = get_admin_settings()
-    repo_url = _setting(settings, "system.git_repo", "PDASH_GIT_REPO", "https://github.com/Vieirapa/ProjectDashboard.git")
-    repo_branch = _setting(settings, "system.git_branch", "PDASH_GIT_BRANCH", "develop")
+    return ops_run_system_diagnostics(get_admin_settings, setting, now_iso, DB_PATH, DATA_DIR, BASE_DIR, APP_DIR)
 
-    diagnostics = {
-        "timestamp": now_iso(),
-        "checks": [],
-        "version": {
-            "local": "unknown",
-            "remote": "unknown",
-            "repo": repo_url,
-            "branch": repo_branch,
-            "updateAvailable": False,
-        }
-    }
-
-    def add_check(name: str, ok: bool, detail: str):
-        diagnostics["checks"].append({"name": name, "ok": bool(ok), "detail": detail})
-
-    add_check("Banco de dados", DB_PATH.exists(), str(DB_PATH))
-    add_check("Pasta de dados", DATA_DIR.exists(), str(DATA_DIR))
-    add_check("Pasta de documentos", BASE_DIR.exists(), str(BASE_DIR))
-
-    if (APP_DIR / ".git").exists():
-        try:
-            local = subprocess.check_output(["git", "-C", str(APP_DIR), "rev-parse", "HEAD"], text=True, timeout=6).strip()
-            diagnostics["version"]["local"] = local
-            add_check("Git local", True, local[:12])
-        except Exception as e:
-            add_check("Git local", False, str(e))
-    else:
-        add_check("Git local", False, "instalação sem .git (normal em deploy via rsync)")
-
-    try:
-        remote_line = subprocess.check_output(["git", "ls-remote", repo_url, f"refs/heads/{repo_branch}"], text=True, timeout=10).strip()
-        remote = remote_line.split()[0] if remote_line else ""
-        if remote:
-            diagnostics["version"]["remote"] = remote
-            add_check("GitHub remoto", True, remote[:12])
-        else:
-            add_check("GitHub remoto", False, "branch não encontrada")
-    except Exception as e:
-        add_check("GitHub remoto", False, str(e))
-
-    local = diagnostics["version"]["local"]
-    remote = diagnostics["version"]["remote"]
-    diagnostics["version"]["updateAvailable"] = bool(local and remote and local != "unknown" and remote != "unknown" and local != remote)
-
-    return diagnostics
-
+# __PDASH_REPLACED__ run_system_diagnostics
 
 def report_scheduler_loop():
     while True:
