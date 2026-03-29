@@ -52,6 +52,14 @@ from backend.auth.session import (
     parse_cookie,
     verify_password,
 )
+from backend.admin.settings import (
+    get_admin_settings as load_admin_settings,
+    update_admin_settings as persist_admin_settings,
+)
+from backend.admin.settings import (
+    get_admin_settings as load_admin_settings,
+    update_admin_settings as persist_admin_settings,
+)
 from backend.core.db import column_exists, connect_db, ensure_column, table_exists
 from backend.rbac.roles import (
     list_role_catalog as list_rbac_role_catalog,
@@ -666,6 +674,13 @@ def init_db():
     futura decomposição em uma camada mais formal de migrations/bootstrap.
     """
     with db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL,
+                applied_by TEXT NOT NULL DEFAULT 'system'
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2412,9 +2427,7 @@ def get_admin_settings() -> dict:
     Base para SMTP, backup, workflow, diagnóstico, relatórios e demais áreas de
     configuração operacional.
     """
-    with db() as conn:
-        rows = conn.execute("SELECT key, value, updated_by, updated_at FROM app_settings ORDER BY key").fetchall()
-    return {r["key"]: {"value": r["value"], "updated_by": r["updated_by"], "updated_at": r["updated_at"]} for r in rows}
+    return load_admin_settings(db)
 
 
 # ---------------------------------------------------------------------------
@@ -2441,180 +2454,8 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
     Deve ser usada por rotas administrativas; centraliza validação de payload,
     normalização e persistência.
     """
-    allowed = {
-        "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls",
-        "invite.default_message", "workflow.default_due_days", "workflow.dependency_max_status",
-        "backup.enabled", "backup.path", "backup.weekdays", "backup.run_time",
-        "system.git_repo", "system.git_branch",
-        "deleted.retention_days",
-    }
-    incoming = {k: str(v) for k, v in (payload or {}).items() if k in allowed}
-    if not incoming:
-        return False, "Nenhuma configuração válida enviada"
+    return persist_admin_settings(db, now_iso, payload, actor)
 
-    if "smtp.port" in incoming:
-        try:
-            p = int(incoming["smtp.port"])
-            if p <= 0 or p > 65535:
-                return False, "smtp.port inválida"
-        except Exception:
-            return False, "smtp.port inválida"
-
-    if "smtp.tls" in incoming:
-        incoming["smtp.tls"] = "true" if incoming["smtp.tls"].strip().lower() in {"1", "true", "yes", "on"} else "false"
-
-    if "workflow.default_due_days" in incoming:
-        try:
-            days = int(incoming["workflow.default_due_days"])
-            if days < 0 or days > 3650:
-                return False, "workflow.default_due_days inválido"
-        except Exception:
-            return False, "workflow.default_due_days inválido"
-
-    if "workflow.dependency_max_status" in incoming:
-        v = str(incoming["workflow.dependency_max_status"] or "").strip()
-        if v not in STATUSES:
-            return False, "workflow.dependency_max_status inválido"
-        incoming["workflow.dependency_max_status"] = v
-
-    if "backup.enabled" in incoming:
-        incoming["backup.enabled"] = "true" if incoming["backup.enabled"].strip().lower() in {"1", "true", "yes", "on"} else "false"
-
-    if "backup.path" in incoming:
-        incoming["backup.path"] = str(_resolve_backup_path(incoming["backup.path"]))
-
-    if "backup.weekdays" in incoming:
-        try:
-            raw = json.loads(incoming["backup.weekdays"])
-            if not isinstance(raw, list):
-                return False, "backup.weekdays inválido"
-            clean_days = sorted({str(int(x)) for x in raw if str(x).strip() != ""})
-            for d in clean_days:
-                if d not in {"0", "1", "2", "3", "4", "5", "6"}:
-                    return False, "backup.weekdays inválido"
-            incoming["backup.weekdays"] = json.dumps(clean_days, ensure_ascii=False)
-        except Exception:
-            return False, "backup.weekdays inválido"
-
-    if "backup.run_time" in incoming:
-        rt = incoming["backup.run_time"].strip()
-        if not re.match(r"^\d{2}:\d{2}$", rt):
-            return False, "backup.run_time inválido"
-        hh, mm = rt.split(":")
-        if int(hh) > 23 or int(mm) > 59:
-            return False, "backup.run_time inválido"
-        incoming["backup.run_time"] = rt
-
-    # Consistency rule: automatic backup requires at least one weekday selected.
-    if incoming.get("backup.enabled") == "true":
-        raw_weekdays = incoming.get("backup.weekdays")
-        if raw_weekdays is None:
-            current = get_admin_settings().get("backup.weekdays", {}).get("value", "[]")
-            raw_weekdays = current
-        try:
-            vals = json.loads(raw_weekdays)
-            valid = [str(x) for x in vals if str(x) in {"0", "1", "2", "3", "4", "5", "6"}]
-        except Exception:
-            valid = []
-        if not valid:
-            return False, "Selecione ao menos um dia da semana para backup automático"
-
-    if "system.git_repo" in incoming and incoming["system.git_repo"]:
-        repo = incoming["system.git_repo"].strip()
-        if not (repo.startswith("https://") or repo.startswith("git@") or repo.startswith("ssh://")):
-            return False, "system.git_repo inválido"
-        incoming["system.git_repo"] = repo
-
-    if "system.git_branch" in incoming and incoming["system.git_branch"]:
-        branch = incoming["system.git_branch"].strip()
-        if not re.match(r"^[A-Za-z0-9._/-]+$", branch):
-            return False, "system.git_branch inválido"
-        incoming["system.git_branch"] = branch
-
-    if "deleted.retention_days" in incoming:
-        try:
-            days = int(incoming["deleted.retention_days"])
-            if days < 1 or days > 3650:
-                return False, "deleted.retention_days inválido"
-            incoming["deleted.retention_days"] = str(days)
-        except Exception:
-            return False, "deleted.retention_days inválido"
-
-    with db() as conn:
-        for key, value in incoming.items():
-            conn.execute(
-                "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-                (key, value, actor, now_iso()),
-            )
-    return True, "ok"
-
-
-def _setting(settings: dict, key: str, env_name: str, default: str = "") -> str:
-    row = settings.get(key) if isinstance(settings, dict) else None
-    val = (row.get("value") if isinstance(row, dict) else "") if row else ""
-    return (val or os.getenv(env_name, default) or default).strip()
-
-
-def default_due_date_iso() -> str:
-    settings = get_admin_settings()
-    raw = _setting(settings, "workflow.default_due_days", "PDASH_DEFAULT_DUE_DAYS", "7")
-    try:
-        days = int(raw)
-    except Exception:
-        days = 7
-    days = max(0, min(days, 3650))
-    return (datetime.now(UTC) + timedelta(days=days)).date().isoformat()
-
-
-def dependency_max_status(settings: dict | None = None) -> str:
-    settings = settings or get_admin_settings()
-    configured = _setting(settings, "workflow.dependency_max_status", "PDASH_DEPENDENCY_MAX_STATUS", "Backlog")
-    return configured if configured in STATUSES else "Backlog"
-
-
-def status_rank(status: str) -> int:
-    try:
-        return STATUSES.index(status)
-    except Exception:
-        return 0
-
-
-def status_allowed_with_pending_dependencies(target_status: str, settings: dict | None = None) -> tuple[bool, str]:
-    max_status = dependency_max_status(settings)
-    if status_rank(target_status) <= status_rank(max_status):
-        return True, max_status
-    return False, max_status
-
-
-def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
-    settings = get_admin_settings()
-    host = _setting(settings, "smtp.host", "PDASH_SMTP_HOST", "")
-    port = int(_setting(settings, "smtp.port", "PDASH_SMTP_PORT", "587") or "587")
-    user = _setting(settings, "smtp.user", "PDASH_SMTP_USER", "")
-    password = _setting(settings, "smtp.pass", "PDASH_SMTP_PASS", "")
-    sender = _setting(settings, "smtp.from", "PDASH_SMTP_FROM", user or "")
-    use_tls = _setting(settings, "smtp.tls", "PDASH_SMTP_TLS", "true").lower() not in {"0", "false", "no"}
-
-    if not host or not sender:
-        return False, "SMTP não configurado (defina host e remetente em Configurações)"
-
-    msg = EmailMessage()
-    msg["From"] = sender
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.set_content(body)
-
-    try:
-        with smtplib.SMTP(host, port, timeout=20) as server:
-            if use_tls:
-                server.starttls()
-            if user:
-                server.login(user, password)
-            server.send_message(msg)
-        return True, "ok"
-    except Exception as e:
-        return False, f"Falha ao enviar email: {e}"
 
 
 # ---------------------------------------------------------------------------
