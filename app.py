@@ -1192,57 +1192,13 @@ def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
 # Leitura de dependências explícitas de documento
 # ---------------------------------------------------------------------------
 def list_document_dependencies(slug: str, project_id: int) -> list[dict]:
-    """
-    Lista as dependências explícitas de um documento dentro de um projeto.
-
-    Parâmetros
-    ----------
-    slug:
-        Documento de origem.
-    project_id:
-        Projeto ao qual a relação pertence.
-
-    Retorno
-    -------
-    list[dict]
-        Lista de documentos dos quais o documento atual depende.
-    """
-    with db() as conn:
-        rows = conn.execute(
-            """
-            SELECT dd.depends_on_slug, d.name, d.status
-            FROM document_dependencies dd
-            JOIN documents d ON d.slug = dd.depends_on_slug
-            WHERE dd.document_slug=? AND dd.project_id=?
-            ORDER BY d.name
-            """,
-            (slug, project_id),
-        ).fetchall()
-    return [{"slug": r["depends_on_slug"], "name": r["name"], "status": r["status"]} for r in rows]
-
+    return workflow_list_document_dependencies(db, slug, project_id)
 
 # ---------------------------------------------------------------------------
 # Dependências pendentes
 # ---------------------------------------------------------------------------
 def unresolved_dependencies(slug: str, project_id: int) -> list[dict]:
-    """
-    Lista apenas as dependências ainda não concluídas de um documento.
-
-    Parâmetros
-    ----------
-    slug:
-        Documento de origem.
-    project_id:
-        Projeto ao qual o documento pertence.
-
-    Retorno
-    -------
-    list[dict]
-        Dependências cujo status ainda não está concluído.
-    """
-    deps = list_document_dependencies(slug, project_id)
-    return [d for d in deps if str(d.get("status") or "") != "Concluído"]
-
+    return workflow_unresolved_dependencies(db, slug, project_id)
 
 # ---------------------------------------------------------------------------
 # Detecção defensiva de ciclo em grafo de dependências
@@ -1296,53 +1252,7 @@ def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_de
 # Persistência de dependências de documento
 # ---------------------------------------------------------------------------
 def set_document_dependencies(slug: str, project_id: int, depends_on_slugs: list[str], actor: str) -> tuple[bool, str]:
-    """
-    Atualiza a lista de dependências de um documento.
-
-    Parâmetros
-    ----------
-    slug:
-        Documento de origem.
-    project_id:
-        Projeto no qual a relação será salva.
-    depends_on_slugs:
-        Lista final de slugs dos pré-requisitos.
-    actor:
-        Usuário responsável pela alteração, para auditoria.
-
-    Retorno
-    -------
-    tuple[bool, str]
-        `(ok, message)` indicando sucesso ou motivo de falha.
-
-    Como deve ser usada
-    -------------------
-    Chamada por fluxos de criação/edição quando o campo de dependência é
-    alterado. Também aplica verificações de integridade, como prevenção de ciclo.
-    """
-    with db() as conn:
-        doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (slug, project_id)).fetchone()
-        if not doc:
-            return False, "Documento não encontrado"
-
-        for dep_slug in depends_on_slugs:
-            if dep_slug == slug:
-                return False, "Um documento não pode depender de si mesmo"
-            dep_doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (dep_slug, project_id)).fetchone()
-            if not dep_doc:
-                return False, f"Dependência inválida (fora do projeto ou inexistente): {dep_slug}"
-            if _would_create_cycle(conn, slug, dep_slug, project_id):
-                return False, f"Dependência cíclica detectada com {dep_slug}"
-
-        conn.execute("DELETE FROM document_dependencies WHERE document_slug=? AND project_id=?", (slug, project_id))
-        now = now_iso()
-        for dep_slug in depends_on_slugs:
-            conn.execute(
-                "INSERT OR IGNORE INTO document_dependencies (project_id, document_slug, depends_on_slug, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
-                (project_id, slug, dep_slug, actor, now),
-            )
-
-    return True, "ok"
+    return workflow_set_document_dependencies(db, audit, slug, project_id, depends_on_slugs, actor)
 
 
 def list_audit_logs(limit: int = 200) -> list[dict]:
@@ -3094,106 +3004,20 @@ def list_review_notes(slug: str) -> list[dict]:
             """,
             (slug,),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return workflow_list_review_notes(db, slug)
 
 
 # ---------------------------------------------------------------------------
 # Inclusão de nova nota de revisão
 # ---------------------------------------------------------------------------
 def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
-    """
-    Registra uma nova nota de revisão para um documento.
-
-    Parâmetros
-    ----------
-    slug:
-        Documento alvo.
-    note:
-        Texto livre da pendência/solicitação de revisão.
-    actor:
-        Usuário que registrou a nota.
-
-    Retorno
-    -------
-    tuple[bool, str]
-        `(ok, message)` para feedback operacional.
-
-    Como deve ser usada
-    -------------------
-    Chamada por fluxos de revisão quando o documento está em contexto compatível
-    com pendências de revisão.
-    """
-    proj = get_document(slug)
-    if not proj:
-        return False, "Documento não encontrado"
-    if (proj.get("status") or "").strip().lower() != "em revisão":
-        return False, "Notas de revisão só podem ser adicionadas quando o documento estiver em 'em revisão'"
-    clean_note = (note or "").strip()
-    if not clean_note:
-        return False, "Nota não pode estar vazia"
-    if len(clean_note) > 4000:
-        return False, "Nota muito longa (máximo 4000 caracteres)"
-    with db() as conn:
-        conn.execute(
-            "INSERT INTO review_notes (document_slug, note, created_by, created_at) VALUES (?, ?, ?, ?)",
-            (slug, clean_note, actor, now_iso()),
-        )
-    return True, "ok"
-
+    return workflow_add_review_note(db, audit, slug, note, actor)
 
 # ---------------------------------------------------------------------------
 # Resolução/reabertura de nota de revisão
 # ---------------------------------------------------------------------------
 def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bool) -> tuple[bool, str]:
-    """
-    Marca uma nota de revisão como resolvida ou volta seu estado para pendente.
-
-    Parâmetros
-    ----------
-    slug:
-        Documento alvo.
-    note_id:
-        Identificador da nota.
-    actor:
-        Usuário que executa a alteração.
-    resolved:
-        Estado final desejado (`True` para resolvido).
-
-    Retorno
-    -------
-    tuple[bool, str]
-        `(ok, message)` para feedback de operação.
-
-    Como deve ser usada
-    -------------------
-    Deve ser chamada por fluxos de acompanhamento de revisão e precisa preservar
-    rastreabilidade de quem resolveu e quando resolveu.
-    """
-    proj = get_document(slug)
-    if not proj:
-        return False, "Documento não encontrado"
-    if (proj.get("status") or "").strip().lower() != "em revisão":
-        return False, "Notas só podem ser alteradas quando o documento estiver em 'em revisão'"
-
-    with db() as conn:
-        row = conn.execute(
-            "SELECT id FROM review_notes WHERE id=? AND document_slug=?",
-            (note_id, slug),
-        ).fetchone()
-        if not row:
-            return False, "Nota não encontrada"
-
-        if resolved:
-            conn.execute(
-                "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=? WHERE id=? AND document_slug=?",
-                (actor, now_iso(), note_id, slug),
-            )
-        else:
-            conn.execute(
-                "UPDATE review_notes SET is_resolved=0, resolved_by='', resolved_at='' WHERE id=? AND document_slug=?",
-                (note_id, slug),
-            )
-    return True, "ok"
+    return workflow_set_review_note_resolution(db, audit, slug, note_id, actor, resolved)
 
 
 def get_document_version(slug: str, version: int | None = None) -> dict | None:
