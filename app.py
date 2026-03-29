@@ -4017,8 +4017,55 @@ def current_user_from_cookie(raw_cookie: str | None) -> dict | None:
     return current_user_from_session_cookie(SESSIONS, SESSION_COOKIE, raw_cookie)
 
 
+# ---------------------------------------------------------------------------
+# Handler HTTP principal da aplicação
+# ---------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
+    """
+    Handler HTTP central do ProjectDashboard.
+
+    Papel desta classe
+    ------------------
+    Esta classe concentra o ciclo de atendimento HTTP da aplicação, incluindo:
+    - leitura de sessão/cookie
+    - autorização por página e módulo
+    - entrega de assets estáticos
+    - dispatch de endpoints HTML e API
+    - serialização de respostas JSON
+
+    Como ela deve ser tratada no restante do programa
+    -----------------------------------------------
+    - Regras de negócio não devem crescer desnecessariamente dentro do Handler.
+    - Sempre que possível, o Handler deve delegar para funções/módulos de domínio.
+    - O Handler deve atuar principalmente como camada de transporte, autenticação,
+      validação de acesso e composição de resposta.
+    """
+
+    # -----------------------------------------------------------------------
+    # Resposta JSON padrão
+    # -----------------------------------------------------------------------
     def _json(self, code: int, payload: dict, set_cookie: str | None = None):
+        """
+        Envia uma resposta JSON HTTP padronizada.
+
+        Parâmetros
+        ----------
+        code:
+            Status HTTP da resposta.
+        payload:
+            Dicionário serializável para JSON.
+        set_cookie:
+            Cookie opcional a ser anexado ao header da resposta.
+
+        Retorno
+        -------
+        None
+
+        Como deve ser usada
+        -------------------
+        É o helper padrão para respostas de API. Deve ser preferido em vez de
+        escrita manual repetitiva no socket HTTP.
+        """
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -4028,7 +4075,29 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # -----------------------------------------------------------------------
+    # Entrega de arquivo estático/HTML
+    # -----------------------------------------------------------------------
     def _serve(self, path: Path, content_type: str):
+        """
+        Entrega um arquivo estático/HTML com headers de cache desabilitado.
+
+        Parâmetros
+        ----------
+        path:
+            Caminho do arquivo a servir.
+        content_type:
+            MIME type da resposta.
+
+        Retorno
+        -------
+        None
+
+        Como deve ser usada
+        -------------------
+        Helper interno para páginas HTML, JS e CSS. Mantém o frontend sem cache
+        agressivo durante desenvolvimento e rollout iterativo.
+        """
         if not path.exists():
             self.send_error(404); return
         b = path.read_bytes()
@@ -4042,7 +4111,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    # -----------------------------------------------------------------------
+    # Leitura de payload JSON da requisição
+    # -----------------------------------------------------------------------
     def _read_json(self):
+        """
+        Lê e faz parse do corpo JSON da requisição atual.
+
+        Retorno
+        -------
+        tuple[bool, dict]
+            `(ok, payload)` com o dicionário parseado ou mensagem de erro.
+
+        Como deve ser usada
+        -------------------
+        Deve ser usada por rotas POST/PATCH/DELETE que esperam JSON no body.
+        """
         l = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(l).decode("utf-8") if l else "{}"
         try:
@@ -4050,7 +4134,18 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return False, {"error": "JSON inválido"}
 
+    # -----------------------------------------------------------------------
+    # Resolução do usuário autenticado
+    # -----------------------------------------------------------------------
     def _user(self):
+        """
+        Resolve o usuário autenticado a partir do cookie da requisição atual.
+
+        Retorno
+        -------
+        dict | None
+            Estrutura de usuário autenticado ou `None`.
+        """
         return current_user_from_cookie(self.headers.get("Cookie"))
 
     def _is_user_role_active(self, user: dict | None = None) -> bool:
@@ -4072,7 +4167,24 @@ class Handler(BaseHTTPRequestHandler):
             "user": {"username": username, "role": role},
         }
 
+    # -----------------------------------------------------------------------
+    # Guarda de autenticação
+    # -----------------------------------------------------------------------
     def _require_auth(self, allow_inactive: bool = False):
+        """
+        Garante que a rota atual só prossiga com usuário autenticado.
+
+        Parâmetros
+        ----------
+        allow_inactive:
+            Quando `True`, permite usuário autenticado com role inativa.
+
+        Retorno
+        -------
+        dict | None
+            Usuário autenticado enriquecido com `role_active`, ou `None` quando
+            a requisição já foi respondida com erro.
+        """
         u = self._user()
         if not u:
             self._json(401, {"ok": False, "error": "unauthorized"})
@@ -4084,21 +4196,60 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return merged
 
+    # -----------------------------------------------------------------------
+    # Guarda de administração equivalente
+    # -----------------------------------------------------------------------
     def _require_admin(self):
+        """
+        Garante que o usuário atual tenha um role administrativo equivalente.
+
+        Retorno
+        -------
+        dict | None
+            Usuário autenticado quando autorizado; `None` quando a requisição já
+            foi encerrada com erro de autenticação/autorização.
+        """
         u = self._require_auth()
         if not u: return None
         if (u.get("role") or "").strip().lower() not in ADMIN_EQUIV_ROLES:
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
+    # -----------------------------------------------------------------------
+    # Guarda de admin raiz
+    # -----------------------------------------------------------------------
     def _require_root_admin(self):
+        """
+        Garante que o usuário atual seja exatamente o role `admin` raiz.
+
+        Retorno
+        -------
+        dict | None
+            Usuário autenticado quando permitido; `None` em caso contrário.
+        """
         u = self._require_auth()
         if not u: return None
         if (u.get("role") or "").strip().lower() != "admin":
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
+    # -----------------------------------------------------------------------
+    # Guarda de acesso por módulo
+    # -----------------------------------------------------------------------
     def _require_module(self, module_id: str):
+        """
+        Garante que o usuário atual possua acesso ao módulo informado.
+
+        Parâmetros
+        ----------
+        module_id:
+            Identificador lógico do módulo protegido.
+
+        Retorno
+        -------
+        dict | None
+            Usuário autenticado quando autorizado; `None` caso contrário.
+        """
         u = self._require_auth()
         if not u:
             return None
@@ -4107,7 +4258,23 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return u
 
+    # -----------------------------------------------------------------------
+    # Guarda de acesso por lista de módulos
+    # -----------------------------------------------------------------------
     def _require_any_module(self, module_ids: list[str]):
+        """
+        Garante que o usuário atual tenha acesso a pelo menos um dos módulos informados.
+
+        Parâmetros
+        ----------
+        module_ids:
+            Lista de módulos aceitos pela rota.
+
+        Retorno
+        -------
+        dict | None
+            Usuário autenticado quando autorizado; `None` caso contrário.
+        """
         u = self._require_auth()
         if not u:
             return None
@@ -4223,7 +4390,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(409, {"ok": False, "error": f"Escopo inválido: documento pertence ao projeto {any_scope.get('projectId')}, mas o contexto atual é {project_id}."})
         return self._json(404, {"ok": False, "error": "Documento não encontrado"})
 
+    # -----------------------------------------------------------------------
+    # Dispatch principal de rotas GET
+    # -----------------------------------------------------------------------
     def do_GET(self):
+        """
+        Processa requisições HTTP GET.
+
+        O que este método faz
+        ---------------------
+        - resolve path e query string
+        - aplica lógica de autenticação/role inativa
+        - entrega páginas HTML e assets estáticos
+        - expõe endpoints de leitura via API
+
+        Como deve ser tratado no restante do programa
+        ---------------------------------------------
+        Idealmente deve permanecer como dispatch/orquestração, delegando para
+        funções de domínio e helpers específicos sempre que a lógica crescer.
+        """
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
@@ -4534,7 +4719,18 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+    # -----------------------------------------------------------------------
+    # Dispatch principal de rotas POST
+    # -----------------------------------------------------------------------
     def do_POST(self):
+        """
+        Processa requisições HTTP POST.
+
+        O que este método faz
+        ---------------------
+        Trata fluxos de criação, autenticação, ações administrativas e operações
+        que geram efeitos colaterais no sistema.
+        """
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
@@ -4889,7 +5085,18 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+    # -----------------------------------------------------------------------
+    # Dispatch principal de rotas PATCH
+    # -----------------------------------------------------------------------
     def do_PATCH(self):
+        """
+        Processa requisições HTTP PATCH.
+
+        O que este método faz
+        ---------------------
+        Trata atualizações parciais de recursos existentes, principalmente em
+        rotas de edição incremental de documentos, projetos, settings e afins.
+        """
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
@@ -5096,7 +5303,18 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+    # -----------------------------------------------------------------------
+    # Dispatch principal de rotas DELETE
+    # -----------------------------------------------------------------------
     def do_DELETE(self):
+        """
+        Processa requisições HTTP DELETE.
+
+        O que este método faz
+        ---------------------
+        Trata remoções lógicas ou administrativas de recursos, sempre respeitando
+        autenticação, autorização e rotinas de auditoria quando aplicável.
+        """
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
