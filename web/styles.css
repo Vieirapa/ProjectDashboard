@@ -307,11 +307,18 @@ textarea {
 .inline-check {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--space-2);
 }
 
 .inline-check input {
   width: auto;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.inline-check span {
+  flex: 0 1 auto;
 }
 
 /* Panels, cards and states */
@@ -904,6 +911,10 @@ dialog form {
 }
 
 .settings-inline-check {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
   min-height: 44px;
   padding: 10px 12px;
   border: 1px solid var(--color-border);
@@ -911,20 +922,20 @@ dialog form {
   background: #fbfdff;
 }
 
-.settings-inline-check-compact {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  align-items: center;
-  column-gap: 14px;
-  min-height: 52px;
-  border-radius: 14px;
-}
-
-.settings-inline-check-compact input[type="checkbox"] {
-  justify-self: center;
+.settings-inline-check input[type="checkbox"] {
   width: 18px;
   height: 18px;
   margin: 0;
+  flex: 0 0 auto;
+}
+
+.settings-inline-check span {
+  flex: 0 1 auto;
+}
+
+.settings-inline-check-compact {
+  min-height: 52px;
+  border-radius: 14px;
 }
 
 .settings-inline-check-compact span {
@@ -959,10 +970,10 @@ dialog form {
 }
 
 .settings-check-grid .inline-check {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  column-gap: 14px;
+  justify-content: flex-start;
+  gap: 14px;
   min-height: 52px;
   padding: 10px 14px;
   border: 1px solid var(--color-border);
@@ -972,16 +983,17 @@ dialog form {
 }
 
 .settings-check-grid .inline-check input[type="checkbox"] {
-  justify-self: center;
   width: 18px;
   height: 18px;
   margin: 0;
+  flex: 0 0 auto;
 }
 
 .settings-check-grid .inline-check span {
   display: block;
   font-weight: 700;
   line-height: 1.2;
+  flex: 0 1 auto;
 }
 
 .settings-check-grid-single-column {
@@ -989,8 +1001,7 @@ dialog form {
 }
 
 .settings-check-grid-single-column .inline-check {
-  grid-template-columns: 72px minmax(0, 1fr);
-  column-gap: 18px;
+  gap: 18px;
   min-height: 62px;
   padding: 14px 18px;
 }
