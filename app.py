@@ -75,13 +75,7 @@ from backend.reports.service import (
     list_periodic_reports as reports_list_periodic_reports,
     update_periodic_report as reports_update_periodic_report,
 )
-    list_available_backups as ops_list_available_backups,
-    next_backup_run as ops_next_backup_run,
-    restore_backup_from_stamp as ops_restore_backup_from_stamp,
-    run_system_backup as ops_run_system_backup,
-    run_system_diagnostics as ops_run_system_diagnostics,
-    test_backup_path_permissions as ops_test_backup_path_permissions,
-)
+from backend.admin.recovery import list_deleted_documents as recovery_list_deleted_documents
 from backend.rbac.roles import (
     list_role_catalog as list_rbac_role_catalog,
     resolve_fallback_role as resolve_rbac_fallback_role,
@@ -329,6 +323,43 @@ def db() -> sqlite3.Connection:
     devem preferir `with db() as conn:` em vez de abrir conexões diretamente.
     """
     return connect_db(DATA_DIR, DB_PATH)
+
+
+# ---------------------------------------------------------------------------
+# Base de migrations versionadas (fase de transição)
+# ---------------------------------------------------------------------------
+SCHEMA_BASELINE_VERSION = "2026-03-r2-baseline"
+
+
+def ensure_schema_migrations_table(conn: sqlite3.Connection) -> None:
+    """Garante a existência da tabela de controle de migrations."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL,
+            applied_by TEXT NOT NULL DEFAULT 'system'
+        )
+        """
+    )
+
+
+def migration_applied(conn: sqlite3.Connection, version: str) -> bool:
+    """Informa se uma versão de schema já foi registrada como aplicada."""
+    row = conn.execute("SELECT 1 FROM schema_migrations WHERE version=?", (version,)).fetchone()
+    return row is not None
+
+
+def mark_migration_applied(conn: sqlite3.Connection, version: str, actor: str = "system") -> None:
+    """Registra uma versão de schema como aplicada sem duplicação."""
+    conn.execute(
+        """
+        INSERT INTO schema_migrations(version, applied_at, applied_by)
+        VALUES(?, ?, ?)
+        ON CONFLICT(version) DO NOTHING
+        """,
+        (version, now_iso(), actor),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -695,13 +726,7 @@ def init_db():
     futura decomposição em uma camada mais formal de migrations/bootstrap.
     """
     with db() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                version TEXT PRIMARY KEY,
-                applied_at TEXT NOT NULL,
-                applied_by TEXT NOT NULL DEFAULT 'system'
-            )
-        """)
+        ensure_schema_migrations_table(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
