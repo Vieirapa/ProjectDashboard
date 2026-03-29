@@ -79,7 +79,8 @@ button {
 .layout {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -88,6 +89,8 @@ button {
   padding: var(--space-5);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03);
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .sidebar h2 {
@@ -98,6 +101,9 @@ button {
 
 .content {
   min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: transparent;
 }
 
@@ -1299,11 +1305,20 @@ dialog form {
 @media (max-width: 920px) {
   .layout {
     grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
   }
 
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    height: auto;
+    overflow: visible;
+  }
+
+  .content {
+    height: auto;
+    overflow: visible;
   }
 
   .project-summary,
