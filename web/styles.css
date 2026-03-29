@@ -304,6 +304,39 @@ textarea {
   resize: vertical;
 }
 
+.deps-checklist {
+  display: grid;
+  gap: 10px;
+}
+
+.deps-checklist .small {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fbfdff;
+  margin: 0;
+}
+
+.deps-checklist input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.deps-empty {
+  padding: 10px 14px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 10px;
+  color: var(--color-text-soft);
+  background: #fbfdff;
+}
+
 .inline-check {
   display: inline-flex;
   align-items: center;
@@ -1079,16 +1112,32 @@ dialog form {
 
 .role-chip-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-2);
 }
 
 .role-chip-grid .inline-check {
-  min-height: 44px;
-  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 14px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: #fbfdff;
+  margin-bottom: 0;
+}
+
+.role-chip-grid .inline-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.role-chip-grid .inline-check .small {
+  margin-left: 4px;
 }
 
 .projects-filter-bar {
