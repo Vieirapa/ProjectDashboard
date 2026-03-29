@@ -61,6 +61,14 @@ from backend.admin.settings import (
     update_admin_settings as persist_admin_settings,
 )
 from backend.core.db import column_exists, connect_db, ensure_column, table_exists
+from backend.ops.system_ops import (
+    list_available_backups as ops_list_available_backups,
+    next_backup_run as ops_next_backup_run,
+    restore_backup_from_stamp as ops_restore_backup_from_stamp,
+    run_system_backup as ops_run_system_backup,
+    run_system_diagnostics as ops_run_system_diagnostics,
+    test_backup_path_permissions as ops_test_backup_path_permissions,
+)
 from backend.rbac.roles import (
     list_role_catalog as list_rbac_role_catalog,
     resolve_fallback_role as resolve_rbac_fallback_role,
@@ -2804,23 +2812,7 @@ def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str
     tuple[bool, str, dict]
         `(ok, message, detail)` com detalhes de existência e gravabilidade.
     """
-    settings = get_admin_settings()
-    cfg = _backup_config(settings)
-    target = _resolve_backup_path(path_raw or cfg["path"])
-    detail = {"path": str(target), "exists": False, "writable": False}
-
-    try:
-        detail["exists"] = target.exists()
-        target.mkdir(parents=True, exist_ok=True)
-        probe = target / f".pdash-permcheck-{int(time.time())}.tmp"
-        probe.write_text("ok", encoding="utf-8")
-        probe.unlink(missing_ok=True)
-        detail["writable"] = True
-        return True, f"Caminho de backup OK para escrita: {target}", detail
-    except PermissionError:
-        return False, _backup_permission_hint(target), detail
-    except Exception as e:
-        return False, f"Falha ao validar caminho de backup '{target}': {e}", detail
+    return ops_test_backup_path_permissions(get_admin_settings, _backup_config, _resolve_backup_path, _backup_permission_hint, path_raw)
 
 
 # ---------------------------------------------------------------------------
