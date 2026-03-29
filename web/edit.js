@@ -145,15 +145,23 @@ async function loadReviewNotes() {
     const createdAt = n.created_at ? new Date(n.created_at).toLocaleString('pt-BR') : '-';
     const resolvedAt = n.resolved_at ? new Date(n.resolved_at).toLocaleString('pt-BR') : '-';
     return `
-      <div class="note-item" style="margin-bottom:8px; padding:8px; border:1px solid #ddd; border-radius:8px;">
-        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-          <input type="checkbox" class="review-note-resolve" data-note-id="${n.id}" ${resolved ? 'checked' : ''} ${!canResolve ? 'disabled' : ''} />
-          <b>${resolved ? 'RESOLVIDO' : 'PENDENTE'}</b>
-        </label>
-        <div><b>usuário:</b> ${n.created_by} <span style="float:right"><b>criado em:</b> ${createdAt}</span></div>
-        <div style="white-space:pre-wrap; margin-top:4px;">${n.note}</div>
-        <div style="margin-top:6px;"><b>resolvido por:</b> ${n.resolved_by || '-'} <span style="float:right"><b>resolvido em:</b> ${resolvedAt}</span></div>
-      </div>
+      <article class="review-note-item ${resolved ? 'is-resolved' : 'is-pending'}">
+        <div class="review-note-topbar">
+          <label class="inline-check review-note-toggle">
+            <input type="checkbox" class="review-note-resolve" data-note-id="${n.id}" ${resolved ? 'checked' : ''} ${!canResolve ? 'disabled' : ''} />
+            <span>${resolved ? 'RESOLVIDO' : 'PENDENTE'}</span>
+          </label>
+        </div>
+        <div class="review-note-meta-grid">
+          <div><b>usuário:</b> ${n.created_by}</div>
+          <div><b>criado em:</b> ${createdAt}</div>
+        </div>
+        <div class="review-note-body">${n.note}</div>
+        <div class="review-note-meta-grid review-note-meta-grid-bottom">
+          <div><b>resolvido por:</b> ${n.resolved_by || '-'}</div>
+          <div><b>resolvido em:</b> ${resolvedAt}</div>
+        </div>
+      </article>
     `;
   }).join('');
 

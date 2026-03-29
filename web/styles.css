@@ -1059,6 +1059,54 @@ dialog form {
   padding: var(--space-4);
 }
 
+.review-note-item {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #fbfdff;
+  padding: 14px 16px;
+}
+
+.review-note-item + .review-note-item {
+  margin-top: 10px;
+}
+
+.review-note-item.is-pending {
+  border-left: 4px solid var(--color-warning);
+}
+
+.review-note-item.is-resolved {
+  border-left: 4px solid var(--color-success);
+}
+
+.review-note-topbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 10px;
+}
+
+.review-note-toggle {
+  font-weight: 800;
+}
+
+.review-note-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  color: var(--color-text-soft);
+  font-size: 14px;
+}
+
+.review-note-body {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+.review-note-meta-grid-bottom {
+  margin-top: 12px;
+}
+
 .settings-filter-grid {
   margin-bottom: var(--space-3);
 }
@@ -1269,7 +1317,8 @@ dialog form {
   .kanban-summary-metrics,
   .kanban-summary-status-grid,
   .settings-section-grid,
-  .settings-check-grid {
+  .settings-check-grid,
+  .review-note-meta-grid {
     grid-template-columns: 1fr;
   }
 
