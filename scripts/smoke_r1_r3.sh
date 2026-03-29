@@ -38,6 +38,22 @@ check_auth_page "/settings.html" "GET /settings.html"
 check_auth_page "/admin-users.html" "GET /admin-users.html"
 check_auth_page "/profile.html" "GET /profile.html"
 
+EDIT_SLUG="$(curl -sS -b "$COOKIE_JAR" "$BASE_URL/api/documents?project_id=1" | python3 - <<'PY'
+import json,sys
+try:
+    data=json.load(sys.stdin)
+    docs=data.get('documents') or []
+    print((docs[0] or {}).get('slug','') if docs else '')
+except Exception:
+    print('')
+PY
+)"
+if [[ -n "$EDIT_SLUG" ]]; then
+  check_auth_page "/edit.html?slug=${EDIT_SLUG}&project_id=1" "GET /edit.html"
+else
+  echo "ℹ️ GET /edit.html skipped (no document slug available in project 1)"
+fi
+
 ME_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" "$BASE_URL/api/me")"
 [[ "$ME_CODE" == "200" ]] && pass "GET /api/me" || fail "GET /api/me (HTTP $ME_CODE)"
 

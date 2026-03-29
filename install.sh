@@ -209,7 +209,7 @@ fi
 # Basic health check
 sleep 1
 if ! curl -fsS "http://127.0.0.1:${PORT}/login.html" >/dev/null 2>&1; then
-  echo "Warning: app health check failed on 127.0.0.1:${PORT}."
+  echo "Warning: basic HTTP health check failed on 127.0.0.1:${PORT}/login.html."
   echo "Check: sudo systemctl status projectdashboard --no-pager"
 fi
 
