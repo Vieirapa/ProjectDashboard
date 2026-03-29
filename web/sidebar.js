@@ -33,19 +33,12 @@
     const canAccessAdminUsersPage = allowedPages.has('admin-users.html');
     const canAccessSettingsPage = allowedPages.has('settings.html');
     const hasAdminGroup = canAccessAdminUsersPage || canAccessSettingsPage;
-    const projectLabel = projectItems.find((p) => Number(p.project_id) === Number(projectId))?.project_name || 'Projeto atual';
 
     root.innerHTML = `
       <div class="sidebar-brand">
         <p class="eyebrow sidebar-eyebrow">Workspace</p>
         <h2>ProjectDashbord</h2>
         <p class="sidebar-subtitle">Gestão operacional de projetos, documentos e revisão.</p>
-      </div>
-
-      <div class="sidebar-context-card">
-        <span class="sidebar-context-label">Projeto atual</span>
-        <strong class="sidebar-context-value">${projectLabel}</strong>
-        <span class="sidebar-context-meta">Usuário: ${user.username}</span>
       </div>
 
       <div class="side-group">Área de trabalho</div>

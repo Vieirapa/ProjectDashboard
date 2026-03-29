@@ -478,34 +478,6 @@ dialog form {
   line-height: 1.45;
 }
 
-.sidebar-context-card {
-  display: grid;
-  gap: 6px;
-  padding: var(--space-4);
-  border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: var(--space-4);
-}
-
-.sidebar-context-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #93a8c4;
-}
-
-.sidebar-context-value {
-  color: #f8fbff;
-  font-size: 15px;
-  line-height: 1.35;
-}
-
-.sidebar-context-meta {
-  color: #c7d3e2;
-  font-size: 12px;
-}
-
 .side-link-logout {
   color: #fecaca;
 }
