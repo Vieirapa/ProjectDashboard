@@ -911,6 +911,26 @@ dialog form {
   background: #fbfdff;
 }
 
+.settings-inline-check-compact {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 14px;
+  min-height: 52px;
+  border-radius: 14px;
+}
+
+.settings-inline-check-compact input[type="checkbox"] {
+  justify-self: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.settings-inline-check-compact span {
+  font-weight: 700;
+}
+
 .priority-toggle-row {
   display: inline-flex;
   align-items: center;
@@ -939,11 +959,29 @@ dialog form {
 }
 
 .settings-check-grid .inline-check {
-  min-height: 44px;
-  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 14px;
+  min-height: 52px;
+  padding: 10px 14px;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: 14px;
   background: #fbfdff;
+  margin-bottom: 0;
+}
+
+.settings-check-grid .inline-check input[type="checkbox"] {
+  justify-self: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.settings-check-grid .inline-check span {
+  display: block;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .settings-check-grid-single-column {
@@ -951,25 +989,10 @@ dialog form {
 }
 
 .settings-check-grid-single-column .inline-check {
-  display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
-  align-items: center;
   column-gap: 18px;
   min-height: 62px;
   padding: 14px 18px;
-}
-
-.settings-check-grid-single-column .inline-check input[type="checkbox"] {
-  justify-self: center;
-  width: 18px;
-  height: 18px;
-  margin: 0;
-}
-
-.settings-check-grid-single-column .inline-check span {
-  display: block;
-  font-weight: 700;
-  line-height: 1.2;
 }
 
 .settings-backup-grid {
