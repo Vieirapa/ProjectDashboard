@@ -82,6 +82,10 @@ from backend.rbac.roles import (
     role_exists as rbac_role_exists,
     role_is_active as rbac_role_is_active,
 )
+from backend.rbac.permissions import (
+    get_effective_permissions as rbac_get_effective_permissions,
+    update_role_modules as rbac_update_role_modules,
+)
 
 APP_DIR = Path(__file__).parent
 BASE_DIR = Path(os.getenv("PDASH_DOCUMENTS_DIR", str(APP_DIR / "documents")))
@@ -3195,7 +3199,7 @@ class Handler(BaseHTTPRequestHandler):
         dict | None
             Estrutura de usuário autenticado ou `None`.
         """
-        return current_user_from_cookie(self.headers.get("Cookie"))
+        return current_user_from_session_cookie(SESSIONS, SESSION_COOKIE, self.headers.get("Cookie"))
 
     def _is_user_role_active(self, user: dict | None = None) -> bool:
         u = user or self._user()
