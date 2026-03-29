@@ -1,4 +1,34 @@
 #!/usr/bin/env python3
+"""
+ProjectDashboard — backend principal
+===================================
+
+Este arquivo ainda funciona como o ponto central de composição da aplicação.
+Mesmo com a modularização já iniciada, ele continua reunindo:
+
+- bootstrap do sistema
+- utilitários gerais
+- partes relevantes da lógica de domínio
+- rotas/dispatch HTTP
+- integração entre módulos extraídos e código legado
+
+Objetivo de documentação
+------------------------
+À medida que o projeto evolui para uma arquitetura mais modular, este arquivo
+precisa ser legível o suficiente para que futuras extrações sejam seguras.
+Por isso, esta documentação descreve:
+
+- o papel de blocos importantes
+- o contrato esperado das funções utilitárias
+- como cada função deve ser chamada e tratada no restante do sistema
+
+Observação importante
+---------------------
+Nem toda função aqui representa um destino final de arquitetura. Muitas ainda
+existem em `app.py` por razões de evolução incremental. A documentação ajuda a
+reduzir risco enquanto a base é reorganizada.
+"""
+
 import base64
 import json
 import os
@@ -88,11 +118,49 @@ SESSION_TTL_SECONDS = 60 * 60 * 24
 SESSIONS: dict[str, dict] = {}
 
 
+# ---------------------------------------------------------------------------
+# Utilitários base de data, texto e conexão
+# ---------------------------------------------------------------------------
 def now_iso() -> str:
+    """
+    Devolve o timestamp atual em UTC no formato ISO-8601 com sufixo `Z`.
+
+    Retorno
+    -------
+    str
+        Exemplo: `2026-03-29T00:00:00Z`
+
+    Como deve ser usada
+    -------------------
+    Deve ser usada sempre que a aplicação precisar gerar timestamps para
+    persistência, auditoria ou respostas coerentes em UTC.
+    """
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+# ---------------------------------------------------------------------------
+# Parsing defensivo de data ISO
+# ---------------------------------------------------------------------------
 def _parse_iso_date(value: str | None) -> datetime | None:
+    """
+    Converte uma string ISO em `datetime`, quando possível.
+
+    Parâmetros
+    ----------
+    value:
+        Data em string, normalmente vinda do banco ou de payloads internos.
+
+    Retorno
+    -------
+    datetime | None
+        Retorna `datetime` quando o valor é válido; `None` quando ausente ou
+        inválido.
+
+    Observação
+    ----------
+    O comportamento defensivo desta função evita quebrar a aplicação em fluxos
+    que lidam com dados legados ou parciais.
+    """
     if not value:
         return None
     v = str(value).strip()
@@ -104,7 +172,33 @@ def _parse_iso_date(value: str | None) -> datetime | None:
         return None
 
 
+# ---------------------------------------------------------------------------
+# Cálculo de idade/tempo de resolução de documento
+# ---------------------------------------------------------------------------
 def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[str, int]:
+    """
+    Calcula o rótulo e o número de dias relevantes para um documento.
+
+    Estratégia
+    ----------
+    - Se o documento já foi concluído e possui `released_at`, calcula dias até
+      solução.
+    - Caso contrário, calcula dias desde a abertura.
+
+    Parâmetros
+    ----------
+    opened_at:
+        Data de abertura do documento.
+    status:
+        Status atual do documento.
+    released_at:
+        Data de liberação/conclusão, quando existir.
+
+    Retorno
+    -------
+    tuple[str, int]
+        `(label, days)` para uso em UI e relatórios.
+    """
     opened = _parse_iso_date(opened_at) or datetime.now(UTC)
     if status == "Concluído" and released_at:
         released = _parse_iso_date(released_at) or datetime.now(UTC)
@@ -114,19 +208,73 @@ def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[
     return "Dias desde abertura", days
 
 
+# ---------------------------------------------------------------------------
+# Geração de slug estável
+# ---------------------------------------------------------------------------
 def slugify(name: str) -> str:
+    """
+    Converte um nome livre em slug seguro para uso interno.
+
+    Parâmetros
+    ----------
+    name:
+        Texto-base que será normalizado.
+
+    Retorno
+    -------
+    str
+        Slug minúsculo, sem caracteres inválidos. Se nada sobrar após a
+        normalização, devolve `documento`.
+    """
     slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name.strip())
     slug = re.sub(r"-+", "-", slug).strip("-")
     return slug.lower() or "documento"
 
 
+# ---------------------------------------------------------------------------
+# Leitura defensiva de arquivo texto
+# ---------------------------------------------------------------------------
 def read_text_if_exists(path: Path) -> str:
+    """
+    Lê um arquivo texto apenas se ele existir e for arquivo regular.
+
+    Parâmetros
+    ----------
+    path:
+        Caminho do arquivo desejado.
+
+    Retorno
+    -------
+    str
+        Conteúdo do arquivo quando existir; string vazia caso contrário.
+    """
     if path.exists() and path.is_file():
         return path.read_text(encoding="utf-8", errors="ignore")
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Inferência de descrição a partir do README do projeto
+# ---------------------------------------------------------------------------
 def infer_description(project_dir: Path) -> str:
+    """
+    Tenta inferir uma descrição curta de projeto a partir do README local.
+
+    Estratégia
+    ----------
+    Procura a primeira linha não vazia que não seja cabeçalho Markdown e usa
+    esse conteúdo como resumo curto.
+
+    Parâmetros
+    ----------
+    project_dir:
+        Diretório-base do projeto a ser inspecionado.
+
+    Retorno
+    -------
+    str
+        Descrição resumida ou `Sem descrição` quando não for possível inferir.
+    """
     for line in read_text_if_exists(project_dir / "README.md").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
@@ -134,14 +282,56 @@ def infer_description(project_dir: Path) -> str:
     return "Sem descrição"
 
 
+# ---------------------------------------------------------------------------
+# Factory principal de conexão com banco
+# ---------------------------------------------------------------------------
 def db() -> sqlite3.Connection:
+    """
+    Devolve uma conexão SQLite pronta para uso pelo restante do backend.
+
+    Retorno
+    -------
+    sqlite3.Connection
+        Conexão com `row_factory` configurado.
+
+    Como deve ser usada
+    -------------------
+    Esta é a factory padrão de banco no `app.py`. Funções de domínio e rotas
+    devem preferir `with db() as conn:` em vez de abrir conexões diretamente.
+    """
     return connect_db(DATA_DIR, DB_PATH)
 
 
-# --- Legacy migrations: projects -> documents ---
+# ---------------------------------------------------------------------------
+# Migrações legadas: projects -> documents
+# ---------------------------------------------------------------------------
 
 
 def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
+    """
+    Migra estruturas legadas do antigo modelo `projects` para o modelo atual de
+    `documents`, incluindo tabelas auxiliares relacionadas.
+
+    Parâmetros
+    ----------
+    conn:
+        Conexão ativa com o banco durante bootstrap/migração.
+
+    Retorno
+    -------
+    None
+
+    Como deve ser usada
+    -------------------
+    Deve ser chamada apenas em rotinas de inicialização/migração do banco.
+    Não é uma função de uso operacional normal das rotas.
+
+    Observação
+    ----------
+    Trata compatibilidade com instalações antigas. Conforme o projeto evoluir
+    para migrations versionadas formais, esta lógica deve migrar para camadas
+    mais explícitas de evolução de schema.
+    """
     # Migrate legacy projects table into documents table (only if legacy schema exists)
     if table_exists(conn, 'projects') and column_exists(conn, 'projects', 'slug'):
         total_docs = conn.execute("SELECT COUNT(*) AS c FROM documents").fetchone()[0]
@@ -271,7 +461,27 @@ def can_delete_document(role: str, user: str, document: dict) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# Fundação de roles e catálogo de módulos
+# ---------------------------------------------------------------------------
 def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
+    """
+    Garante a base estrutural mínima de roles e módulos no banco.
+
+    Parâmetros
+    ----------
+    conn:
+        Conexão ativa do banco durante bootstrap.
+
+    Retorno
+    -------
+    None
+
+    Como deve ser usada
+    -------------------
+    Deve ser executada no processo de inicialização do schema, antes de fluxos
+    administrativos que dependam de catálogo de roles/módulos.
+    """
     # Fase 1: base de roles no banco (compatível com modelo atual)
     conn.execute(
         """
@@ -433,7 +643,28 @@ def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
             )
 
 
+# ---------------------------------------------------------------------------
+# Inicialização principal do banco e bootstrap do sistema
+# ---------------------------------------------------------------------------
 def init_db():
+    """
+    Inicializa o banco principal da aplicação, garantindo tabelas, colunas,
+    seeds e migrações defensivas necessárias para o estado atual do sistema.
+
+    Retorno
+    -------
+    None
+
+    Como deve ser usada
+    -------------------
+    Esta função deve ser chamada em bootstrap de instalação e em inicialização
+    do backend quando for necessário garantir integridade mínima do schema.
+
+    Observação
+    ----------
+    Esta função ainda concentra responsabilidades históricas e é candidata a
+    futura decomposição em uma camada mais formal de migrations/bootstrap.
+    """
     with db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
