@@ -972,7 +972,29 @@ def migrate_existing_documents():
             )
 
 
+# ---------------------------------------------------------------------------
+# Consulta e leitura de documentos
+# ---------------------------------------------------------------------------
 def list_documents(project_id: int | None = None) -> list[dict]:
+    """
+    Lista documentos do sistema, opcionalmente filtrando por projeto.
+
+    Parâmetros
+    ----------
+    project_id:
+        Identificador do projeto. Quando omitido, a função retorna documentos
+        de todos os projetos visíveis no banco.
+
+    Retorno
+    -------
+    list[dict]
+        Lista de documentos já normalizados para uso por rotas e UI.
+
+    Como deve ser usada
+    -------------------
+    Deve ser chamada por endpoints de listagem, dashboards e telas operacionais.
+    É uma função de leitura; não deve aplicar efeitos colaterais.
+    """
     with db() as conn:
         if project_id is None:
             rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents ORDER BY name").fetchall()
@@ -1017,7 +1039,29 @@ def list_documents(project_id: int | None = None) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Leitura de documento individual
+# ---------------------------------------------------------------------------
 def get_document(slug: str, project_id: int | None = None) -> dict | None:
+    """
+    Resolve um documento individual a partir do slug, opcionalmente limitado a um projeto.
+
+    Parâmetros
+    ----------
+    slug:
+        Identificador lógico do documento.
+    project_id:
+        Projeto esperado para escopo defensivo, quando aplicável.
+
+    Retorno
+    -------
+    dict | None
+        Documento encontrado em formato de dicionário ou `None` quando não existe.
+
+    Como deve ser usada
+    -------------------
+    Base para rotas de detalhe, edição, revisão, anexo e validação de escopo.
+    """
     with db() as conn:
         if project_id is None:
             r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE slug=?", (slug,)).fetchone()
@@ -1043,7 +1087,29 @@ def get_document(slug: str, project_id: int | None = None) -> dict | None:
     }
 
 
+# ---------------------------------------------------------------------------
+# Normalização de payload de dependências
+# ---------------------------------------------------------------------------
 def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
+    """
+    Extrai e normaliza a lista de slugs de dependência a partir de um payload.
+
+    Parâmetros
+    ----------
+    payload:
+        Payload bruto recebido pela aplicação, normalmente vindo de PATCH/POST.
+
+    Retorno
+    -------
+    list[str] | None
+        Lista normalizada de slugs quando o payload traz dependências; `None`
+        quando o chamador não informou o campo.
+
+    Como deve ser usada
+    -------------------
+    Helper interno para criação/edição de documentos. Ela separa a semântica de
+    “campo ausente” da semântica de “lista vazia”.
+    """
     if not isinstance(payload, dict):
         return None
     raw = payload.get("depends_on") if "depends_on" in payload else payload.get("dependsOn")
@@ -1061,7 +1127,25 @@ def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Leitura de dependências explícitas de documento
+# ---------------------------------------------------------------------------
 def list_document_dependencies(slug: str, project_id: int) -> list[dict]:
+    """
+    Lista as dependências explícitas de um documento dentro de um projeto.
+
+    Parâmetros
+    ----------
+    slug:
+        Documento de origem.
+    project_id:
+        Projeto ao qual a relação pertence.
+
+    Retorno
+    -------
+    list[dict]
+        Lista de documentos dos quais o documento atual depende.
+    """
     with db() as conn:
         rows = conn.execute(
             """
@@ -1076,12 +1160,57 @@ def list_document_dependencies(slug: str, project_id: int) -> list[dict]:
     return [{"slug": r["depends_on_slug"], "name": r["name"], "status": r["status"]} for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# Dependências pendentes
+# ---------------------------------------------------------------------------
 def unresolved_dependencies(slug: str, project_id: int) -> list[dict]:
+    """
+    Lista apenas as dependências ainda não concluídas de um documento.
+
+    Parâmetros
+    ----------
+    slug:
+        Documento de origem.
+    project_id:
+        Projeto ao qual o documento pertence.
+
+    Retorno
+    -------
+    list[dict]
+        Dependências cujo status ainda não está concluído.
+    """
     deps = list_document_dependencies(slug, project_id)
     return [d for d in deps if str(d.get("status") or "") != "Concluído"]
 
 
+# ---------------------------------------------------------------------------
+# Detecção defensiva de ciclo em grafo de dependências
+# ---------------------------------------------------------------------------
 def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_dep_slug: str, project_id: int) -> bool:
+    """
+    Informa se adicionar uma dependência criaria ciclo entre documentos.
+
+    Parâmetros
+    ----------
+    conn:
+        Conexão ativa do banco.
+    source_slug:
+        Documento que receberia a dependência.
+    candidate_dep_slug:
+        Documento candidato a virar dependência.
+    project_id:
+        Projeto no qual o relacionamento deve ser validado.
+
+    Retorno
+    -------
+    bool
+        `True` quando a nova dependência criaria ciclo.
+
+    Como deve ser usada
+    -------------------
+    Deve ser chamada antes de persistir dependências para preservar integridade
+    do fluxo de trabalho.
+    """
     stack = [candidate_dep_slug]
     seen: set[str] = set()
     while stack:
@@ -1102,7 +1231,34 @@ def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_de
     return False
 
 
+# ---------------------------------------------------------------------------
+# Persistência de dependências de documento
+# ---------------------------------------------------------------------------
 def set_document_dependencies(slug: str, project_id: int, depends_on_slugs: list[str], actor: str) -> tuple[bool, str]:
+    """
+    Atualiza a lista de dependências de um documento.
+
+    Parâmetros
+    ----------
+    slug:
+        Documento de origem.
+    project_id:
+        Projeto no qual a relação será salva.
+    depends_on_slugs:
+        Lista final de slugs dos pré-requisitos.
+    actor:
+        Usuário responsável pela alteração, para auditoria.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        `(ok, message)` indicando sucesso ou motivo de falha.
+
+    Como deve ser usada
+    -------------------
+    Chamada por fluxos de criação/edição quando o campo de dependência é
+    alterado. Também aplica verificações de integridade, como prevenção de ciclo.
+    """
     with db() as conn:
         doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (slug, project_id)).fetchone()
         if not doc:
@@ -1959,7 +2115,30 @@ def sync_document_meta(document: dict):
     (p / "document.json").write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Criação de documento
+# ---------------------------------------------------------------------------
 def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
+    """
+    Cria um novo documento/card no sistema.
+
+    Parâmetros
+    ----------
+    payload:
+        Dados informados pela UI/API para criação do documento.
+    actor:
+        Usuário responsável pela criação.
+
+    Retorno
+    -------
+    tuple[bool, str, str | None]
+        `(ok, message, slug)` com o slug criado quando houver sucesso.
+
+    Como deve ser usada
+    -------------------
+    Deve ser chamada por rotas de criação e por fluxos que materializam um novo
+    card no Kanban. A função também integra dependências, prazos e auditoria.
+    """
     name = (payload.get("name") or "").strip()
     if not name:
         return False, "Nome é obrigatório", None
@@ -2045,7 +2224,34 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
     return True, "ok", slug
 
 
+# ---------------------------------------------------------------------------
+# Atualização parcial de documento
+# ---------------------------------------------------------------------------
 def patch_document(slug: str, payload: dict, project_id: int | None = None, actor: str = "system") -> tuple[bool, str]:
+    """
+    Atualiza parcialmente um documento existente.
+
+    Parâmetros
+    ----------
+    slug:
+        Documento alvo.
+    payload:
+        Campos parciais a alterar.
+    project_id:
+        Escopo opcional de projeto para validação defensiva.
+    actor:
+        Usuário responsável pela alteração.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        `(ok, message)` com sucesso ou motivo da rejeição.
+
+    Como deve ser usada
+    -------------------
+    Principal função de edição do card. Ela deve ser chamada por rotas de edição
+    e precisa manter integridade de status, dependências, prazo e auditoria.
+    """
     p = get_document(slug, project_id)
     if not p:
         return False, "Documento não encontrado"
@@ -2840,7 +3046,23 @@ def list_document_versions(slug: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# Histórico de notas de revisão
+# ---------------------------------------------------------------------------
 def list_review_notes(slug: str) -> list[dict]:
+    """
+    Lista o histórico de notas de revisão de um documento.
+
+    Parâmetros
+    ----------
+    slug:
+        Documento alvo.
+
+    Retorno
+    -------
+    list[dict]
+        Notas ordenadas para exibição em histórico e tratamento operacional.
+    """
     with db() as conn:
         rows = conn.execute(
             """
@@ -2854,7 +3076,32 @@ def list_review_notes(slug: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# Inclusão de nova nota de revisão
+# ---------------------------------------------------------------------------
 def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
+    """
+    Registra uma nova nota de revisão para um documento.
+
+    Parâmetros
+    ----------
+    slug:
+        Documento alvo.
+    note:
+        Texto livre da pendência/solicitação de revisão.
+    actor:
+        Usuário que registrou a nota.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        `(ok, message)` para feedback operacional.
+
+    Como deve ser usada
+    -------------------
+    Chamada por fluxos de revisão quando o documento está em contexto compatível
+    com pendências de revisão.
+    """
     proj = get_document(slug)
     if not proj:
         return False, "Documento não encontrado"
@@ -2873,7 +3120,34 @@ def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Resolução/reabertura de nota de revisão
+# ---------------------------------------------------------------------------
 def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bool) -> tuple[bool, str]:
+    """
+    Marca uma nota de revisão como resolvida ou volta seu estado para pendente.
+
+    Parâmetros
+    ----------
+    slug:
+        Documento alvo.
+    note_id:
+        Identificador da nota.
+    actor:
+        Usuário que executa a alteração.
+    resolved:
+        Estado final desejado (`True` para resolvido).
+
+    Retorno
+    -------
+    tuple[bool, str]
+        `(ok, message)` para feedback de operação.
+
+    Como deve ser usada
+    -------------------
+    Deve ser chamada por fluxos de acompanhamento de revisão e precisa preservar
+    rastreabilidade de quem resolveu e quando resolveu.
+    """
     proj = get_document(slug)
     if not proj:
         return False, "Documento não encontrado"
