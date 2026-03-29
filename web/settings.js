@@ -1,3 +1,22 @@
+/*
+ * settings.js
+ * ===========
+ *
+ * Responsável pela tela de configurações administrativas do sistema.
+ *
+ * Papel deste arquivo
+ * -------------------
+ * - Carregar configurações persistidas.
+ * - Orquestrar SMTP, workflow, backup, diagnóstico, relatórios e roles.
+ * - Coordenar ações administrativas disparadas a partir da UI.
+ *
+ * Como deve ser tratado no restante da aplicação
+ * ----------------------------------------------
+ * - Este arquivo deve permanecer como orquestrador da tela administrativa.
+ * - Regras e validações de negócio continuam preferencialmente no backend.
+ * - Mudanças nele exigem cuidado porque impactam várias capacidades do sistema.
+ */
+
 const logoutBtn = document.getElementById('logoutBtn');
 const smtpForm = document.getElementById('smtpForm');
 const workflowForm = document.getElementById('workflowForm');
@@ -93,6 +112,9 @@ let canManageRoles = false;
 let allowedModules = new Set();
 let lastPersistedBackupPath = '';
 
+// ---------------------------------------------------------------------------
+// Helper HTTP JSON da tela de settings
+// ---------------------------------------------------------------------------
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
   const d = await r.json().catch(() => ({}));
@@ -117,6 +139,9 @@ function applyModuleVisibility() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento das permissões da página administrativa
+// ---------------------------------------------------------------------------
 async function loadPermissions() {
   const d = await api('/api/me/permissions');
   const perms = d.permissions || {};
@@ -236,6 +261,9 @@ function fallbackNextRunFromForm() {
   return { enabled: true, weekdays: days.map(String), run_time: f.backupRunTime.value || '03:00', next_run_human: null };
 }
 
+// ---------------------------------------------------------------------------
+// Atualização da próxima execução prevista de backup
+// ---------------------------------------------------------------------------
 async function refreshBackupNextRun() {
   if (!backupNextRun || !hasModule('settings.backup')) return;
   try {
@@ -276,6 +304,9 @@ function renderDiagnostics(diagnostics) {
   diagOutput.value = lines.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento consolidado das configurações persistidas
+// ---------------------------------------------------------------------------
 async function loadSettings() {
   const d = await api('/api/admin/settings');
   const s = d.settings || {};
@@ -304,6 +335,9 @@ async function loadSettings() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento da lista de snapshots de backup
+// ---------------------------------------------------------------------------
 async function loadBackupSnapshots() {
   const path = (f.backupPath.value || '').trim();
   const q = new URLSearchParams();
@@ -389,6 +423,9 @@ function renderDeletedPager() {
   if (next) next.onclick = async () => { deletedPager.page = Math.min(deletedPager.total_pages, deletedPager.page + 1); await loadDeletedDocuments(); };
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento da lista de documentos apagados recuperáveis
+// ---------------------------------------------------------------------------
 async function loadDeletedDocuments() {
   const params = new URLSearchParams();
   Object.entries(deletedFilters).forEach(([k, v]) => {
@@ -479,6 +516,9 @@ async function loadDeletedDocuments() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento e renderização dos relatórios periódicos
+// ---------------------------------------------------------------------------
 async function loadReports() {
   const d = await api('/api/admin/reports');
   meta.statuses = d.statuses || [];
@@ -683,6 +723,9 @@ async function loadRolesMatrix() {
   renderRolesMatrix();
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento administrativo de catálogo de roles e matriz de permissões
+// ---------------------------------------------------------------------------
 async function loadRolesAdmin() {
   const d = await api('/api/admin/roles');
   rolesCatalogItems = d.items || [];
@@ -696,6 +739,9 @@ async function loadRolesAdmin() {
   await loadRolesMatrix();
 }
 
+// ---------------------------------------------------------------------------
+// Persistência da matriz de permissões por role
+// ---------------------------------------------------------------------------
 async function saveRolesMatrix() {
   if (!rolesMatrixWrap) return;
   const updatesByRole = {};
