@@ -1205,6 +1205,26 @@ dialog form {
   justify-content: flex-end;
 }
 
+.actions-left {
+  justify-content: flex-start;
+}
+
+.actions-wrap {
+  flex-wrap: wrap;
+}
+
+.mt-2 {
+  margin-top: var(--space-2) !important;
+}
+
+.mt-3 {
+  margin-top: var(--space-3) !important;
+}
+
+.mt-4 {
+  margin-top: var(--space-4) !important;
+}
+
 .allowed-roles-box,
 #projectsList,
 #projectCardsList,
