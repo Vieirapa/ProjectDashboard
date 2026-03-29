@@ -11,54 +11,90 @@
     <aside class="sidebar" id="sidebar-root" data-active="kanban"></aside>
 
     <main class="content">
-      <section id="projectSummary" class="project-summary">
+      <section class="page-hero kanban-hero">
+        <div>
+          <p class="eyebrow">Operação diária</p>
+          <h1>📋 Kanban</h1>
+          <p class="page-subtitle">Gerencie prioridades, evolução dos cards e gargalos do projeto atual com leitura rápida e contexto operacional.</p>
+        </div>
+        <div class="header-actions hero-actions">
+          <button id="newBtn">+ Novo documento</button>
+          <button id="refreshBtn" class="secondary">Atualizar board</button>
+        </div>
+      </section>
+
+      <section id="projectSummary" class="project-summary kanban-summary">
         <div class="project-summary-left">
-          <select id="sidebarProjectSelect" class="header-project-select"></select>
-          <div class="project-summary-line">Data de início do projeto: <b id="projectStartDate">-</b></div>
-          <div class="project-summary-line">Colaboradores envolvidos: <b id="projectCollaborators">0</b></div>
+          <div class="kanban-summary-card">
+            <span class="kanban-summary-label">Projeto ativo</span>
+            <select id="sidebarProjectSelect" class="header-project-select"></select>
+          </div>
+          <div class="kanban-summary-metrics">
+            <div class="kanban-summary-metric">
+              <span class="kanban-summary-label">Data de início</span>
+              <strong id="projectStartDate">-</strong>
+            </div>
+            <div class="kanban-summary-metric">
+              <span class="kanban-summary-label">Colaboradores</span>
+              <strong id="projectCollaborators">0</strong>
+            </div>
+          </div>
         </div>
         <div class="project-summary-right">
           <div class="project-summary-head">
-            <h2>Status do projeto</h2>
+            <div>
+              <span class="kanban-summary-label">Leitura do fluxo</span>
+              <h2>Status do projeto</h2>
+            </div>
           </div>
-          <div class="project-summary-line">Documentos em Baklog: <b id="sumBacklog">0 (0%)</b></div>
-          <div class="project-summary-line">Documentos em Andamento: <b id="sumProgress">0 (0%)</b></div>
-          <div class="project-summary-line">Documentos em Revisão: <b id="sumReview">0 (0%)</b></div>
-          <div class="project-summary-line">Documentos em Concluídos: <b id="sumDone">0 (0%)</b></div>
+          <div class="kanban-summary-status-grid">
+            <div class="kanban-status-pill kanban-status-backlog">Backlog <b id="sumBacklog">0 (0%)</b></div>
+            <div class="kanban-status-pill kanban-status-progress">Em andamento <b id="sumProgress">0 (0%)</b></div>
+            <div class="kanban-status-pill kanban-status-review">Em revisão <b id="sumReview">0 (0%)</b></div>
+            <div class="kanban-status-pill kanban-status-done">Concluídos <b id="sumDone">0 (0%)</b></div>
+          </div>
         </div>
       </section>
 
-      <section class="board-title-row">
-        <h1>📋 Kanban</h1>
-        <span id="priorityColorStatus" class="small"></span>
-        <div class="header-actions">
-          <button id="newBtn">+ Novo documento</button>
-          <button id="refreshBtn">Atualizar</button>
+      <section id="filters" class="kanban-filters">
+        <div class="filter-field filter-search-field">
+          <label for="searchInput">Busca</label>
+          <input id="searchInput" placeholder="Buscar por nome ou descrição" />
+        </div>
+        <div class="filter-field">
+          <label for="statusFilter">Status</label>
+          <select id="statusFilter"><option value="">Todos os status</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="priorityFilter">Prioridade</label>
+          <select id="priorityFilter"><option value="">Todas prioridades</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="ownerFilter">Responsável</label>
+          <input id="ownerFilter" placeholder="Filtrar por responsável" />
+        </div>
+        <div class="filter-field">
+          <label for="sortOrderFilter">Ordenação</label>
+          <select id="sortOrderFilter">
+            <option value="priority_desc">Prioridade (maior → menor)</option>
+            <option value="priority_asc">Prioridade (menor → maior)</option>
+            <option value="openedAt_desc">Data de abertura (mais novo → mais antigo)</option>
+            <option value="openedAt_asc">Data de abertura (mais antigo → mais novo)</option>
+            <option value="ageDays_desc">Tempo de ticket (maior → menor)</option>
+            <option value="ageDays_asc">Tempo de ticket (menor → maior)</option>
+            <option value="name_asc">Alfabética (A → Z)</option>
+            <option value="name_desc">Alfabética (Z → A)</option>
+            <option value="dueDate_asc">Prazo (mais próximo → mais distante)</option>
+            <option value="dueDate_desc">Prazo (mais distante → mais próximo)</option>
+            <option value="updatedAt_desc">Última atualização (mais recente → mais antiga)</option>
+            <option value="updatedAt_asc">Última atualização (mais antiga → mais recente)</option>
+          </select>
         </div>
       </section>
 
-      <section id="filters">
-        <input id="searchInput" placeholder="Buscar por nome/descrição" />
-        <select id="statusFilter"><option value="">Todos os status</option></select>
-        <select id="priorityFilter"><option value="">Todas prioridades</option></select>
-        <input id="ownerFilter" placeholder="Filtrar por responsável" />
-        <select id="sortOrderFilter">
-          <option value="priority_desc">Ordenação: Prioridade (maior → menor)</option>
-          <option value="priority_asc">Ordenação: Prioridade (menor → maior)</option>
-          <option value="openedAt_desc">Ordenação: Data de abertura (mais novo → mais antigo)</option>
-          <option value="openedAt_asc">Ordenação: Data de abertura (mais antigo → mais novo)</option>
-          <option value="ageDays_desc">Ordenação: Tempo de ticket (maior → menor)</option>
-          <option value="ageDays_asc">Ordenação: Tempo de ticket (menor → maior)</option>
-          <option value="name_asc">Ordenação: Alfabética (A → Z)</option>
-          <option value="name_desc">Ordenação: Alfabética (Z → A)</option>
-          <option value="dueDate_asc">Ordenação: Prazo (mais próximo → mais distante)</option>
-          <option value="dueDate_desc">Ordenação: Prazo (mais distante → mais próximo)</option>
-          <option value="updatedAt_desc">Ordenação: Última atualização (mais recente → mais antiga)</option>
-          <option value="updatedAt_asc">Ordenação: Última atualização (mais antiga → mais recente)</option>
-        </select>
+      <section class="kanban-board-shell">
+        <main id="board"></main>
       </section>
-
-      <main id="board"></main>
     </main>
   </div>
 

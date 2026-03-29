@@ -11,36 +11,70 @@
     <aside class="sidebar" id="sidebar-root" data-active="home"></aside>
 
     <main class="content">
-      <section class="board-title-row">
-        <h1>🏠 Painel de Resumo</h1>
-        <div class="header-actions">
+      <section class="page-hero page-hero-home">
+        <div>
+          <p class="eyebrow">Visão geral</p>
+          <h1>🏠 Painel de Resumo</h1>
+          <p class="page-subtitle">Acompanhe rapidamente projetos ativos, cards sob sua responsabilidade e o ritmo geral de entrega.</p>
+        </div>
+        <div class="header-actions hero-actions">
           <button id="goKanbanBtn">Abrir Kanban</button>
-          <button id="refreshHomeBtn">Atualizar</button>
+          <button id="refreshHomeBtn" class="secondary">Atualizar painel</button>
         </div>
       </section>
 
       <section class="panel-grid home-kpi-grid">
-        <article class="panel home-kpi-card">
-          <h3>Projetos com acesso</h3>
+        <article class="panel home-kpi-card home-kpi-card-primary">
+          <div class="metric-label">Projetos com acesso</div>
           <div id="kpiProjects" class="home-kpi-value">0</div>
+          <p class="metric-foot">Projetos disponíveis para sua operação diária.</p>
         </article>
         <article class="panel home-kpi-card">
-          <h3>Cards sob sua responsabilidade</h3>
+          <div class="metric-label">Cards sob sua responsabilidade</div>
           <div id="kpiOwned" class="home-kpi-value">0</div>
+          <p class="metric-foot">Itens que exigem acompanhamento direto seu.</p>
         </article>
         <article class="panel home-kpi-card">
-          <h3>Documentos concluídos</h3>
+          <div class="metric-label">Documentos concluídos</div>
           <div id="kpiDone" class="home-kpi-value">0</div>
+          <p class="metric-foot">Total de entregas concluídas nos projetos visíveis.</p>
         </article>
         <article class="panel home-kpi-card">
-          <h3>Tempo médio de resolução</h3>
+          <div class="metric-label">Tempo médio de resolução</div>
           <div id="kpiAvgResolution" class="home-kpi-value">-</div>
+          <p class="metric-foot">Leitura consolidada da velocidade de fechamento.</p>
         </article>
       </section>
 
-      <section class="panel" style="margin-top:0;">
-        <h3>Resumo por projeto</h3>
-        <div id="projectsSummaryTable" class="small">Carregando...</div>
+      <section class="dashboard-grid">
+        <article class="panel dashboard-main-panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Operação</p>
+              <h3>Resumo por projeto</h3>
+            </div>
+            <span class="small">Atualizado em tempo real a partir dos cards</span>
+          </div>
+          <div id="projectsSummaryTable" class="dashboard-table-wrap small">Carregando...</div>
+        </article>
+
+        <aside class="dashboard-side-column">
+          <section class="panel dashboard-side-panel">
+            <p class="eyebrow">Próximos passos</p>
+            <h3>Como usar melhor este painel</h3>
+            <ul class="dashboard-bullet-list">
+              <li>Abra o Kanban para agir sobre prioridades e status.</li>
+              <li>Use Projetos para revisar catálogo, templates e escopo.</li>
+              <li>Monitore cards sob sua responsabilidade para evitar gargalos.</li>
+            </ul>
+          </section>
+
+          <section class="panel dashboard-side-panel dashboard-highlight-panel">
+            <p class="eyebrow">Leitura rápida</p>
+            <h3>O que observar primeiro</h3>
+            <p class="small">Dê prioridade a projetos com maior volume de cards e aos itens sob sua responsabilidade. Se o tempo médio subir demais, vale revisar gargalos no fluxo.</p>
+          </section>
+        </aside>
       </section>
     </main>
   </div>

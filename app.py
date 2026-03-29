@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 from email.message import EmailMessage
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -89,7 +89,7 @@ SESSIONS: dict[str, dict] = {}
 
 
 def now_iso() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _parse_iso_date(value: str | None) -> datetime | None:
@@ -105,12 +105,12 @@ def _parse_iso_date(value: str | None) -> datetime | None:
 
 
 def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[str, int]:
-    opened = _parse_iso_date(opened_at) or datetime.utcnow()
+    opened = _parse_iso_date(opened_at) or datetime.now(UTC)
     if status == "Concluído" and released_at:
-        released = _parse_iso_date(released_at) or datetime.utcnow()
+        released = _parse_iso_date(released_at) or datetime.now(UTC)
         days = max(0, (released.date() - opened.date()).days)
         return "Dia até solução", days
-    days = max(0, (datetime.utcnow().date() - opened.date()).days)
+    days = max(0, (datetime.now(UTC).date() - opened.date()).days)
     return "Dias desde abertura", days
 
 
@@ -2022,7 +2022,7 @@ def default_due_date_iso() -> str:
     except Exception:
         days = 7
     days = max(0, min(days, 3650))
-    return (datetime.utcnow() + timedelta(days=days)).date().isoformat()
+    return (datetime.now(UTC) + timedelta(days=days)).date().isoformat()
 
 
 def dependency_max_status(settings: dict | None = None) -> str:
@@ -2852,7 +2852,7 @@ def purge_expired_deleted_documents(actor: str = "system") -> tuple[int, int]:
     except Exception:
         retention_days = 30
     retention_days = max(1, min(retention_days, 3650))
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
 
     purged = 0
     with db() as conn:
@@ -3905,7 +3905,7 @@ class Handler(BaseHTTPRequestHandler):
             requested_role = str(body.get("role") or "").strip().lower()
             role = requested_role if role_exists(requested_role, active_only=True) else resolve_fallback_role("member")
             token = secrets.token_urlsafe(24)
-            exp = (datetime.utcnow() + timedelta(days=3)).replace(microsecond=0).isoformat() + "Z"
+            exp = (datetime.now(UTC) + timedelta(days=3)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
             invite_url = f"/signup.html?token={token}"
             host = self.headers.get("Host") or f"127.0.0.1:{PORT}"
             full_invite_url = f"http://{host}{invite_url}"
@@ -3969,7 +3969,7 @@ class Handler(BaseHTTPRequestHandler):
                 inv = conn.execute("SELECT token, role, used_by, expires_at FROM invites WHERE token=?", (token,)).fetchone()
                 if not inv: return self._json(400, {"ok": False, "error": "convite inválido"})
                 if inv["used_by"]: return self._json(400, {"ok": False, "error": "convite já usado"})
-                if datetime.fromisoformat(inv["expires_at"].replace("Z", "")) < datetime.utcnow():
+                if datetime.fromisoformat(inv["expires_at"].replace("Z", "+00:00")) < datetime.now(UTC):
                     return self._json(400, {"ok": False, "error": "convite expirado"})
                 try:
                     conn.execute("INSERT INTO users (username,password_hash,role,created_at) VALUES (?,?,?,?)",

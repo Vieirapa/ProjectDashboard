@@ -35,7 +35,11 @@
     const hasAdminGroup = canAccessAdminUsersPage || canAccessSettingsPage;
 
     root.innerHTML = `
-      <h2>ProjectDashbord</h2>
+      <div class="sidebar-brand">
+        <p class="eyebrow sidebar-eyebrow">Workspace</p>
+        <h2>ProjectDashbord</h2>
+        <p class="sidebar-subtitle">Gestão operacional de projetos, documentos e revisão.</p>
+      </div>
 
       <div class="side-group">Área de trabalho</div>
       <a class="side-link ${active === 'home' ? 'active' : ''}" href="/">Início</a>
@@ -46,14 +50,12 @@
       ${canAccessAdminUsersPage ? `<a id="usersLink" class="side-link ${active === 'users' ? 'active' : ''}" href="/admin-users.html?project_id=${projectId}">Usuários & Convites</a>` : ''}
       ${canAccessSettingsPage ? `<a id="settingsLink" class="side-link ${active === 'settings' ? 'active' : ''}" href="/settings.html?project_id=${projectId}">Configurações</a>` : ''}
 
-      <div class="side-group" id="whoamiTitle"></div>
+      <div class="side-group">Conta</div>
       <a class="side-link ${active === 'profile' ? 'active' : ''}" href="/profile.html?project_id=${projectId}">Meu perfil</a>
-      <a id="logoutLink" class="side-link" href="#">Logout</a>
+      <a id="logoutLink" class="side-link side-link-logout" href="#">Logout</a>
+
+      <div class="side-foot">${user.username} · ${user.role}</div>
     `;
-
-    const whoamiTitle = document.getElementById('whoamiTitle');
-    if (whoamiTitle) whoamiTitle.textContent = `${user.username} (${user.role})`;
-
 
     const logoutLink = document.getElementById('logoutLink');
     if (logoutLink) {

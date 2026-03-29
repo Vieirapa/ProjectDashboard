@@ -11,245 +11,300 @@
     <aside class="sidebar" id="sidebar-root" data-active="settings"></aside>
 
     <main class="content">
-      <header>
-        <h1>⚙️ Configurações do Sistema</h1>
-        <div class="header-actions">
+      <section class="page-hero">
+        <div>
+          <p class="eyebrow">Administração do sistema</p>
+          <h1>⚙️ Configurações do Sistema</h1>
+          <p class="page-subtitle">Centralize comportamento operacional, backup, diagnóstico, recuperação, relatórios e controle de roles em uma área mais legível e consistente.</p>
+        </div>
+        <div class="header-actions hero-actions">
           <button id="logoutBtn" class="secondary">Logout</button>
         </div>
-      </header>
-
-      <section class="panel" data-module-id="settings.smtp">
-        <h3>Envio de e-mails (SMTP)</h3>
-        <form id="smtpForm" class="form-grid" style="max-width:760px;">
-          <label>SMTP Host</label><input id="smtp_host" placeholder="smtp.seuprovedor.com" />
-          <label>SMTP Port</label><input id="smtp_port" placeholder="587" />
-          <label>SMTP User</label><input id="smtp_user" placeholder="noreply@empresa.com" />
-          <label>SMTP Password</label><input id="smtp_pass" type="password" placeholder="senha/app password" />
-          <label>From (remetente)</label><input id="smtp_from" placeholder="noreply@empresa.com" />
-          <label class="inline-check"><input id="smtp_tls" type="checkbox" /><span>Usar TLS</span></label>
-
-          <label>Mensagem padrão de convite</label>
-          <textarea id="invite_default_message" rows="7" placeholder="Use {invite_link} e {expires_at} para placeholders"></textarea>
-
-          <label>E-mail para teste SMTP</label>
-          <input id="smtp_test_to" type="email" placeholder="voce@empresa.com" />
-
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit">Salvar configurações</button>
-            <button type="button" id="testSmtpBtn" class="secondary">Testar SMTP</button>
-          </div>
-          <p id="feedback" class="small"></p>
-        </form>
       </section>
 
-      <section class="panel" data-module-id="settings.system_behavior">
-        <h3>Comportamento do sistema</h3>
-        <form id="workflowForm" class="form-grid" style="max-width:760px;">
-          <label>Prazo padrão (dias)</label>
-          <input id="default_due_days" type="number" min="0" max="3650" placeholder="7" />
-          <p class="small">Regra: ao criar um documento (ou alterar status sem informar prazo manual), o prazo será recalculado para hoje + X dias.</p>
-
-          <label>Status máximo permitido com dependências pendentes</label>
-          <select id="dependency_max_status">
-            <option value="Backlog">Backlog</option>
-            <option value="Em andamento">Em andamento</option>
-            <option value="Em revisão">Em revisão</option>
-            <option value="Concluído">Concluído</option>
-          </select>
-          <p class="small">Se um card tiver dependências em aberto, ele só poderá avançar até este status máximo.</p>
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit">Salvar comportamento</button>
-          </div>
-          <p id="workflowFeedback" class="small"></p>
-        </form>
-      </section>
-
-      <section class="panel" data-module-id="settings.backup">
-        <div class="backup-grid">
-          <form id="backupForm" class="backup-card form-grid">
-            <h3>Backup do sistema</h3>
-            <label class="inline-check"><input id="backup_enabled" type="checkbox" /> <span>Habilitar backup automático interno</span></label>
-            <label>Caminho de saída dos backups</label>
-            <input id="backup_path" placeholder="/opt/documentdashboard/data/backups" />
-
-            <label>Dias da semana</label>
-            <div id="backup_weekdays" class="form-grid">
-              <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
-              <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
-              <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
-              <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
-              <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
-              <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
-              <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+      <section class="edit-wrap settings-page-wrap">
+        <div class="settings-section-grid">
+          <section class="panel settings-panel" data-module-id="settings.smtp">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Comunicação</p>
+                <h3>Envio de e-mails (SMTP)</h3>
+              </div>
+              <span class="small">Integração de convite, notificações e relatórios.</span>
             </div>
+            <form id="smtpForm" class="form-grid settings-form-grid">
+              <label>SMTP Host</label><input id="smtp_host" placeholder="smtp.seuprovedor.com" />
+              <label>SMTP Port</label><input id="smtp_port" placeholder="587" />
+              <label>SMTP User</label><input id="smtp_user" placeholder="noreply@empresa.com" />
+              <label>SMTP Password</label><input id="smtp_pass" type="password" placeholder="senha/app password" />
+              <label>From (remetente)</label><input id="smtp_from" placeholder="noreply@empresa.com" />
+              <label class="inline-check settings-inline-check"><input id="smtp_tls" type="checkbox" /><span>Usar TLS</span></label>
 
-            <label>Horário (HH:MM)</label>
-            <input id="backup_run_time" type="time" value="03:00" />
+              <label>Mensagem padrão de convite</label>
+              <textarea id="invite_default_message" rows="7" placeholder="Use {invite_link} e {expires_at} para placeholders"></textarea>
 
-            <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap;">
-              <button type="submit">Salvar política de backup</button>
-              <button type="button" id="testBackupPathBtn" class="secondary">Testar permissões do caminho</button>
-              <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
+              <label>E-mail para teste SMTP</label>
+              <input id="smtp_test_to" type="email" placeholder="voce@empresa.com" />
+
+              <div class="dialog-actions" style="justify-content:flex-start;">
+                <button type="submit">Salvar configurações</button>
+                <button type="button" id="testSmtpBtn" class="secondary">Testar SMTP</button>
+              </div>
+              <p id="feedback" class="small"></p>
+            </form>
+          </section>
+
+          <section class="panel settings-panel" data-module-id="settings.system_behavior">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Fluxo</p>
+                <h3>Comportamento do sistema</h3>
+              </div>
+              <span class="small">Regras default para prazo e dependências.</span>
             </div>
-            <p id="backupFeedback" class="small"></p>
-            <p id="backupNextRun" class="small"></p>
-          </form>
+            <form id="workflowForm" class="form-grid settings-form-grid">
+              <label>Prazo padrão (dias)</label>
+              <input id="default_due_days" type="number" min="0" max="3650" placeholder="7" />
+              <p class="small">Regra: ao criar um documento (ou alterar status sem informar prazo manual), o prazo será recalculado para hoje + X dias.</p>
 
-          <div class="backup-card" data-module-id="settings.backup_restore">
-            <h3>Recuperação de backup</h3>
-            <p class="small">Selecione um snapshot (data/hora) disponível no caminho de backup e restaure com confirmação.</p>
-            <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap; margin-top:8px;">
-              <button type="button" id="refreshBackupListBtn" class="secondary">Atualizar lista de backups</button>
-              <button type="button" id="restoreBackupBtn" class="danger">Restaurar backup selecionado</button>
-            </div>
-            <div id="backupRestoreList" class="small" style="margin-top:10px;">Nenhum backup listado.</div>
-          </div>
+              <label>Status máximo permitido com dependências pendentes</label>
+              <select id="dependency_max_status">
+                <option value="Backlog">Backlog</option>
+                <option value="Em andamento">Em andamento</option>
+                <option value="Em revisão">Em revisão</option>
+                <option value="Concluído">Concluído</option>
+              </select>
+              <p class="small">Se um card tiver dependências em aberto, ele só poderá avançar até este status máximo.</p>
+              <div class="dialog-actions" style="justify-content:flex-start;">
+                <button type="submit">Salvar comportamento</button>
+              </div>
+              <p id="workflowFeedback" class="small"></p>
+            </form>
+          </section>
         </div>
-      </section>
 
-      <section class="panel" data-module-id="settings.system_diagnostics">
-        <h3>Diagnóstico do sistema</h3>
-        <form id="diagForm" class="form-grid" style="max-width:900px;">
-          <label>Repositório Git para comparação de versão</label>
-          <input id="system_git_repo" placeholder="https://github.com/Vieirapa/ProjectDashboard.git" />
-          <label>Branch (ramo)</label>
-          <input id="system_git_branch" placeholder="main" />
-
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit">Salvar fonte de versão</button>
-            <button type="button" id="runDiagBtn" class="secondary">Rodar diagnóstico agora</button>
+        <section class="panel settings-panel" data-module-id="settings.backup">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Resiliência</p>
+              <h3>Backup e recuperação</h3>
+            </div>
+            <span class="small">Política, execução manual e restauração de snapshots.</span>
           </div>
-          <p id="diagFeedback" class="small"></p>
-          <textarea id="diagOutput" rows="12" readonly placeholder="Resultado do diagnóstico..."></textarea>
-        </form>
-      </section>
+          <div class="backup-grid settings-backup-grid">
+            <form id="backupForm" class="backup-card form-grid settings-form-grid">
+              <h3>Backup do sistema</h3>
+              <label class="inline-check settings-inline-check"><input id="backup_enabled" type="checkbox" /> <span>Habilitar backup automático interno</span></label>
+              <label>Caminho de saída dos backups</label>
+              <input id="backup_path" placeholder="/opt/documentdashboard/data/backups" />
 
-      <section class="panel" data-module-id="settings.recoverable_documents">
-        <h3>Documentos recuperáveis</h3>
-        <form id="deletedPolicyForm" class="form-grid" style="max-width:900px;">
-          <label>Retenção após exclusão (dias)</label>
-          <input id="deleted_retention_days" type="number" min="1" max="3650" placeholder="30" />
-          <p class="small">Após este período, documentos apagados são removidos permanentemente (incluindo arquivos armazenados) para liberar espaço em disco.</p>
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit">Salvar política de retenção</button>
-            <button type="button" id="refreshDeletedBtn" class="secondary">Atualizar lista</button>
+              <label>Dias da semana</label>
+              <div id="backup_weekdays" class="form-grid settings-check-grid">
+                <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
+                <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
+                <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
+                <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
+                <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
+                <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
+                <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+              </div>
+
+              <label>Horário (HH:MM)</label>
+              <input id="backup_run_time" type="time" value="03:00" />
+
+              <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap;">
+                <button type="submit">Salvar política de backup</button>
+                <button type="button" id="testBackupPathBtn" class="secondary">Testar permissões do caminho</button>
+                <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
+              </div>
+              <p id="backupFeedback" class="small"></p>
+              <p id="backupNextRun" class="small"></p>
+            </form>
+
+            <div class="backup-card settings-side-card" data-module-id="settings.backup_restore">
+              <h3>Recuperação de backup</h3>
+              <p class="small">Selecione um snapshot (data/hora) disponível no caminho de backup e restaure com confirmação.</p>
+              <div class="dialog-actions" style="justify-content:flex-start; flex-wrap:wrap; margin-top:8px;">
+                <button type="button" id="refreshBackupListBtn" class="secondary">Atualizar lista de backups</button>
+                <button type="button" id="restoreBackupBtn" class="danger">Restaurar backup selecionado</button>
+              </div>
+              <div id="backupRestoreList" class="small settings-data-box" style="margin-top:10px;">Nenhum backup listado.</div>
+            </div>
           </div>
-          <p id="deletedPolicyFeedback" class="small"></p>
-        </form>
+        </section>
 
-        <div style="margin-top:16px;">
-          <h4 style="margin:0 0 8px;">Documentos apagados disponíveis para restauração</h4>
-
-          <div class="form-grid" style="max-width:900px; margin-bottom:10px;">
-            <label>Buscar por nome/slug</label>
-            <input id="deleted_filter_q" placeholder="Ex.: desenho-1011" />
-
-            <label>Apagado por</label>
-            <input id="deleted_filter_by" placeholder="Ex.: admin" />
-
-            <label>De (data)</label>
-            <input id="deleted_filter_from" type="date" />
-
-            <label>Até (data)</label>
-            <input id="deleted_filter_to" type="date" />
+        <section class="panel settings-panel" data-module-id="settings.system_diagnostics">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Observabilidade</p>
+              <h3>Diagnóstico do sistema</h3>
+            </div>
+            <span class="small">Fonte de versão e leitura rápida de saúde operacional.</span>
+          </div>
+          <form id="diagForm" class="form-grid settings-form-grid settings-form-grid-wide">
+            <label>Repositório Git para comparação de versão</label>
+            <input id="system_git_repo" placeholder="https://github.com/Vieirapa/ProjectDashboard.git" />
+            <label>Branch (ramo)</label>
+            <input id="system_git_branch" placeholder="main" />
 
             <div class="dialog-actions" style="justify-content:flex-start;">
-              <button type="button" id="applyDeletedFiltersBtn" class="secondary">Filtrar</button>
-              <button type="button" id="clearDeletedFiltersBtn" class="secondary">Limpar filtros</button>
+              <button type="submit">Salvar fonte de versão</button>
+              <button type="button" id="runDiagBtn" class="secondary">Rodar diagnóstico agora</button>
             </div>
-            <p id="deletedFiltersState" class="small" style="margin-top:6px; color:#4b5563;"></p>
+            <p id="diagFeedback" class="small"></p>
+            <textarea id="diagOutput" rows="12" readonly placeholder="Resultado do diagnóstico..."></textarea>
+          </form>
+        </section>
+
+        <section class="panel settings-panel" data-module-id="settings.recoverable_documents">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Recuperação</p>
+              <h3>Documentos recuperáveis</h3>
+            </div>
+            <span class="small">Política de retenção, filtros e restauração.</span>
           </div>
+          <form id="deletedPolicyForm" class="form-grid settings-form-grid settings-form-grid-wide">
+            <label>Retenção após exclusão (dias)</label>
+            <input id="deleted_retention_days" type="number" min="1" max="3650" placeholder="30" />
+            <p class="small">Após este período, documentos apagados são removidos permanentemente (incluindo arquivos armazenados) para liberar espaço em disco.</p>
+            <div class="dialog-actions" style="justify-content:flex-start;">
+              <button type="submit">Salvar política de retenção</button>
+              <button type="button" id="refreshDeletedBtn" class="secondary">Atualizar lista</button>
+            </div>
+            <p id="deletedPolicyFeedback" class="small"></p>
+          </form>
 
-          <div id="deletedDocumentsList" class="small">Nenhum documento apagado.</div>
-          <div id="deletedDocumentsPager" class="small" style="margin-top:8px;"></div>
-        </div>
-      </section>
+          <div class="settings-subsection">
+            <h4 class="mt-0">Documentos apagados disponíveis para restauração</h4>
 
-      <section class="panel" data-module-id="settings.periodic_reports">
-        <h3>Relatórios periódicos</h3>
-        <form id="reportForm" class="form-grid" style="max-width:900px;">
-          <label>Nome do relatório</label>
-          <input id="r_name" placeholder="Ex.: Relatório semanal de revisão" required />
+            <div class="form-grid settings-form-grid settings-form-grid-wide settings-filter-grid">
+              <label>Buscar por nome/slug</label>
+              <input id="deleted_filter_q" placeholder="Ex.: desenho-1011" />
 
-          <label>O que reportar (listas do Kanban)</label>
-          <div id="r_statuses" class="form-grid"></div>
+              <label>Apagado por</label>
+              <input id="deleted_filter_by" placeholder="Ex.: admin" />
 
-          <label>Dados do relatório</label>
-          <div id="r_priorities" class="form-grid">
-            <label class="inline-check"><input type="checkbox" value="TODOS" checked /> <span>TODOS</span></label>
-            <label class="inline-check"><input type="checkbox" value="Baixa" /> <span>DOCUMENTOS COM PRIORIDADE BAIXA</span></label>
-            <label class="inline-check"><input type="checkbox" value="Média" /> <span>DOCUMENTOS COM PRIORIDADE MÉDIA</span></label>
-            <label class="inline-check"><input type="checkbox" value="Alta" /> <span>DOCUMENTOS COM PRIORIDADE ALTA</span></label>
-            <label class="inline-check"><input type="checkbox" value="Urgente" /> <span>DOCUMENTOS COM PRIORIDADE URGENTE</span></label>
+              <label>De (data)</label>
+              <input id="deleted_filter_from" type="date" />
+
+              <label>Até (data)</label>
+              <input id="deleted_filter_to" type="date" />
+
+              <div class="dialog-actions" style="justify-content:flex-start;">
+                <button type="button" id="applyDeletedFiltersBtn" class="secondary">Filtrar</button>
+                <button type="button" id="clearDeletedFiltersBtn" class="secondary">Limpar filtros</button>
+              </div>
+              <p id="deletedFiltersState" class="small"></p>
+            </div>
+
+            <div id="deletedDocumentsList" class="small settings-data-box">Nenhum documento apagado.</div>
+            <div id="deletedDocumentsPager" class="small" style="margin-top:8px;"></div>
           </div>
+        </section>
 
-          <label>Perfis que receberão o relatório</label>
-          <div id="r_roles" class="form-grid"></div>
-
-          <label>Periodicidade (dias da semana)</label>
-          <div id="r_weekdays" class="form-grid">
-            <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
-            <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
-            <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
-            <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
-            <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
-            <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
-            <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+        <section class="panel settings-panel" data-module-id="settings.periodic_reports">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Automação</p>
+              <h3>Relatórios periódicos</h3>
+            </div>
+            <span class="small">Cadastre, visualize e revise o conteúdo enviado.</span>
           </div>
+          <div class="settings-section-grid">
+            <form id="reportForm" class="form-grid settings-form-grid settings-form-grid-wide">
+              <label>Nome do relatório</label>
+              <input id="r_name" placeholder="Ex.: Relatório semanal de revisão" required />
 
-          <label>Horário (HH:MM)</label>
-          <input id="r_run_time" type="time" value="10:00" />
+              <label>O que reportar (listas do Kanban)</label>
+              <div id="r_statuses" class="form-grid settings-check-grid"></div>
 
-          <label>Mensagem</label>
-          <textarea id="r_message" rows="5" placeholder="Mensagem que aparecerá antes do relatório no e-mail."></textarea>
+              <label>Dados do relatório</label>
+              <div id="r_priorities" class="form-grid settings-check-grid settings-check-grid-single-column">
+                <label class="inline-check"><input type="checkbox" value="TODOS" checked /> <span>TODOS</span></label>
+                <label class="inline-check"><input type="checkbox" value="Baixa" /> <span>DOCUMENTOS COM PRIORIDADE BAIXA</span></label>
+                <label class="inline-check"><input type="checkbox" value="Média" /> <span>DOCUMENTOS COM PRIORIDADE MÉDIA</span></label>
+                <label class="inline-check"><input type="checkbox" value="Alta" /> <span>DOCUMENTOS COM PRIORIDADE ALTA</span></label>
+                <label class="inline-check"><input type="checkbox" value="Urgente" /> <span>DOCUMENTOS COM PRIORIDADE URGENTE</span></label>
+              </div>
 
-          <label class="inline-check"><input id="r_active" type="checkbox" checked /> <span>Ativo</span></label>
+              <label>Perfis que receberão o relatório</label>
+              <div id="r_roles" class="form-grid settings-check-grid"></div>
 
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit">Criar relatório periódico</button>
+              <label>Periodicidade (dias da semana)</label>
+              <div id="r_weekdays" class="form-grid settings-check-grid">
+                <label class="inline-check"><input type="checkbox" value="0" /> <span>Segunda</span></label>
+                <label class="inline-check"><input type="checkbox" value="1" /> <span>Terça</span></label>
+                <label class="inline-check"><input type="checkbox" value="2" /> <span>Quarta</span></label>
+                <label class="inline-check"><input type="checkbox" value="3" /> <span>Quinta</span></label>
+                <label class="inline-check"><input type="checkbox" value="4" /> <span>Sexta</span></label>
+                <label class="inline-check"><input type="checkbox" value="5" /> <span>Sábado</span></label>
+                <label class="inline-check"><input type="checkbox" value="6" /> <span>Domingo</span></label>
+              </div>
+
+              <label>Horário (HH:MM)</label>
+              <input id="r_run_time" type="time" value="10:00" />
+
+              <label>Mensagem</label>
+              <textarea id="r_message" rows="5" placeholder="Mensagem que aparecerá antes do relatório no e-mail."></textarea>
+
+              <label class="inline-check settings-inline-check settings-inline-check-compact"><input id="r_active" type="checkbox" checked /> <span>Ativo</span></label>
+
+              <div class="dialog-actions" style="justify-content:flex-start;">
+                <button type="submit">Criar relatório periódico</button>
+              </div>
+              <p id="reportFeedback" class="small"></p>
+            </form>
+
+            <div class="settings-side-stack">
+              <div class="panel settings-side-panel-inner">
+                <h4 class="mt-0">Relatórios cadastrados</h4>
+                <div id="reportsList" class="small settings-data-box">Nenhum relatório cadastrado.</div>
+              </div>
+
+              <div class="panel settings-side-panel-inner">
+                <h4 class="mt-0">Prévia do texto enviado</h4>
+                <textarea id="reportPreview" rows="21" readonly placeholder="Ao clicar em 'Rodar agora', a prévia do corpo do e-mail aparecerá aqui."></textarea>
+              </div>
+            </div>
           </div>
-          <p id="reportFeedback" class="small"></p>
-        </form>
+        </section>
 
-        <div style="margin-top:16px;">
-          <h4 style="margin:0 0 8px;">Relatórios cadastrados</h4>
-          <div id="reportsList" class="small">Nenhum relatório cadastrado.</div>
-        </div>
-
-        <div style="margin-top:16px; max-width:760px;">
-          <h4 style="margin:0 0 8px;">Prévia do texto enviado</h4>
-          <textarea id="reportPreview" rows="21" readonly placeholder="Ao clicar em 'Rodar agora', a prévia do corpo do e-mail aparecerá aqui."></textarea>
-        </div>
-      </section>
-
-      <section class="panel" data-module-id="settings.roles_control">
-        <h3>Controle de ROLES</h3>
-        <p class="small">Matriz de acesso por módulo. O role <strong>admin</strong> é bloqueado para edição e mantém acesso total.</p>
-
-        <form id="roleCreateForm" class="edit-form" style="margin: 10px 0 14px; max-width: 720px;">
-          <h4 style="margin:0 0 8px;">Criar nova role</h4>
-          <label>Role key (imutável)</label>
-          <input id="roleKeyInput" placeholder="ex.: suporte_n1" />
-          <label>Nome de exibição</label>
-          <input id="roleDisplayNameInput" placeholder="ex.: Suporte N1" />
-          <div class="dialog-actions" style="justify-content:flex-start;">
-            <button type="submit" id="roleCreateBtn">Criar role</button>
+        <section class="panel settings-panel" data-module-id="settings.roles_control">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Autorização</p>
+              <h3>Controle de ROLES</h3>
+            </div>
+            <span class="small">O role admin permanece protegido e com acesso total.</span>
           </div>
-        </form>
+          <p class="small">Matriz de acesso por módulo. O role <strong>admin</strong> é bloqueado para edição e mantém acesso total.</p>
 
-        <h4 style="margin:0 0 8px;">Catálogo de roles</h4>
-        <div id="rolesCatalogWrap" class="small" style="margin-bottom: 10px;">Carregando catálogo...</div>
+          <form id="roleCreateForm" class="edit-form settings-role-form">
+            <h4 class="mt-0">Criar nova role</h4>
+            <label>Role key (imutável)</label>
+            <input id="roleKeyInput" placeholder="ex.: suporte_n1" />
+            <label>Nome de exibição</label>
+            <input id="roleDisplayNameInput" placeholder="ex.: Suporte N1" />
+            <div class="dialog-actions" style="justify-content:flex-start;">
+              <button type="submit" id="roleCreateBtn">Criar role</button>
+            </div>
+          </form>
 
-        <div class="dialog-actions" style="justify-content:flex-start; margin-bottom:8px;">
-          <button type="button" id="rolesRefreshBtn" class="secondary">Atualizar matriz</button>
-          <button type="button" id="rolesSaveBtn">Salvar alterações</button>
-          <button type="button" id="rolesSyncCatalogBtn" class="secondary">Sincronizar catálogo</button>
-        </div>
-        <p id="rolesFeedback" class="small"></p>
+          <h4>Catálogo de roles</h4>
+          <div id="rolesCatalogWrap" class="small settings-data-box">Carregando catálogo...</div>
 
-        <div id="rolesMatrixWrap" style="overflow:auto; max-width:100%;">
-          <div class="small">Carregando matriz...</div>
-        </div>
+          <div class="dialog-actions" style="justify-content:flex-start; margin-bottom:8px; margin-top:12px;">
+            <button type="button" id="rolesRefreshBtn" class="secondary">Atualizar matriz</button>
+            <button type="button" id="rolesSaveBtn">Salvar alterações</button>
+            <button type="button" id="rolesSyncCatalogBtn" class="secondary">Sincronizar catálogo</button>
+          </div>
+          <p id="rolesFeedback" class="small"></p>
+
+          <div id="rolesMatrixWrap" class="settings-data-box settings-matrix-wrap">
+            <div class="small">Carregando matriz...</div>
+          </div>
+        </section>
       </section>
     </main>
   </div>

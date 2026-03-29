@@ -59,9 +59,7 @@ function colorByPriorityKey(colors, key, fallback) {
 
 function updatePriorityColorStatus() {
   if (!priorityColorStatus) return;
-  const mode = behavior.priorityColorEnabled ? 'ATIVO' : 'INATIVO';
-  const palette = `Baixa:${behavior.priorityColors['Baixa']} · Média:${behavior.priorityColors['Média']} · Alta:${behavior.priorityColors['Alta']} · Urgente:${behavior.priorityColors['Urgente']}`;
-  priorityColorStatus.innerHTML = `Cores por prioridade: <strong>${mode}</strong> <span class="small">(${palette})</span>`;
+  priorityColorStatus.innerHTML = '';
 }
 
 function projectIdFromUrlOrNull() {

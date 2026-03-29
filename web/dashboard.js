@@ -32,7 +32,16 @@ function fmtDays(v) {
   return `${Number(v).toFixed(1)} dias`;
 }
 
+function badgeClass(value) {
+  const num = Number(value) || 0;
+  if (num >= 12) return 'status-badge status-danger';
+  if (num >= 5) return 'status-badge status-warning';
+  return 'status-badge status-success';
+}
+
 async function loadDashboard() {
+  projectsSummaryTable.innerHTML = '<div class="loading-state">Carregando métricas e resumo dos projetos...</div>';
+
   const [{ user }, { projects }] = await Promise.all([
     api('/api/me'),
     api('/api/projects-registry'),
@@ -44,6 +53,8 @@ async function loadDashboard() {
       const d = await api(`/api/documents?project_id=${encodeURIComponent(String(p.project_id))}`);
       const docs = d.documents || [];
       const doneDocs = docs.filter((x) => x.status === 'Concluído');
+      const reviewDocs = docs.filter((x) => x.status === 'Em revisão');
+      const activeDocs = docs.filter((x) => x.status === 'Em andamento');
       return {
         project_id: p.project_id,
         project_name: p.project_name,
@@ -51,6 +62,8 @@ async function loadDashboard() {
         total: docs.length,
         owned: docs.filter((x) => String(x.owner || '').toLowerCase() === String(user.username || '').toLowerCase()).length,
         done: doneDocs.length,
+        review: reviewDocs.length,
+        active: activeDocs.length,
         avgDoneDays: avg(doneDocs.map((x) => Number(x.ageDays) || 0)),
       };
     })
@@ -68,25 +81,45 @@ async function loadDashboard() {
   kpiAvgResolution.textContent = fmtDays(weightedAvgDone);
 
   if (!perProject.length) {
-    projectsSummaryTable.textContent = 'Você ainda não tem projetos com acesso.';
+    projectsSummaryTable.innerHTML = '<div class="empty-state">Você ainda não tem projetos com acesso. Assim que houver projetos disponíveis, eles aparecerão aqui.</div>';
     return;
   }
 
-  projectsSummaryTable.innerHTML = `<table>
-    <tr><th>ID</th><th class="template-flag-col"></th><th>Projeto</th><th>Total de cards</th><th>Seus cards</th><th>Concluídos</th><th>Média resolução</th><th>Ação</th></tr>
-    ${perProject.map((p) => `
+  const sortedProjects = [...perProject].sort((a, b) => (b.total - a.total) || a.project_name.localeCompare(b.project_name));
+
+  projectsSummaryTable.innerHTML = `
+    <table>
       <tr>
-        <td>${esc(p.project_id)}</td>
-        <td class="template-flag-col">${p.is_template ? '<span class="template-chip" title="Projeto template">TPL</span>' : ''}</td>
-        <td>${esc(p.project_name)}</td>
-        <td>${esc(p.total)}</td>
-        <td>${esc(p.owned)}</td>
-        <td>${esc(p.done)}</td>
-        <td>${esc(fmtDays(p.avgDoneDays))}</td>
-        <td><a href="/kanban.html?project_id=${encodeURIComponent(String(p.project_id))}">Abrir</a></td>
+        <th>ID</th>
+        <th>Projeto</th>
+        <th>Total</th>
+        <th>Seus cards</th>
+        <th>Em andamento</th>
+        <th>Em revisão</th>
+        <th>Concluídos</th>
+        <th>Média</th>
+        <th>Ação</th>
       </tr>
-    `).join('')}
-  </table>`;
+      ${sortedProjects.map((p) => `
+        <tr>
+          <td>${esc(p.project_id)}</td>
+          <td>
+            <div class="table-title-cell">
+              <strong>${esc(p.project_name)}</strong>
+              ${p.is_template ? '<span class="status-badge status-neutral">Template</span>' : ''}
+            </div>
+          </td>
+          <td><span class="status-badge status-neutral">${esc(p.total)}</span></td>
+          <td><span class="status-badge status-primary">${esc(p.owned)}</span></td>
+          <td>${esc(p.active)}</td>
+          <td>${esc(p.review)}</td>
+          <td>${esc(p.done)}</td>
+          <td><span class="${badgeClass(p.avgDoneDays)}">${esc(fmtDays(p.avgDoneDays))}</span></td>
+          <td><a class="table-link" href="/kanban.html?project_id=${encodeURIComponent(String(p.project_id))}">Abrir Kanban</a></td>
+        </tr>
+      `).join('')}
+    </table>
+  `;
 }
 
 refreshHomeBtn?.addEventListener('click', () => loadDashboard());
@@ -108,6 +141,6 @@ goKanbanBtn?.addEventListener('click', async () => {
       window.location.href = '/login.html';
       return;
     }
-    projectsSummaryTable.textContent = e?.message || 'Falha ao carregar painel de resumo.';
+    projectsSummaryTable.innerHTML = `<div class="error-state">${esc(e?.message || 'Falha ao carregar painel de resumo.')}</div>`;
   }
 })();

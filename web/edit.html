@@ -11,46 +11,70 @@
     <aside class="sidebar" id="sidebar-root" data-active="kanban"></aside>
 
     <main class="content">
-      <header>
-        <h1>✏️ Editar Documento</h1>
-        <div class="header-actions">
+      <section class="page-hero">
+        <div>
+          <p class="eyebrow">Detalhamento operacional</p>
+          <h1>✏️ Editar Documento</h1>
+          <p class="page-subtitle">Ajuste status, prioridade, dependências, anexo e acompanhe o histórico de revisão em uma visão mais clara do card.</p>
+        </div>
+        <div class="header-actions hero-actions">
           <button id="backBtn" class="secondary">Voltar</button>
           <button id="deleteBtn" class="danger">Apagar documento</button>
           <button id="logoutBtn" class="secondary">Logout</button>
         </div>
-      </header>
+      </section>
 
       <section class="edit-wrap">
         <div class="edit-two-cols">
-          <form id="editForm" class="edit-form">
+          <form id="editForm" class="edit-form panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Documento</p>
+                <h3 class="mt-0">Dados principais</h3>
+              </div>
+              <span class="small">Edite os dados essenciais do card.</span>
+            </div>
+
             <label>Nome</label><input id="name" required />
             <label>Descrição</label><textarea id="description" rows="4"></textarea>
-            <label>Status</label><select id="status"></select>
-            <label>Prioridade</label><select id="priority"></select>
+            <div class="project-form-grid">
+              <div>
+                <label>Status</label><select id="status"></select>
+              </div>
+              <div>
+                <label>Prioridade</label><select id="priority"></select>
+              </div>
+            </div>
             <label>Responsável</label><input id="owner" list="ownersList" />
             <datalist id="ownersList"></datalist>
             <label>Prazo</label><input id="dueDate" type="date" />
             <label>Depende de (opcional)</label>
             <input id="dependsSearch" type="text" placeholder="Filtrar cards..." />
-            <div id="dependsOn" class="deps-checklist"></div>
+            <div id="dependsOn" class="deps-checklist settings-data-box"></div>
             <small class="small">Marque os cards pré-requisito.</small>
-            <div id="dependencyInfo" class="small"></div>
+            <div id="dependencyInfo" class="small settings-data-box"></div>
             <label>Anexo do documento (1 arquivo)</label><input id="documentFile" type="file" />
             <label>Documento atual</label><input id="documentName" readonly />
             <label>Histórico da revisão</label>
-            <div id="documentVersions" class="small">Sem revisões ainda.</div>
+            <div id="documentVersions" class="small settings-data-box">Sem revisões ainda.</div>
             <div class="dialog-actions"><button id="saveBtn" type="button">Salvar alterações</button></div>
             <p id="feedback" class="small"></p>
           </form>
 
-          <section class="review-panel">
-            <h3>Notas de revisão</h3>
+          <section class="review-panel panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Revisão</p>
+                <h3>Notas de revisão</h3>
+              </div>
+              <span class="small">Registre e acompanhe histórico de solicitações.</span>
+            </div>
             <textarea id="reviewNoteInput" rows="6" placeholder="Descreva o ajuste solicitado na revisão..."></textarea>
-            <div class="dialog-actions" style="justify-content:flex-start; margin-top:8px;">
-              <button type="button" id="addReviewNoteBtn">Adiciona nota</button>
+            <div class="dialog-actions actions-left mt-2">
+              <button type="button" id="addReviewNoteBtn">Adicionar nota</button>
             </div>
             <div class="small" style="margin-top:10px;">Histórico</div>
-            <div id="reviewNotesHistory" class="small">Sem notas registradas.</div>
+            <div id="reviewNotesHistory" class="small settings-data-box">Sem notas registradas.</div>
           </section>
         </div>
       </section>
