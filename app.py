@@ -1798,7 +1798,23 @@ def _to_bool_int(value) -> int:
     return 1 if s in {'1', 'true', 'yes', 'on'} else 0
 
 
+# ---------------------------------------------------------------------------
+# Registro/catálogo de projetos
+# ---------------------------------------------------------------------------
 def list_projects_registry() -> list[dict]:
+    """
+    Lista os projetos registrados no sistema.
+
+    Retorno
+    -------
+    list[dict]
+        Projetos normalizados para uso em catálogo, selects e páginas de gestão.
+
+    Como deve ser usada
+    -------------------
+    Função de leitura para tela de projetos, navegação, Kanban e fluxos que
+    precisem conhecer o catálogo atual de projetos.
+    """
     with db() as conn:
         rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles, is_template, template_source_project_id FROM projects ORDER BY project_id").fetchall()
     out = []
@@ -1810,7 +1826,23 @@ def list_projects_registry() -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Criação de projeto no registro principal
+# ---------------------------------------------------------------------------
 def create_project_registry(payload: dict) -> tuple[bool, str, int | None]:
+    """
+    Cria um novo projeto no catálogo principal da aplicação.
+
+    Parâmetros
+    ----------
+    payload:
+        Dados de criação do projeto recebidos da UI/API.
+
+    Retorno
+    -------
+    tuple[bool, str, int | None]
+        `(ok, message, project_id)` com identificador do novo projeto em caso de sucesso.
+    """
     name = str(payload.get("project_name") or "").strip()
     start_date = str(payload.get("start_date") or "").strip()
     notes = str(payload.get("notes") or "").strip()
@@ -1829,7 +1861,25 @@ def create_project_registry(payload: dict) -> tuple[bool, str, int | None]:
     return True, "ok", new_id
 
 
+# ---------------------------------------------------------------------------
+# Atualização de projeto existente
+# ---------------------------------------------------------------------------
 def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
+    """
+    Atualiza os dados de um projeto já registrado.
+
+    Parâmetros
+    ----------
+    project_id:
+        Projeto alvo.
+    payload:
+        Alterações solicitadas.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        `(ok, message)` com resultado da operação.
+    """
     fields = []
     vals: list = []
     if "project_name" in payload:
@@ -1861,7 +1911,23 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Remoção de projeto e limpeza associada
+# ---------------------------------------------------------------------------
 def delete_project_registry(project_id: int) -> tuple[bool, str, int]:
+    """
+    Remove um projeto do registro e apaga seus artefatos associados quando aplicável.
+
+    Parâmetros
+    ----------
+    project_id:
+        Projeto alvo da remoção.
+
+    Retorno
+    -------
+    tuple[bool, str, int]
+        `(ok, message, deleted_cards)` com total de cards apagados no processo.
+    """
     deleted_cards = 0
     with db() as conn:
         exists = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
@@ -2329,13 +2395,52 @@ def ensure_docs_repo() -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Leitura consolidada de configurações administrativas
+# ---------------------------------------------------------------------------
 def get_admin_settings() -> dict:
+    """
+    Lê as configurações administrativas persistidas em `app_settings`.
+
+    Retorno
+    -------
+    dict
+        Mapa `key -> {value, updated_by, updated_at}`.
+
+    Como deve ser usada
+    -------------------
+    Base para SMTP, backup, workflow, diagnóstico, relatórios e demais áreas de
+    configuração operacional.
+    """
     with db() as conn:
         rows = conn.execute("SELECT key, value, updated_by, updated_at FROM app_settings ORDER BY key").fetchall()
     return {r["key"]: {"value": r["value"], "updated_by": r["updated_by"], "updated_at": r["updated_at"]} for r in rows}
 
 
+# ---------------------------------------------------------------------------
+# Atualização validada de configurações administrativas
+# ---------------------------------------------------------------------------
 def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
+    """
+    Atualiza configurações administrativas com validação de consistência.
+
+    Parâmetros
+    ----------
+    payload:
+        Conjunto de chaves/valores enviados pela UI/API.
+    actor:
+        Usuário responsável pela alteração.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        `(ok, message)` indicando sucesso ou falha de validação.
+
+    Como deve ser usada
+    -------------------
+    Deve ser usada por rotas administrativas; centraliza validação de payload,
+    normalização e persistência.
+    """
     allowed = {
         "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls",
         "invite.default_message", "workflow.default_due_days", "workflow.dependency_max_status",
@@ -2512,7 +2617,18 @@ def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str
         return False, f"Falha ao enviar email: {e}"
 
 
+# ---------------------------------------------------------------------------
+# Catálogo de relatórios periódicos
+# ---------------------------------------------------------------------------
 def list_periodic_reports() -> list[dict]:
+    """
+    Lista os relatórios periódicos cadastrados no sistema.
+
+    Retorno
+    -------
+    list[dict]
+        Relatórios normalizados para uso administrativo e operacional.
+    """
     with db() as conn:
         rows = conn.execute("SELECT * FROM periodic_reports ORDER BY id DESC").fetchall()
     out = []
@@ -2528,7 +2644,25 @@ def list_periodic_reports() -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Criação de relatório periódico
+# ---------------------------------------------------------------------------
 def create_periodic_report(payload: dict, actor: str) -> tuple[bool, str]:
+    """
+    Cria uma nova regra de relatório periódico.
+
+    Parâmetros
+    ----------
+    payload:
+        Configuração do relatório enviada pela UI.
+    actor:
+        Usuário responsável pela criação.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+    """
     name = str(payload.get("name") or "").strip()
     statuses = payload.get("statuses") or []
     priorities = payload.get("priorities") or []
@@ -2563,7 +2697,27 @@ def create_periodic_report(payload: dict, actor: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Atualização de relatório periódico
+# ---------------------------------------------------------------------------
 def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[bool, str]:
+    """
+    Atualiza uma regra já cadastrada de relatório periódico.
+
+    Parâmetros
+    ----------
+    report_id:
+        Relatório alvo.
+    payload:
+        Alterações solicitadas.
+    actor:
+        Usuário responsável.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+    """
     fields = {}
     mapping = {
         "name": "name", "run_time": "run_time", "message": "message", "active": "active",
@@ -2592,7 +2746,23 @@ def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[b
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Exclusão de relatório periódico
+# ---------------------------------------------------------------------------
 def delete_periodic_report(report_id: int) -> tuple[bool, str]:
+    """
+    Remove uma regra de relatório periódico.
+
+    Parâmetros
+    ----------
+    report_id:
+        Identificador do relatório.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+    """
     with db() as conn:
         exists = conn.execute("SELECT id FROM periodic_reports WHERE id=?", (report_id,)).fetchone()
         if not exists:
@@ -2634,7 +2804,23 @@ def _render_report_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Composição de conteúdo de relatório periódico
+# ---------------------------------------------------------------------------
 def compose_periodic_report_email(report: dict) -> tuple[str, str, list[sqlite3.Row]]:
+    """
+    Monta assunto, corpo e conjunto de linhas usadas em um relatório periódico.
+
+    Parâmetros
+    ----------
+    report:
+        Configuração do relatório a ser executado.
+
+    Retorno
+    -------
+    tuple[str, str, list[sqlite3.Row]]
+        `(subject, body, rows)` para envio e/ou pré-visualização.
+    """
     roles = report.get("roles") or []
     users = []
     if roles:
@@ -2651,7 +2837,25 @@ def compose_periodic_report_email(report: dict) -> tuple[str, str, list[sqlite3.
     return subject, email_body, users
 
 
+# ---------------------------------------------------------------------------
+# Execução operacional de relatório periódico
+# ---------------------------------------------------------------------------
 def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]:
+    """
+    Executa um relatório periódico e dispara seu envio quando aplicável.
+
+    Parâmetros
+    ----------
+    report:
+        Configuração do relatório.
+    actor:
+        Usuário/ator lógico da execução.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado da execução.
+    """
     roles = report.get("roles") or []
     if not roles:
         return False, "sem perfis de destino"
@@ -2742,7 +2946,23 @@ def _resolve_backup_path(path_value: str | None) -> Path:
     return p
 
 
+# ---------------------------------------------------------------------------
+# Validação de permissões do caminho de backup
+# ---------------------------------------------------------------------------
 def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str, dict]:
+    """
+    Testa se o caminho configurado para backup existe e aceita escrita.
+
+    Parâmetros
+    ----------
+    path_raw:
+        Caminho opcional informado manualmente para teste.
+
+    Retorno
+    -------
+    tuple[bool, str, dict]
+        `(ok, message, detail)` com detalhes de existência e gravabilidade.
+    """
     settings = get_admin_settings()
     cfg = _backup_config(settings)
     target = _resolve_backup_path(path_raw or cfg["path"])
@@ -2762,7 +2982,25 @@ def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str
         return False, f"Falha ao validar caminho de backup '{target}': {e}", detail
 
 
+# ---------------------------------------------------------------------------
+# Execução de backup do sistema
+# ---------------------------------------------------------------------------
 def run_system_backup(actor: str = "system", path_override: str | None = None) -> tuple[bool, str]:
+    """
+    Executa backup do banco e dos artefatos documentais do sistema.
+
+    Parâmetros
+    ----------
+    actor:
+        Usuário/ator lógico da operação.
+    path_override:
+        Caminho opcional para sobrescrever o destino configurado.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado textual da operação.
+    """
     settings = get_admin_settings()
     cfg = _backup_config(settings)
     primary_out_dir = _resolve_backup_path(path_override or cfg["path"])
@@ -2809,7 +3047,23 @@ def run_system_backup(actor: str = "system", path_override: str | None = None) -
     audit(actor, "system.backup.run", str(used_dir), ", ".join(copied))
     return True, f"backup salvo em {used_dir} ({', '.join(copied)})"
 
+# ---------------------------------------------------------------------------
+# Catálogo de backups disponíveis
+# ---------------------------------------------------------------------------
 def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict]:
+    """
+    Lista os backups disponíveis em um diretório configurado.
+
+    Parâmetros
+    ----------
+    path_raw:
+        Caminho opcional a ser inspecionado.
+
+    Retorno
+    -------
+    tuple[bool, str, dict]
+        `(ok, message, payload)` com itens agrupados por snapshot.
+    """
     settings = get_admin_settings()
     cfg = _backup_config(settings)
     backup_dir = _resolve_backup_path(path_raw or cfg["path"])
@@ -2850,7 +3104,19 @@ def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict
     return True, "ok", {"path": str(backup_dir), "items": items, "total": len(items)}
 
 
+# ---------------------------------------------------------------------------
+# Cálculo do próximo backup agendado
+# ---------------------------------------------------------------------------
 def next_backup_run() -> dict:
+    """
+    Calcula a próxima janela prevista de execução automática de backup.
+
+    Retorno
+    -------
+    dict
+        Estrutura com estado, dias configurados, horário e próximo horário
+        resolvido quando houver.
+    """
     settings = get_admin_settings()
     cfg = _backup_config(settings)
     result = {
@@ -2884,7 +3150,27 @@ def next_backup_run() -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Restauração de backup por snapshot
+# ---------------------------------------------------------------------------
 def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> tuple[bool, str]:
+    """
+    Restaura um snapshot de backup específico.
+
+    Parâmetros
+    ----------
+    stamp:
+        Identificador temporal do snapshot.
+    path_raw:
+        Caminho opcional da origem dos backups.
+    actor:
+        Usuário responsável pela operação.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado textual da restauração.
+    """
     ok, msg, payload = list_available_backups(path_raw)
     if not ok:
         return False, msg
@@ -2931,7 +3217,22 @@ def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> t
     return True, f"Restore concluído para {stamp}. {detail[:800]}"
 
 
+# ---------------------------------------------------------------------------
+# Diagnóstico geral do sistema
+# ---------------------------------------------------------------------------
 def run_system_diagnostics() -> dict:
+    """
+    Executa uma bateria de checks operacionais e de versão da aplicação.
+
+    Retorno
+    -------
+    dict
+        Estrutura com timestamp, checks e estado comparativo de versão local/remota.
+
+    Como deve ser usada
+    -------------------
+    Base para a tela de diagnóstico, badge de saúde e troubleshooting operacional.
+    """
     settings = get_admin_settings()
     repo_url = _setting(settings, "system.git_repo", "PDASH_GIT_REPO", "https://github.com/Vieirapa/ProjectDashboard.git")
     repo_branch = _setting(settings, "system.git_branch", "PDASH_GIT_BRANCH", "develop")
@@ -3252,6 +3553,9 @@ def save_document_file(slug: str, filename: str, mime_type: str, b64_content: st
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Catálogo de documentos apagados recuperáveis
+# ---------------------------------------------------------------------------
 def list_deleted_documents(
     q: str | None = None,
     deleted_by: str | None = None,
@@ -3260,6 +3564,29 @@ def list_deleted_documents(
     page: int = 1,
     page_size: int = 10,
 ) -> dict:
+    """
+    Lista documentos apagados ainda elegíveis para recuperação, com filtros e paginação.
+
+    Parâmetros
+    ----------
+    q:
+        Busca textual por nome/slug.
+    deleted_by:
+        Filtro por usuário que executou a exclusão.
+    deleted_from:
+        Data inicial da janela de exclusão.
+    deleted_to:
+        Data final da janela de exclusão.
+    page:
+        Página atual.
+    page_size:
+        Quantidade de itens por página.
+
+    Retorno
+    -------
+    dict
+        Payload paginado para a UI administrativa de recuperação.
+    """
     base_query = "FROM deleted_documents"
     where: list[str] = []
     params: list[object] = []
@@ -3350,7 +3677,23 @@ def _purge_deleted_document_record(record: sqlite3.Row | dict) -> tuple[bool, st
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Expurgo automático de documentos apagados vencidos
+# ---------------------------------------------------------------------------
 def purge_expired_deleted_documents(actor: str = "system") -> tuple[int, int]:
+    """
+    Remove definitivamente documentos apagados cujo período de retenção expirou.
+
+    Parâmetros
+    ----------
+    actor:
+        Usuário/ator lógico da operação.
+
+    Retorno
+    -------
+    tuple[int, int]
+        `(purged, failed)` com totais do processo.
+    """
     settings = get_admin_settings()
     try:
         retention_days = int(_setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30"))
@@ -3374,7 +3717,25 @@ def purge_expired_deleted_documents(actor: str = "system") -> tuple[int, int]:
     return purged, retention_days
 
 
+# ---------------------------------------------------------------------------
+# Restauração de documento apagado
+# ---------------------------------------------------------------------------
 def restore_deleted_document(deleted_id: int, actor: str) -> tuple[bool, str]:
+    """
+    Restaura um documento previamente enviado para a área recuperável.
+
+    Parâmetros
+    ----------
+    deleted_id:
+        Registro apagado alvo.
+    actor:
+        Usuário responsável pela restauração.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+    """
     with db() as conn:
         row = conn.execute("SELECT * FROM deleted_documents WHERE id=?", (deleted_id,)).fetchone()
     if not row:
@@ -3437,7 +3798,25 @@ def restore_deleted_document(deleted_id: int, actor: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Exclusão definitiva de documento já apagado
+# ---------------------------------------------------------------------------
 def delete_deleted_document_permanently(deleted_id: int, actor: str) -> tuple[bool, str]:
+    """
+    Apaga definitivamente um documento da área recuperável.
+
+    Parâmetros
+    ----------
+    deleted_id:
+        Registro alvo.
+    actor:
+        Usuário responsável.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+    """
     with db() as conn:
         row = conn.execute("SELECT * FROM deleted_documents WHERE id=?", (deleted_id,)).fetchone()
     if not row:
@@ -3448,7 +3827,30 @@ def delete_deleted_document_permanently(deleted_id: int, actor: str) -> tuple[bo
     return ok, msg
 
 
+# ---------------------------------------------------------------------------
+# Exclusão lógica de documento para área recuperável
+# ---------------------------------------------------------------------------
 def delete_document(slug: str, actor: str) -> tuple[bool, str]:
+    """
+    Remove logicamente um documento ativo, movendo-o para a área de recuperação.
+
+    Parâmetros
+    ----------
+    slug:
+        Documento alvo.
+    actor:
+        Usuário responsável pela exclusão.
+
+    Retorno
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+
+    Como deve ser usada
+    -------------------
+    Esta é a forma preferencial de remoção de documento no sistema, preservando
+    restaurabilidade e trilha operacional.
+    """
     p = get_document(slug)
     if not p:
         return False, "Documento não encontrado"
