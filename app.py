@@ -2956,18 +2956,18 @@ def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> t
 # ---------------------------------------------------------------------------
 def run_system_diagnostics() -> dict:
     """
-    Executa uma bateria de checks operacionais e de versão da aplicação.
+    Runs a set of operational and version checks for the application.
 
     Return
     -------
     dict
-        Estrutura com timestamp, checks e estado comparativo de versão local/remota.
+        Structure containing timestamp, checks, and local/remote version comparison state.
 
     How it should be used
     -------------------
-    Base para a tela de diagnóstico, badge de saúde e troubleshooting operacional.
+    Base for the diagnostics screen, health badge, and operational troubleshooting.
     """
-    return ops_run_system_diagnostics(get_admin_settings, setting, now_iso, DB_PATH, DATA_DIR, BASE_DIR, APP_DIR)
+    return ops_run_system_diagnostics(get_admin_settings, _setting, now_iso, DB_PATH, DATA_DIR, BASE_DIR, APP_DIR)
 
 # __PDASH_REPLACED__ run_system_diagnostics
 
