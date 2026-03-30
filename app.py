@@ -33,6 +33,7 @@ import base64
 import json
 import os
 import re
+import secrets
 import sqlite3
 import subprocess
 import smtplib
@@ -68,6 +69,13 @@ from backend.ops.system_ops import (
     run_system_backup as ops_run_system_backup,
     run_system_diagnostics as ops_run_system_diagnostics,
     test_backup_path_permissions as ops_test_backup_path_permissions,
+)
+from backend.documents.review_workflow import (
+    add_review_note as workflow_add_review_note,
+    list_document_dependencies as workflow_list_document_dependencies,
+    list_review_notes as workflow_list_review_notes,
+    set_review_note_resolution as workflow_set_review_note_resolution,
+    unresolved_dependencies as workflow_unresolved_dependencies,
 )
 from backend.reports.service import (
     create_periodic_report as reports_create_periodic_report,
@@ -2589,6 +2597,73 @@ def _setting(settings: dict, key: str, env_key: str, default: str = "") -> str:
 def dependency_max_status() -> str:
     settings = get_admin_settings()
     return _setting(settings, "workflow.dependency_max_status", "PDASH_DEPENDENCY_MAX_STATUS", "Backlog")
+
+
+def get_user_profile(username: str) -> dict | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT username, email, phone, extension, work_area, notes, priority_color_enabled, priority_colors_json FROM users WHERE username=?",
+            (username,),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        colors = json.loads(row["priority_colors_json"] or "{}")
+        if not isinstance(colors, dict):
+            colors = {}
+    except Exception:
+        colors = {}
+    return {
+        "username": row["username"],
+        "email": row["email"],
+        "phone": row["phone"],
+        "extension": row["extension"],
+        "work_area": row["work_area"],
+        "notes": row["notes"],
+        "priority_color_enabled": bool(int(row["priority_color_enabled"] or 0)),
+        "priority_colors": colors,
+    }
+
+
+def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
+    if not isinstance(payload, dict):
+        return False, "Payload inválido"
+    colors = payload.get("priority_colors") or {}
+    if not isinstance(colors, dict):
+        colors = {}
+    data = {
+        "email": str(payload.get("email") or "").strip(),
+        "phone": str(payload.get("phone") or "").strip(),
+        "extension": str(payload.get("extension") or "").strip(),
+        "work_area": str(payload.get("work_area") or "").strip(),
+        "notes": str(payload.get("notes") or "").strip(),
+        "priority_color_enabled": 1 if bool(payload.get("priority_color_enabled")) else 0,
+        "priority_colors_json": json.dumps(colors, ensure_ascii=False),
+    }
+    with db() as conn:
+        exists = conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone()
+        if not exists:
+            return False, "Usuário não encontrado"
+        conn.execute(
+            "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=?, priority_color_enabled=?, priority_colors_json=? WHERE username=?",
+            (data["email"], data["phone"], data["extension"], data["work_area"], data["notes"], data["priority_color_enabled"], data["priority_colors_json"], username),
+        )
+    return True, "ok"
+
+
+def change_own_password(username: str, current_password: str, new_password: str) -> tuple[bool, str]:
+    if not str(current_password or "") or not str(new_password or ""):
+        return False, "Senha atual e nova senha são obrigatórias"
+    if len(str(new_password)) < 4:
+        return False, "Nova senha muito curta"
+    with db() as conn:
+        row = conn.execute("SELECT password_hash FROM users WHERE username=?", (username,)).fetchone()
+        if not row:
+            return False, "Usuário não encontrado"
+        if not verify_password(current_password, row["password_hash"]):
+            return False, "Senha atual inválida"
+        conn.execute("UPDATE users SET password_hash=? WHERE username=?", (hash_password(new_password), username))
+    return True, "ok"
 
 
 def _backup_config(settings: dict) -> dict:
