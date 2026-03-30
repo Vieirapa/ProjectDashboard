@@ -14,7 +14,7 @@ Concentrar a parte mais estável e coesa do RBAC, especialmente:
 - verificação de ativação
 - fallback seguro de role
 
-Como deve ser usado
+How it should be used
 -------------------
 - O `app.py` delega para este módulo em operações centrais de leitura do
   catálogo de roles.
@@ -51,7 +51,7 @@ def list_role_catalog(
        - roles encontradas na matriz role_modules
        - roles declaradas em projetos
 
-    Parâmetros
+    Parameters
     ----------
     db_factory:
         Factory de conexão com o banco, normalmente `app.db`.
@@ -60,12 +60,12 @@ def list_role_catalog(
     include_admin:
         Define se `admin` deve aparecer no retorno.
 
-    Retorno
+    Return
     -------
     list[str]
-        Lista ordenada por descoberta/ordem de banco, sem duplicidades.
+        Lists the rdenada por descoberta/ordem de banco, sem duplicidades.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser chamada por partes do sistema que precisem:
     - montar selects de role
@@ -127,7 +127,7 @@ def role_exists(
     """
     Informa se uma role existe no catálogo.
 
-    Parâmetros
+    Parameters
     ----------
     db_factory:
         Factory de conexão com o banco.
@@ -136,7 +136,7 @@ def role_exists(
     active_only:
         Quando `True`, considera apenas roles ativas.
 
-    Retorno
+    Return
     -------
     bool
         `True` quando a role existe dentro do critério escolhido.
@@ -167,7 +167,7 @@ def role_is_active(
     """
     Informa se uma role está ativa para uso no sistema.
 
-    Parâmetros
+    Parameters
     ----------
     db_factory:
         Factory de conexão com o banco.
@@ -177,7 +177,7 @@ def role_is_active(
         Roles padrão da app, usadas como fallback em instalações antigas ou
         durante bootstrap parcial.
 
-    Retorno
+    Return
     -------
     bool
         `True` para roles ativas; `False` caso contrário.
@@ -216,19 +216,19 @@ def resolve_fallback_role(
     2. Caso contrário, escolhe a primeira role ativa que não seja `admin`.
     3. Se não houver outra opção, usa `admin`.
 
-    Parâmetros
+    Parameters
     ----------
     db_factory:
         Factory de conexão com o banco.
     preferred:
         Role preferencial desejada pelo chamador.
 
-    Retorno
+    Return
     -------
     str
         Role final resolvida para uso seguro.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Útil em cenários de:
     - reatribuição de usuários

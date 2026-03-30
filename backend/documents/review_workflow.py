@@ -4,7 +4,7 @@ from __future__ import annotations
 backend.documents.review_workflow
 =================================
 
-Funções de domínio relacionadas a dependências entre documentos e fluxo de
+Domain functions related to dependências entre documentos e fluxo de
 notas de revisão.
 """
 
@@ -29,11 +29,11 @@ def list_review_notes(db_factory: Callable[[], sqlite3.Connection], slug: str) -
 def add_review_note(db_factory: Callable[[], sqlite3.Connection], audit_fn, slug: str, note: str, actor: str) -> tuple[bool, str]:
     text = str(note or '').strip()
     if not text:
-        return False, 'Nota obrigatória'
+        return False, 'Note is required'
     with db_factory() as conn:
         row = conn.execute('SELECT slug FROM documents WHERE slug=?', (slug,)).fetchone()
         if not row:
-            return False, 'Documento não encontrado'
+            return False, 'Document not found'
         conn.execute(
             "INSERT INTO review_notes(document_slug, note, is_resolved, created_by, created_at, resolved_by, resolved_at) VALUES(?, ?, 0, ?, datetime('now'), '', '')",
             (slug, text, actor),
@@ -47,7 +47,7 @@ def set_review_note_resolution(db_factory: Callable[[], sqlite3.Connection], aud
     with db_factory() as conn:
         row = conn.execute('SELECT id, is_resolved FROM review_notes WHERE id=? AND document_slug=?', (note_id, slug)).fetchone()
         if not row:
-            return False, 'Nota não encontrada'
+            return False, 'Note not found'
         if resolved:
             conn.execute(
                 "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=datetime('now') WHERE id=? AND document_slug=?",
@@ -120,14 +120,14 @@ def set_document_dependencies(db_factory: Callable[[], sqlite3.Connection], audi
     with db_factory() as conn:
         row = conn.execute('SELECT slug FROM documents WHERE slug=? AND project_id=?', (slug, project_id)).fetchone()
         if not row:
-            return False, 'Documento não encontrado'
+            return False, 'Document not found'
 
         for dep in clean:
             dep_row = conn.execute('SELECT slug FROM documents WHERE slug=? AND project_id=?', (dep, project_id)).fetchone()
             if not dep_row:
-                return False, f'Dependência inválida: {dep}'
+                return False, f'Invalid dependency: {dep}'
             if would_create_cycle(conn, slug, dep, project_id):
-                return False, f'Dependência criaria ciclo: {dep}'
+                return False, f'Dependency would create a cycle: {dep}'
 
         conn.execute('DELETE FROM document_dependencies WHERE document_slug=? AND project_id=?', (slug, project_id))
         for dep in clean:

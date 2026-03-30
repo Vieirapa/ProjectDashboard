@@ -12,7 +12,7 @@ Mesmo com a modularização já iniciada, ele continua reunindo:
 - rotas/dispatch HTTP
 - integração entre módulos extraídos e código legado
 
-Objetivo de documentação
+Documentation goal
 ------------------------
 À medida que o projeto evolui para uma arquitetura mais modular, este arquivo
 precisa ser legível o suficiente para que futuras extrações sejam seguras.
@@ -22,7 +22,7 @@ Por isso, esta documentação descreve:
 - o contrato esperado das funções utilitárias
 - como cada função deve ser chamada e tratada no restante do sistema
 
-Observação importante
+Important note
 ---------------------
 Nem toda função aqui representa um destino final de arquitetura. Muitas ainda
 existem em `app.py` por razões de evolução incremental. A documentação ajuda a
@@ -162,12 +162,12 @@ def now_iso() -> str:
     """
     Devolve o timestamp atual em UTC no formato ISO-8601 com sufixo `Z`.
 
-    Retorno
+    Return
     -------
     str
         Exemplo: `2026-03-29T00:00:00Z`
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser usada sempre que a aplicação precisar gerar timestamps para
     persistência, auditoria ou respostas coerentes em UTC.
@@ -182,12 +182,12 @@ def _parse_iso_date(value: str | None) -> datetime | None:
     """
     Converte uma string ISO em `datetime`, quando possível.
 
-    Parâmetros
+    Parameters
     ----------
     value:
         Data em string, normalmente vinda do banco ou de payloads internos.
 
-    Retorno
+    Return
     -------
     datetime | None
         Retorna `datetime` quando o valor é válido; `None` quando ausente ou
@@ -222,7 +222,7 @@ def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[
       solução.
     - Caso contrário, calcula dias desde a abertura.
 
-    Parâmetros
+    Parameters
     ----------
     opened_at:
         Data de abertura do documento.
@@ -231,7 +231,7 @@ def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[
     released_at:
         Data de liberação/conclusão, quando existir.
 
-    Retorno
+    Return
     -------
     tuple[str, int]
         `(label, days)` para uso em UI e relatórios.
@@ -252,12 +252,12 @@ def slugify(name: str) -> str:
     """
     Converte um nome livre em slug seguro para uso interno.
 
-    Parâmetros
+    Parameters
     ----------
     name:
         Texto-base que será normalizado.
 
-    Retorno
+    Return
     -------
     str
         Slug minúsculo, sem caracteres inválidos. Se nada sobrar após a
@@ -269,18 +269,18 @@ def slugify(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Leitura defensiva de arquivo texto
+# Reading of fensiva de arquivo texto
 # ---------------------------------------------------------------------------
 def read_text_if_exists(path: Path) -> str:
     """
     Lê um arquivo texto apenas se ele existir e for arquivo regular.
 
-    Parâmetros
+    Parameters
     ----------
     path:
         Caminho do arquivo desejado.
 
-    Retorno
+    Return
     -------
     str
         Conteúdo do arquivo quando existir; string vazia caso contrário.
@@ -302,12 +302,12 @@ def infer_description(project_dir: Path) -> str:
     Procura a primeira linha não vazia que não seja cabeçalho Markdown e usa
     esse conteúdo como resumo curto.
 
-    Parâmetros
+    Parameters
     ----------
     project_dir:
         Diretório-base do projeto a ser inspecionado.
 
-    Retorno
+    Return
     -------
     str
         Descrição resumida ou `Sem descrição` quando não for possível inferir.
@@ -326,12 +326,12 @@ def db() -> sqlite3.Connection:
     """
     Devolve uma conexão SQLite pronta para uso pelo restante do backend.
 
-    Retorno
+    Return
     -------
     sqlite3.Connection
         Conexão com `row_factory` configurado.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Esta é a factory padrão de banco no `app.py`. Funções de domínio e rotas
     devem preferir `with db() as conn:` em vez de abrir conexões diretamente.
@@ -386,16 +386,16 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
     Migra estruturas legadas do antigo modelo `projects` para o modelo atual de
     `documents`, incluindo tabelas auxiliares relacionadas.
 
-    Parâmetros
+    Parameters
     ----------
     conn:
         Conexão ativa com o banco durante bootstrap/migração.
 
-    Retorno
+    Return
     -------
     None
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser chamada apenas em rotinas de inicialização/migração do banco.
     Não é uma função de uso operacional normal das rotas.
@@ -542,16 +542,16 @@ def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
     """
     Garante a base estrutural mínima de roles e módulos no banco.
 
-    Parâmetros
+    Parameters
     ----------
     conn:
         Conexão ativa do banco durante bootstrap.
 
-    Retorno
+    Return
     -------
     None
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser executada no processo de inicialização do schema, antes de fluxos
     administrativos que dependam de catálogo de roles/módulos.
@@ -725,11 +725,11 @@ def init_db():
     Inicializa o banco principal da aplicação, garantindo tabelas, colunas,
     seeds e migrações defensivas necessárias para o estado atual do sistema.
 
-    Retorno
+    Return
     -------
     None
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Esta função deve ser chamada em bootstrap de instalação e em inicialização
     do backend quando for necessário garantir integridade mínima do schema.
@@ -1054,18 +1054,18 @@ def list_documents(project_id: int | None = None) -> list[dict]:
     """
     Lista documentos do sistema, opcionalmente filtrando por projeto.
 
-    Parâmetros
+    Parameters
     ----------
     project_id:
         Identificador do projeto. Quando omitido, a função retorna documentos
         de todos os projetos visíveis no banco.
 
-    Retorno
+    Return
     -------
     list[dict]
         Lista de documentos já normalizados para uso por rotas e UI.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser chamada por endpoints de listagem, dashboards e telas operacionais.
     É uma função de leitura; não deve aplicar efeitos colaterais.
@@ -1115,25 +1115,25 @@ def list_documents(project_id: int | None = None) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Leitura de documento individual
+# Reading of  documento individual
 # ---------------------------------------------------------------------------
 def get_document(slug: str, project_id: int | None = None) -> dict | None:
     """
     Resolve um documento individual a partir do slug, opcionalmente limitado a um projeto.
 
-    Parâmetros
+    Parameters
     ----------
     slug:
         Identificador lógico do documento.
     project_id:
         Projeto esperado para escopo defensivo, quando aplicável.
 
-    Retorno
+    Return
     -------
     dict | None
         Documento encontrado em formato de dicionário ou `None` quando não existe.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Base para rotas de detalhe, edição, revisão, anexo e validação de escopo.
     """
@@ -1169,18 +1169,18 @@ def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
     """
     Extrai e normaliza a lista de slugs de dependência a partir de um payload.
 
-    Parâmetros
+    Parameters
     ----------
     payload:
         Payload bruto recebido pela aplicação, normalmente vindo de PATCH/POST.
 
-    Retorno
+    Return
     -------
     list[str] | None
         Lista normalizada de slugs quando o payload traz dependências; `None`
         quando o chamador não informou o campo.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Helper interno para criação/edição de documentos. Ela separa a semântica de
     “campo ausente” da semântica de “lista vazia”.
@@ -1203,7 +1203,7 @@ def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
 
 
 # ---------------------------------------------------------------------------
-# Leitura de dependências explícitas de documento
+# Reading of  dependências explícitas de documento
 # ---------------------------------------------------------------------------
 def list_document_dependencies(slug: str, project_id: int) -> list[dict]:
     return workflow_list_document_dependencies(db, slug, project_id)
@@ -1221,7 +1221,7 @@ def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_de
     """
     Informa se adicionar uma dependência criaria ciclo entre documentos.
 
-    Parâmetros
+    Parameters
     ----------
     conn:
         Conexão ativa do banco.
@@ -1232,12 +1232,12 @@ def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_de
     project_id:
         Projeto no qual o relacionamento deve ser validado.
 
-    Retorno
+    Return
     -------
     bool
         `True` quando a nova dependência criaria ciclo.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser chamada antes de persistir dependências para preservar integridade
     do fluxo de trabalho.
@@ -1481,7 +1481,7 @@ def delete_role_admin(selector: str, actor: str, reassign_to: str | None = None)
         conn.execute("DELETE FROM role_module_permissions WHERE role_id=?", (int(role_row["id"]),))
         conn.execute("DELETE FROM role_modules WHERE LOWER(TRIM(role_name))=?", (role_key,))
 
-        # Remove role de projetos legados (CSV)
+        # Removes role de projetos legados (CSV)
         project_rows = conn.execute("SELECT project_id, allowed_roles FROM projects").fetchall()
         for pr in project_rows:
             vals = [x.strip().lower() for x in str(pr["allowed_roles"] or "").split(',') if x.strip()]
@@ -1687,14 +1687,14 @@ def _to_bool_int(value) -> int:
 # ---------------------------------------------------------------------------
 def list_projects_registry() -> list[dict]:
     """
-    Lista os projetos registrados no sistema.
+    Lists the  projetos registrados no sistema.
 
-    Retorno
+    Return
     -------
     list[dict]
         Projetos normalizados para uso em catálogo, selects e páginas de gestão.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Função de leitura para tela de projetos, navegação, Kanban e fluxos que
     precisem conhecer o catálogo atual de projetos.
@@ -1717,12 +1717,12 @@ def create_project_registry(payload: dict) -> tuple[bool, str, int | None]:
     """
     Cria um novo projeto no catálogo principal da aplicação.
 
-    Parâmetros
+    Parameters
     ----------
     payload:
         Dados de criação do projeto recebidos da UI/API.
 
-    Retorno
+    Return
     -------
     tuple[bool, str, int | None]
         `(ok, message, project_id)` com identificador do novo projeto em caso de sucesso.
@@ -1746,20 +1746,20 @@ def create_project_registry(payload: dict) -> tuple[bool, str, int | None]:
 
 
 # ---------------------------------------------------------------------------
-# Atualização de projeto existente
+# Updatesção de projeto existente
 # ---------------------------------------------------------------------------
 def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
     """
-    Atualiza os dados de um projeto já registrado.
+    Updates os dados de um projeto já registrado.
 
-    Parâmetros
+    Parameters
     ----------
     project_id:
         Projeto alvo.
     payload:
         Alterações solicitadas.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         `(ok, message)` com resultado da operação.
@@ -1800,14 +1800,14 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 def delete_project_registry(project_id: int) -> tuple[bool, str, int]:
     """
-    Remove um projeto do registro e apaga seus artefatos associados quando aplicável.
+    Removes um projeto do registro e apaga seus artefatos associados quando aplicável.
 
-    Parâmetros
+    Parameters
     ----------
     project_id:
         Projeto alvo da remoção.
 
-    Retorno
+    Return
     -------
     tuple[bool, str, int]
         `(ok, message, deleted_cards)` com total de cards apagados no processo.
@@ -2072,19 +2072,19 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
     """
     Cria um novo documento/card no sistema.
 
-    Parâmetros
+    Parameters
     ----------
     payload:
         Dados informados pela UI/API para criação do documento.
     actor:
         Usuário responsável pela criação.
 
-    Retorno
+    Return
     -------
     tuple[bool, str, str | None]
         `(ok, message, slug)` com o slug criado quando houver sucesso.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser chamada por rotas de criação e por fluxos que materializam um novo
     card no Kanban. A função também integra dependências, prazos e auditoria.
@@ -2175,13 +2175,13 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
 
 
 # ---------------------------------------------------------------------------
-# Atualização parcial de documento
+# Updatesção parcial de documento
 # ---------------------------------------------------------------------------
 def patch_document(slug: str, payload: dict, project_id: int | None = None, actor: str = "system") -> tuple[bool, str]:
     """
-    Atualiza parcialmente um documento existente.
+    Updates parcialmente um documento existente.
 
-    Parâmetros
+    Parameters
     ----------
     slug:
         Documento alvo.
@@ -2192,19 +2192,19 @@ def patch_document(slug: str, payload: dict, project_id: int | None = None, acto
     actor:
         Usuário responsável pela alteração.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         `(ok, message)` com sucesso ou motivo da rejeição.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Principal função de edição do card. Ela deve ser chamada por rotas de edição
     e precisa manter integridade de status, dependências, prazo e auditoria.
     """
     p = get_document(slug, project_id)
     if not p:
-        return False, "Documento não encontrado"
+        return False, "Document not found"
 
     effective_project_id = int(project_id or p.get("projectId") or 1)
     try:
@@ -2286,12 +2286,12 @@ def get_admin_settings() -> dict:
     """
     Lê as configurações administrativas persistidas em `app_settings`.
 
-    Retorno
+    Return
     -------
     dict
         Mapa `key -> {value, updated_by, updated_at}`.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Base para SMTP, backup, workflow, diagnóstico, relatórios e demais áreas de
     configuração operacional.
@@ -2300,25 +2300,25 @@ def get_admin_settings() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Atualização validada de configurações administrativas
+# Updatesção validada de configurações administrativas
 # ---------------------------------------------------------------------------
 def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
     """
-    Atualiza configurações administrativas com validação de consistência.
+    Updates configurações administrativas com validação de consistência.
 
-    Parâmetros
+    Parameters
     ----------
     payload:
         Conjunto de chaves/valores enviados pela UI/API.
     actor:
         Usuário responsável pela alteração.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         `(ok, message)` indicando sucesso ou falha de validação.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser usada por rotas administrativas; centraliza validação de payload,
     normalização e persistência.
@@ -2332,9 +2332,9 @@ def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 def list_periodic_reports() -> list[dict]:
     """
-    Lista os relatórios periódicos cadastrados no sistema.
+    Lists the  relatórios periódicos cadastrados no sistema.
 
-    Retorno
+    Return
     -------
     list[dict]
         Relatórios normalizados para uso administrativo e operacional.
@@ -2359,16 +2359,16 @@ def list_periodic_reports() -> list[dict]:
 # ---------------------------------------------------------------------------
 def create_periodic_report(payload: dict, actor: str) -> tuple[bool, str]:
     """
-    Cria uma nova regra de relatório periódico.
+    Creates a new  regra de relatório periódico.
 
-    Parâmetros
+    Parameters
     ----------
     payload:
-        Configuração do relatório enviada pela UI.
+        Configuration do relatório enviada pela UI.
     actor:
         Usuário responsável pela criação.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         Resultado da operação.
@@ -2409,13 +2409,13 @@ def create_periodic_report(payload: dict, actor: str) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# Atualização de relatório periódico
+# Updatesção de relatório periódico
 # ---------------------------------------------------------------------------
 def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[bool, str]:
     """
-    Atualiza uma regra já cadastrada de relatório periódico.
+    Updates uma regra já cadastrada de relatório periódico.
 
-    Parâmetros
+    Parameters
     ----------
     report_id:
         Relatório alvo.
@@ -2424,7 +2424,7 @@ def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[b
     actor:
         Usuário responsável.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         Resultado da operação.
@@ -2453,7 +2453,7 @@ def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[b
     with db() as conn:
         exists = conn.execute("SELECT id FROM periodic_reports WHERE id=?", (report_id,)).fetchone()
         if not exists:
-            return False, "Relatório não encontrado"
+            return False, "Report not found"
         conn.execute(f"UPDATE periodic_reports SET {set_clause} WHERE id=?", tuple(params))
     return True, "ok"
 
@@ -2463,14 +2463,14 @@ def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[b
 # ---------------------------------------------------------------------------
 def delete_periodic_report(report_id: int) -> tuple[bool, str]:
     """
-    Remove uma regra de relatório periódico.
+    Removes uma regra de relatório periódico.
 
-    Parâmetros
+    Parameters
     ----------
     report_id:
         Identificador do relatório.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         Resultado da operação.
@@ -2479,7 +2479,7 @@ def delete_periodic_report(report_id: int) -> tuple[bool, str]:
     with db() as conn:
         exists = conn.execute("SELECT id FROM periodic_reports WHERE id=?", (report_id,)).fetchone()
         if not exists:
-            return False, "Relatório não encontrado"
+            return False, "Report not found"
         conn.execute("DELETE FROM periodic_reports WHERE id=?", (report_id,))
     return True, "ok"
 
@@ -2524,12 +2524,12 @@ def compose_periodic_report_email(report: dict) -> tuple[str, str, list[sqlite3.
     """
     Monta assunto, corpo e conjunto de linhas usadas em um relatório periódico.
 
-    Parâmetros
+    Parameters
     ----------
     report:
-        Configuração do relatório a ser executado.
+        Configuration do relatório a ser executado.
 
-    Retorno
+    Return
     -------
     tuple[str, str, list[sqlite3.Row]]
         `(subject, body, rows)` para envio e/ou pré-visualização.
@@ -2551,31 +2551,31 @@ def compose_periodic_report_email(report: dict) -> tuple[str, str, list[sqlite3.
 
 
 # ---------------------------------------------------------------------------
-# Execução operacional de relatório periódico
+# Operational execution of  relatório periódico
 # ---------------------------------------------------------------------------
 def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]:
     """
     Executa um relatório periódico e dispara seu envio quando aplicável.
 
-    Parâmetros
+    Parameters
     ----------
     report:
-        Configuração do relatório.
+        Configuration do relatório.
     actor:
         Usuário/ator lógico da execução.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         Resultado da execução.
     """
     roles = report.get("roles") or []
     if not roles:
-        return False, "sem perfis de destino"
+        return False, "no target roles"
 
     subject, email_body, users = compose_periodic_report_email(report)
     if not users:
-        return False, "nenhum usuário com email encontrado para os perfis selecionados"
+        return False, "no users with email found for selected roles"
 
     sent = 0
     for u in users:
@@ -2584,7 +2584,7 @@ def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]
             sent += 1
 
     if sent == 0:
-        return False, "falha ao enviar para os destinatários"
+        return False, "failed to send to recipients"
     return True, f"sent={sent}"
 
 
@@ -2598,15 +2598,15 @@ def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str
     smtp_tls = _setting(settings, "smtp.tls", "PDASH_SMTP_TLS", "true").lower() in {"1", "true", "yes", "on"}
 
     if not str(to_email or "").strip():
-        return False, "destinatário obrigatório"
+        return False, "Recipient is required"
     if not smtp_host:
-        return False, "SMTP não configurado"
+        return False, "SMTP not configured"
     try:
         smtp_port = int(str(smtp_port_raw or "587").strip())
     except Exception:
-        return False, "porta SMTP inválida"
+        return False, "Invalid SMTP port"
     if not smtp_from:
-        return False, "remetente SMTP não configurado"
+        return False, "remetente SMTP not configured"
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -2693,7 +2693,7 @@ def get_user_profile(username: str) -> dict | None:
 
 def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
     if not isinstance(payload, dict):
-        return False, "Payload inválido"
+        return False, "Invalid payload"
     colors = payload.get("priority_colors") or {}
     if not isinstance(colors, dict):
         colors = {}
@@ -2709,7 +2709,7 @@ def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
     with db() as conn:
         exists = conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone()
         if not exists:
-            return False, "Usuário não encontrado"
+            return False, "User not found"
         conn.execute(
             "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=?, priority_color_enabled=?, priority_colors_json=? WHERE username=?",
             (data["email"], data["phone"], data["extension"], data["work_area"], data["notes"], data["priority_color_enabled"], data["priority_colors_json"], username),
@@ -2719,15 +2719,15 @@ def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
 
 def change_own_password(username: str, current_password: str, new_password: str) -> tuple[bool, str]:
     if not str(current_password or "") or not str(new_password or ""):
-        return False, "Senha atual e nova senha são obrigatórias"
+        return False, "Current and new password are required"
     if len(str(new_password)) < 4:
-        return False, "Nova senha muito curta"
+        return False, "New password is too short"
     with db() as conn:
         row = conn.execute("SELECT password_hash FROM users WHERE username=?", (username,)).fetchone()
         if not row:
-            return False, "Usuário não encontrado"
+            return False, "User not found"
         if not verify_password(current_password, row["password_hash"]):
-            return False, "Senha atual inválida"
+            return False, "Current password is invalid"
         conn.execute("UPDATE users SET password_hash=? WHERE username=?", (hash_password(new_password), username))
     return True, "ok"
 
@@ -2810,12 +2810,12 @@ def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str
     """
     Testa se o caminho configurado para backup existe e aceita escrita.
 
-    Parâmetros
+    Parameters
     ----------
     path_raw:
         Caminho opcional informado manualmente para teste.
 
-    Retorno
+    Return
     -------
     tuple[bool, str, dict]
         `(ok, message, detail)` com detalhes de existência e gravabilidade.
@@ -2830,14 +2830,14 @@ def run_system_backup(actor: str = "system", path_override: str | None = None) -
     """
     Executa backup do banco e dos artefatos documentais do sistema.
 
-    Parâmetros
+    Parameters
     ----------
     actor:
         Usuário/ator lógico da operação.
     path_override:
         Caminho opcional para sobrescrever o destino configurado.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         Resultado textual da operação.
@@ -2893,14 +2893,14 @@ def run_system_backup(actor: str = "system", path_override: str | None = None) -
 # ---------------------------------------------------------------------------
 def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict]:
     """
-    Lista os backups disponíveis em um diretório configurado.
+    Lists the  backups disponíveis em um diretório configurado.
 
-    Parâmetros
+    Parameters
     ----------
     path_raw:
         Caminho opcional a ser inspecionado.
 
-    Retorno
+    Return
     -------
     tuple[bool, str, dict]
         `(ok, message, payload)` com itens agrupados por snapshot.
@@ -2916,7 +2916,7 @@ def next_backup_run() -> dict:
     """
     Calcula a próxima janela prevista de execução automática de backup.
 
-    Retorno
+    Return
     -------
     dict
         Estrutura com estado, dias configurados, horário e próximo horário
@@ -2933,7 +2933,7 @@ def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> t
     """
     Restaura um snapshot de backup específico.
 
-    Parâmetros
+    Parameters
     ----------
     stamp:
         Identificador temporal do snapshot.
@@ -2942,7 +2942,7 @@ def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> t
     actor:
         Usuário responsável pela operação.
 
-    Retorno
+    Return
     -------
     tuple[bool, str]
         Resultado textual da restauração.
@@ -2958,12 +2958,12 @@ def run_system_diagnostics() -> dict:
     """
     Executa uma bateria de checks operacionais e de versão da aplicação.
 
-    Retorno
+    Return
     -------
     dict
         Estrutura com timestamp, checks e estado comparativo de versão local/remota.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Base para a tela de diagnóstico, badge de saúde e troubleshooting operacional.
     """
@@ -3035,18 +3035,18 @@ def list_document_versions(slug: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Histórico de notas de revisão
+# History of  notas de revisão
 # ---------------------------------------------------------------------------
 def list_review_notes(slug: str) -> list[dict]:
     """
-    Lista o histórico de notas de revisão de um documento.
+    Lists the  histórico de notas de revisão de um documento.
 
-    Parâmetros
+    Parameters
     ----------
     slug:
         Documento alvo.
 
-    Retorno
+    Return
     -------
     list[dict]
         Notas ordenadas para exibição em histórico e tratamento operacional.
@@ -3095,7 +3095,7 @@ def get_document_version(slug: str, version: int | None = None) -> dict | None:
 def save_document_file(slug: str, filename: str, mime_type: str, b64_content: str, actor: str) -> tuple[bool, str]:
     p = get_document(slug)
     if not p:
-        return False, "Documento não encontrado"
+        return False, "Document not found"
 
     ok_repo, repo_msg = ensure_docs_repo()
     if not ok_repo:
@@ -3168,7 +3168,7 @@ def list_deleted_documents(
     """
     Lista documentos apagados ainda elegíveis para recuperação, com filtros e paginação.
 
-    Parâmetros
+    Parameters
     ----------
     q:
         Busca textual por nome/slug.
@@ -3183,7 +3183,7 @@ def list_deleted_documents(
     page_size:
         Quantidade de itens por página.
 
-    Retorno
+    Return
     -------
     dict
         Payload paginado para a UI administrativa de recuperação.
@@ -3255,7 +3255,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         Envia uma resposta JSON HTTP padronizada.
 
-        Parâmetros
+        Parameters
         ----------
         code:
             Status HTTP da resposta.
@@ -3264,11 +3264,11 @@ class Handler(BaseHTTPRequestHandler):
         set_cookie:
             Cookie opcional a ser anexado ao header da resposta.
 
-        Retorno
+        Return
         -------
         None
 
-        Como deve ser usada
+        How it should be used
         -------------------
         É o helper padrão para respostas de API. Deve ser preferido em vez de
         escrita manual repetitiva no socket HTTP.
@@ -3289,18 +3289,18 @@ class Handler(BaseHTTPRequestHandler):
         """
         Entrega um arquivo estático/HTML com headers de cache desabilitado.
 
-        Parâmetros
+        Parameters
         ----------
         path:
             Caminho do arquivo a servir.
         content_type:
             MIME type da resposta.
 
-        Retorno
+        Return
         -------
         None
 
-        Como deve ser usada
+        How it should be used
         -------------------
         Helper interno para páginas HTML, JS e CSS. Mantém o frontend sem cache
         agressivo durante desenvolvimento e rollout iterativo.
@@ -3319,18 +3319,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b)
 
     # -----------------------------------------------------------------------
-    # Leitura de payload JSON da requisição
+    # Reading of  payload JSON da requisição
     # -----------------------------------------------------------------------
     def _read_json(self):
         """
         Lê e faz parse do corpo JSON da requisição atual.
 
-        Retorno
+        Return
         -------
         tuple[bool, dict]
             `(ok, payload)` com o dicionário parseado ou mensagem de erro.
 
-        Como deve ser usada
+        How it should be used
         -------------------
         Deve ser usada por rotas POST/PATCH/DELETE que esperam JSON no body.
         """
@@ -3348,7 +3348,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         Resolve o usuário autenticado a partir do cookie da requisição atual.
 
-        Retorno
+        Return
         -------
         dict | None
             Estrutura de usuário autenticado ou `None`.
@@ -3381,12 +3381,12 @@ class Handler(BaseHTTPRequestHandler):
         """
         Garante que a rota atual só prossiga com usuário autenticado.
 
-        Parâmetros
+        Parameters
         ----------
         allow_inactive:
             Quando `True`, permite usuário autenticado com role inativa.
 
-        Retorno
+        Return
         -------
         dict | None
             Usuário autenticado enriquecido com `role_active`, ou `None` quando
@@ -3410,7 +3410,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         Garante que o usuário atual tenha um role administrativo equivalente.
 
-        Retorno
+        Return
         -------
         dict | None
             Usuário autenticado quando autorizado; `None` quando a requisição já
@@ -3429,7 +3429,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         Garante que o usuário atual seja exatamente o role `admin` raiz.
 
-        Retorno
+        Return
         -------
         dict | None
             Usuário autenticado quando permitido; `None` em caso contrário.
@@ -3447,12 +3447,12 @@ class Handler(BaseHTTPRequestHandler):
         """
         Garante que o usuário atual possua acesso ao módulo informado.
 
-        Parâmetros
+        Parameters
         ----------
         module_id:
             Identificador lógico do módulo protegido.
 
-        Retorno
+        Return
         -------
         dict | None
             Usuário autenticado quando autorizado; `None` caso contrário.
@@ -3472,12 +3472,12 @@ class Handler(BaseHTTPRequestHandler):
         """
         Garante que o usuário atual tenha acesso a pelo menos um dos módulos informados.
 
-        Parâmetros
+        Parameters
         ----------
         module_ids:
             Lista de módulos aceitos pela rota.
 
-        Retorno
+        Return
         -------
         dict | None
             Usuário autenticado quando autorizado; `None` caso contrário.
@@ -3595,23 +3595,23 @@ class Handler(BaseHTTPRequestHandler):
         any_scope = get_document(slug)
         if any_scope:
             return self._json(409, {"ok": False, "error": f"Escopo inválido: documento pertence ao projeto {any_scope.get('projectId')}, mas o contexto atual é {project_id}."})
-        return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+        return self._json(404, {"ok": False, "error": "Document not found"})
 
     # -----------------------------------------------------------------------
     # Dispatch principal de rotas GET
     # -----------------------------------------------------------------------
     def do_GET(self):
         """
-        Processa requisições HTTP GET.
+        Processes HTTP GET requests.
 
-        O que este método faz
+        What this method does
         ---------------------
         - resolve path e query string
         - aplica lógica de autenticação/role inativa
         - entrega páginas HTML e assets estáticos
         - expõe endpoints de leitura via API
 
-        Como deve ser tratado no restante do programa
+        How it should be handled in the rest of the program
         ---------------------------------------------
         Idealmente deve permanecer como dispatch/orquestração, delegando para
         funções de domínio e helpers específicos sempre que a lógica crescer.
@@ -3702,7 +3702,7 @@ class Handler(BaseHTTPRequestHandler):
             if not u: return
             profile = get_user_profile(u["username"])
             if not profile:
-                return self._json(404, {"ok": False, "error": "Usuário não encontrado"})
+                return self._json(404, {"ok": False, "error": "User not found"})
             return self._json(200, {"ok": True, "profile": profile})
 
         if p == "/api/documents":
@@ -3931,9 +3931,9 @@ class Handler(BaseHTTPRequestHandler):
     # -----------------------------------------------------------------------
     def do_POST(self):
         """
-        Processa requisições HTTP POST.
+        Processes HTTP POST requests.
 
-        O que este método faz
+        What this method does
         ---------------------
         Trata fluxos de criação, autenticação, ações administrativas e operações
         que geram efeitos colaterais no sistema.
@@ -3950,7 +3950,7 @@ class Handler(BaseHTTPRequestHandler):
             with db() as conn:
                 row = conn.execute("SELECT username,password_hash,role FROM users WHERE username=?", (username,)).fetchone()
             if not row or not verify_password(password, row["password_hash"]):
-                return self._json(401, {"ok": False, "error": "Credenciais inválidas"})
+                return self._json(401, {"ok": False, "error": "Invalid credentials"})
             tok = create_auth_session(SESSIONS, SESSION_TTL_SECONDS, row["username"], row["role"])
             cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
             role_active = role_is_active(row["role"])
@@ -4110,7 +4110,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 deleted_id = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             done, msg = restore_deleted_document(deleted_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
@@ -4133,10 +4133,10 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 rid = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             reports = [r for r in list_periodic_reports() if int(r.get("id") or 0) == rid]
             if not reports:
-                return self._json(404, {"ok": False, "error": "Relatório não encontrado"})
+                return self._json(404, {"ok": False, "error": "Report not found"})
             report = reports[0]
             subject, preview_text, recipients = compose_periodic_report_email(report)
             done, msg = run_periodic_report(report, admin["username"])
@@ -4164,7 +4164,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 template_project_id = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "ID inválido"})
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
             ok, body = self._read_json()
             if not ok:
                 return self._json(400, {"ok": False, "error": body["error"]})
@@ -4201,7 +4201,7 @@ class Handler(BaseHTTPRequestHandler):
                     conn.execute("INSERT INTO users (username,password_hash,role,created_at) VALUES (?,?,?,?)",
                                  (username, hash_password(password), role, now_iso()))
             except sqlite3.IntegrityError:
-                return self._json(400, {"ok": False, "error": "usuário já existe"})
+                return self._json(400, {"ok": False, "error": "user already exists"})
             audit(admin["username"], "user.create", username, f"role={role}")
             return self._json(200, {"ok": True})
 
@@ -4245,7 +4245,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     message_text = message_text.replace("{invite_link}", full_invite_url).replace("{expires_at}", exp)
 
-                ok_email, msg_email = send_invite_email(email_to, "Convite para ProjectDashboard", message_text)
+                ok_email, msg_email = send_invite_email(email_to, "Invite para ProjectDashboard", message_text)
                 if not ok_email:
                     return self._json(400, {"ok": False, "error": msg_email})
                 email_status = "sent"
@@ -4274,19 +4274,19 @@ class Handler(BaseHTTPRequestHandler):
             username = (body.get("username") or "").strip()
             password = body.get("password") or ""
             if not token or not username or not password:
-                return self._json(400, {"ok": False, "error": "dados incompletos"})
+                return self._json(400, {"ok": False, "error": "incomplete data"})
             with db() as conn:
                 inv = conn.execute("SELECT token, role, used_by, expires_at FROM invites WHERE token=?", (token,)).fetchone()
-                if not inv: return self._json(400, {"ok": False, "error": "convite inválido"})
-                if inv["used_by"]: return self._json(400, {"ok": False, "error": "convite já usado"})
+                if not inv: return self._json(400, {"ok": False, "error": "invalid invite"})
+                if inv["used_by"]: return self._json(400, {"ok": False, "error": "invite already used"})
                 if datetime.fromisoformat(inv["expires_at"].replace("Z", "+00:00")) < datetime.now(UTC):
-                    return self._json(400, {"ok": False, "error": "convite expirado"})
+                    return self._json(400, {"ok": False, "error": "invite expired"})
                 try:
                     conn.execute("INSERT INTO users (username,password_hash,role,created_at) VALUES (?,?,?,?)",
                                  (username, hash_password(password), inv["role"], now_iso()))
                     conn.execute("UPDATE invites SET used_by=? WHERE token=?", (username, token))
                 except sqlite3.IntegrityError:
-                    return self._json(400, {"ok": False, "error": "usuário já existe"})
+                    return self._json(400, {"ok": False, "error": "user already exists"})
             audit(username, "user.signup", username, f"role={inv['role']}")
             return self._json(200, {"ok": True})
 
@@ -4297,9 +4297,9 @@ class Handler(BaseHTTPRequestHandler):
     # -----------------------------------------------------------------------
     def do_PATCH(self):
         """
-        Processa requisições HTTP PATCH.
+        Processes HTTP PATCH requests.
 
-        O que este método faz
+        What this method does
         ---------------------
         Trata atualizações parciais de recursos existentes, principalmente em
         rotas de edição incremental de documentos, projetos, settings e afins.
@@ -4443,7 +4443,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 rid = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = update_periodic_report(rid, body, admin["username"])
@@ -4458,7 +4458,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 project_id = int(pid)
             except Exception:
-                return self._json(400, {"ok": False, "error": "ID inválido"})
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = update_project_registry(project_id, body)
@@ -4517,7 +4517,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         Processa requisições HTTP DELETE.
 
-        O que este método faz
+        What this method does
         ---------------------
         Trata remoções lógicas ou administrativas de recursos, sempre respeitando
         autenticação, autorização e rotinas de auditoria quando aplicável.
@@ -4560,7 +4560,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 deleted_id = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             done, msg = delete_deleted_document_permanently(deleted_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
@@ -4573,7 +4573,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 rid = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             done, msg = delete_periodic_report(rid)
             if done:
                 audit(admin["username"], "report.periodic.delete", str(rid))
@@ -4585,7 +4585,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 project_id = int(p.split("/")[4])
             except Exception:
-                return self._json(400, {"ok": False, "error": "ID inválido"})
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
             done, msg, deleted_cards = delete_project_registry(project_id)
             if done:
                 audit(admin["username"], "project.registry.delete", str(project_id), f"deleted_cards={deleted_cards}")

@@ -18,7 +18,7 @@ def delete_document(db_factory: Callable[[], sqlite3.Connection], audit_fn, docu
     with db_factory() as conn:
         row = conn.execute('SELECT * FROM documents WHERE slug=?', (slug,)).fetchone()
         if not row:
-            return False, 'Documento não encontrado'
+            return False, 'Document not found'
         d = dict(row)
         conn.execute(
             """

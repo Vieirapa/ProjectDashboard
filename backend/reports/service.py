@@ -48,7 +48,7 @@ def create_periodic_report(db_factory: Callable[[], sqlite3.Connection], now_iso
         message = str(payload.get('message') or '')
         active = bool(payload.get('active', True))
     except Exception:
-        return False, 'Payload inválido'
+        return False, 'Invalid payload'
     if not name:
         return False, 'Nome obrigatório'
     if not isinstance(statuses, list) or any(s not in statuses_ref for s in statuses):
@@ -90,7 +90,7 @@ def update_periodic_report(db_factory: Callable[[], sqlite3.Connection], now_iso
     try:
         rid = int(report_id)
     except Exception:
-        return False, 'ID inválido'
+        return False, 'Invalid ID'
     ok, msg = create_periodic_report(lambda: db_factory(), now_iso_fn, statuses_ref, priorities_ref, {**payload, 'name': payload.get('name') or 'tmp'}, actor)
     if not ok and msg != 'ok':
         return False, msg
@@ -106,7 +106,7 @@ def update_periodic_report(db_factory: Callable[[], sqlite3.Connection], now_iso
     with db_factory() as conn:
         row = conn.execute('SELECT id FROM periodic_reports WHERE id=?', (rid,)).fetchone()
         if not row:
-            return False, 'Relatório não encontrado'
+            return False, 'Report not found'
         conn.execute(
             """
             UPDATE periodic_reports
@@ -134,9 +134,9 @@ def delete_periodic_report(db_factory: Callable[[], sqlite3.Connection], report_
     try:
         rid = int(report_id)
     except Exception:
-        return False, 'ID inválido'
+        return False, 'Invalid ID'
     with db_factory() as conn:
         cur = conn.execute('DELETE FROM periodic_reports WHERE id=?', (rid,))
         if cur.rowcount <= 0:
-            return False, 'Relatório não encontrado'
+            return False, 'Report not found'
     return True, 'ok'

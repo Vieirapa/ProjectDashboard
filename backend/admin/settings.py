@@ -9,7 +9,7 @@ persistidas em `app_settings`.
 
 Objetivo
 --------
-Remover do `app.py` a lógica central de leitura/escrita de settings
+Removesr do `app.py` a lógica central de leitura/escrita de settings
 administrativas, preparando o backend para crescimento modular.
 """
 
@@ -35,9 +35,9 @@ def get_admin_settings(db_factory: Callable[[], sqlite3.Connection]) -> dict:
 
 
 def update_admin_settings(db_factory: Callable[[], sqlite3.Connection], now_iso_fn, payload: dict, actor: str) -> tuple[bool, str]:
-    """Atualiza configurações administrativas com validações centrais."""
+    """Updates configurações administrativas com validações centrais."""
     if not isinstance(payload, dict) or not payload:
-        return False, 'Payload inválido'
+        return False, 'Invalid payload'
 
     if 'workflow.default_due_days' in payload:
         try:

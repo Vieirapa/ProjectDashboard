@@ -156,7 +156,7 @@ Melhorar clareza e consistência textual para uso real no cliente.
 
 ### Escopo técnico
 - Revisar telas principais:
-  - Home, Kanban, Projetos, Perfil, Usuários/Convites, Configurações
+  - Home, Kanban, Projetos, Perfil, Usuários/Invites, Configurações
 - Corrigir:
   - ortografia, acentuação, terminologia
   - consistência de rótulos e mensagens de erro/sucesso

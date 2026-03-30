@@ -13,7 +13,7 @@ Reduzir o acoplamento do `app.py` com detalhes repetitivos de banco, deixando
 as regras de negócio focadas no domínio e não em boilerplate de conexão ou
 checagens estruturais simples.
 
-Como deve ser usado
+How it should be used
 -------------------
 - `connect_db(...)` deve ser chamado pelo factory principal de conexão do app.
 - `ensure_column(...)` deve ser usado apenas em rotinas de bootstrap/migração
@@ -45,19 +45,19 @@ def connect_db(data_dir: Path, db_path: Path) -> sqlite3.Connection:
     - Configura `row_factory` para `sqlite3.Row`, permitindo acesso por nome
       de coluna no restante do sistema.
 
-    Parâmetros
+    Parameters
     ----------
     data_dir:
         Diretório-base onde os arquivos de dados da aplicação vivem.
     db_path:
         Caminho completo do arquivo `.sqlite3`/banco principal.
 
-    Retorno
+    Return
     -------
     sqlite3.Connection
         Conexão pronta para leitura/escrita.
 
-    Como deve ser usada no restante do programa
+    How it should be used no restante do programa
     -------------------------------------------
     Normalmente ela é chamada indiretamente por `app.db()`, que atua como
     factory central de conexão.
@@ -80,7 +80,7 @@ def ensure_column(conn: sqlite3.Connection, table: str, col: str, ddl: str):
     - Lê o schema atual da tabela via `PRAGMA table_info`.
     - Se a coluna ainda não existir, executa `ALTER TABLE ... ADD COLUMN`.
 
-    Parâmetros
+    Parameters
     ----------
     conn:
         Conexão ativa do banco.
@@ -92,11 +92,11 @@ def ensure_column(conn: sqlite3.Connection, table: str, col: str, ddl: str):
         Trecho DDL completo da coluna para `ADD COLUMN`.
         Exemplo: `priority TEXT DEFAULT 'Média'`.
 
-    Retorno
+    Return
     -------
     None
 
-    Como deve ser usada no restante do programa
+    How it should be used no restante do programa
     -------------------------------------------
     Deve ser usada apenas em bootstrap/migração leve. Se o projeto evoluir para
     migrations versionadas formais, este helper deve permanecer como apoio
@@ -114,14 +114,14 @@ def table_exists(conn: sqlite3.Connection, name: str) -> bool:
     """
     Informa se uma tabela existe no banco atual.
 
-    Parâmetros
+    Parameters
     ----------
     conn:
         Conexão ativa do banco.
     name:
         Nome da tabela a ser verificada.
 
-    Retorno
+    Return
     -------
     bool
         `True` quando a tabela existe, `False` caso contrário.
@@ -142,7 +142,7 @@ def column_exists(conn: sqlite3.Connection, table: str, col: str) -> bool:
     """
     Informa se uma coluna específica existe em uma tabela.
 
-    Parâmetros
+    Parameters
     ----------
     conn:
         Conexão ativa do banco.
@@ -151,7 +151,7 @@ def column_exists(conn: sqlite3.Connection, table: str, col: str) -> bool:
     col:
         Nome da coluna.
 
-    Retorno
+    Return
     -------
     bool
         `True` quando a coluna existe, `False` quando não existe ou quando a

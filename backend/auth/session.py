@@ -15,7 +15,7 @@ Concentrar a lógica mais reutilizável de:
 - leitura de cookie
 - resolução do usuário autenticado
 
-Como deve ser usado
+How it should be used
 -------------------
 - O backend principal delega para este módulo em vez de manter a lógica toda
   espalhada em `app.py`.
@@ -44,7 +44,7 @@ def hash_password(password: str, salt_hex: str | None = None) -> str:
     """
     Gera um hash PBKDF2-HMAC SHA-256 para a senha informada.
 
-    Parâmetros
+    Parameters
     ----------
     password:
         Senha em texto puro.
@@ -52,12 +52,12 @@ def hash_password(password: str, salt_hex: str | None = None) -> str:
         Salt já existente em hexadecimal. Quando omitido, um novo salt aleatório
         é gerado.
 
-    Retorno
+    Return
     -------
     str
         String no formato `salt_hex$digest_hex`.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     - Na criação de usuário
     - Na troca de senha
@@ -76,14 +76,14 @@ def verify_password(password: str, stored: str) -> bool:
     """
     Verifica se a senha informada corresponde ao hash persistido.
 
-    Parâmetros
+    Parameters
     ----------
     password:
         Senha em texto puro enviada pelo usuário.
     stored:
         Hash persistido no formato `salt_hex$digest_hex`.
 
-    Retorno
+    Return
     -------
     bool
         `True` quando a senha é válida; `False` em qualquer falha.
@@ -104,9 +104,9 @@ def verify_password(password: str, stored: str) -> bool:
 # ---------------------------------------------------------------------------
 def create_session(sessions: dict[str, dict], session_ttl_seconds: int, username: str, role: str) -> str:
     """
-    Cria uma nova sessão em memória e devolve o token correspondente.
+    Creates a new  sessão em memória e devolve o token correspondente.
 
-    Parâmetros
+    Parameters
     ----------
     sessions:
         Estrutura em memória usada pelo app para armazenar sessões ativas.
@@ -117,12 +117,12 @@ def create_session(sessions: dict[str, dict], session_ttl_seconds: int, username
     role:
         Role atual do usuário.
 
-    Retorno
+    Return
     -------
     str
         Token hexadecimal de sessão.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Chamada pelo fluxo de login do backend. O token retornado deve ser gravado
     no cookie de sessão configurado pela aplicação.
@@ -143,12 +143,12 @@ def parse_cookie(raw: str | None) -> dict:
     """
     Converte o header bruto `Cookie` em um dicionário simples.
 
-    Parâmetros
+    Parameters
     ----------
     raw:
         Valor bruto do header `Cookie` recebido na requisição.
 
-    Retorno
+    Return
     -------
     dict
         Mapa `nome -> valor` de cookies.
@@ -167,7 +167,7 @@ def current_user_from_cookie(sessions: dict[str, dict], session_cookie: str, raw
     """
     Resolve o usuário autenticado a partir do cookie de sessão.
 
-    Parâmetros
+    Parameters
     ----------
     sessions:
         Estrutura em memória de sessões ativas.
@@ -176,13 +176,13 @@ def current_user_from_cookie(sessions: dict[str, dict], session_cookie: str, raw
     raw_cookie:
         Header bruto `Cookie` da requisição atual.
 
-    Retorno
+    Return
     -------
     dict | None
         Retorna um dicionário com `username`, `role` e `token` quando a sessão
         é válida. Retorna `None` quando não existe, expirou ou está inválida.
 
-    Como deve ser usada
+    How it should be used
     -------------------
     Deve ser chamada pelo backend principal sempre que uma rota precisar
     identificar o usuário autenticado a partir da requisição HTTP.

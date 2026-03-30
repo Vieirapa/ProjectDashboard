@@ -14,7 +14,7 @@ No ProjectDashboard, o trabalho acontece em 3 áreas principais:
 2. **Kanban**: operação diária dos cards/documentos.
 3. **Detalhes do card**: edição completa, anexos, revisões e notas.
 
-Áreas administrativas (Usuários/Convites e Configurações) aparecem apenas para quem tem permissão.
+Áreas administrativas (Usuários/Invites e Configurações) aparecem apenas para quem tem permissão.
 
 ---
 
@@ -23,12 +23,12 @@ No ProjectDashboard, o trabalho acontece em 3 áreas principais:
 ## Matriz de acesso (resumo)
 
 - **admin**
-  - Acessa: Início, Projetos, Kanban, Usuários & Convites, Configurações, Meu Perfil.
+  - Acessa: Início, Projetos, Kanban, Usuários & Invites, Configurações, Meu Perfil.
   - Pode: gerenciar usuários, convites, regras do sistema, backup e diagnóstico.
 
 - **lider_projeto**
   - Acessa: Início, Projetos, Kanban, Meu Perfil.
-  - Não acessa: Usuários & Convites, Configurações.
+  - Não acessa: Usuários & Invites, Configurações.
   - Pode: coordenar operação e governança de projeto sem administração global do sistema.
 
 - **member**
@@ -59,7 +59,7 @@ No ProjectDashboard, o trabalho acontece em 3 áreas principais:
 1. Acessar **Projetos**.
 2. Criar projeto “Cliente X - Implantação”.
 3. Definir quais perfis podem acessar esse projeto (ex.: member, desenhista, revisor, cliente).
-4. Ir em **Usuários & Convites** e:
+4. Ir em **Usuários & Invites** e:
    - criar usuários internos, ou
    - gerar convite e enviar por e-mail.
 5. Ir em **Configurações** e ajustar:
@@ -141,7 +141,7 @@ Resultado: transparência do andamento com acesso controlado.
 - **Projetos**: cadastro e governança de projetos (admin/líder).
 - **Kanban**: quadro de trabalho diário dos cards.
 - **Detalhes**: edição completa + upload/revisões/notas.
-- **Usuários & Convites**: gestão de acesso de pessoas (admin).
+- **Usuários & Invites**: gestão de acesso de pessoas (admin).
 - **Configurações**: SMTP, backup, diagnóstico, retenção, relatórios (admin).
 - **Meu Perfil**: dados pessoais, troca de senha e preferências visuais.
 
@@ -162,7 +162,7 @@ Resultado: transparência do andamento com acesso controlado.
 ## “Não vejo a tela de Configurações. É erro?”
 Não. Somente `admin` enxerga Configurações.
 
-## “Sou líder de projeto e não vejo Usuários & Convites.”
+## “Sou líder de projeto e não vejo Usuários & Invites.”
 Comportamento esperado: `lider_projeto` não acessa essa área.
 
 ## “Um usuário tem perfil correto mas não vê o projeto.”
