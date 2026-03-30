@@ -74,6 +74,7 @@ from backend.documents.review_workflow import (
     add_review_note as workflow_add_review_note,
     list_document_dependencies as workflow_list_document_dependencies,
     list_review_notes as workflow_list_review_notes,
+    set_document_dependencies as workflow_set_document_dependencies,
     set_review_note_resolution as workflow_set_review_note_resolution,
     unresolved_dependencies as workflow_unresolved_dependencies,
 )
@@ -2597,6 +2598,30 @@ def _setting(settings: dict, key: str, env_key: str, default: str = "") -> str:
 def dependency_max_status() -> str:
     settings = get_admin_settings()
     return _setting(settings, "workflow.dependency_max_status", "PDASH_DEPENDENCY_MAX_STATUS", "Backlog")
+
+
+def default_due_date_iso() -> str:
+    settings = get_admin_settings()
+    raw = _setting(settings, "workflow.default_due_days", "PDASH_DEFAULT_DUE_DAYS", "7")
+    try:
+        days = int(str(raw or "7").strip())
+    except Exception:
+        days = 7
+    if days < 0:
+        days = 0
+    return (datetime.now(UTC) + timedelta(days=days)).date().isoformat()
+
+
+def status_allowed_with_pending_dependencies(target_status: str) -> tuple[bool, str]:
+    max_status = dependency_max_status()
+    order = {"Backlog": 0, "Em andamento": 1, "Em revisão": 2, "Concluído": 3}
+    target = str(target_status or "Backlog").strip()
+    if target not in order:
+        target = "Backlog"
+    limit = str(max_status or "Backlog").strip()
+    if limit not in order:
+        limit = "Backlog"
+    return (order[target] <= order[limit], limit)
 
 
 def get_user_profile(username: str) -> dict | None:

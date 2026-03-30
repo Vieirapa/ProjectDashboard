@@ -15,10 +15,15 @@ from collections.abc import Callable
 def list_review_notes(db_factory: Callable[[], sqlite3.Connection], slug: str) -> list[dict]:
     with db_factory() as conn:
         rows = conn.execute(
-            "SELECT id, slug, note, is_resolved, created_by, created_at, resolved_by, resolved_at FROM review_notes WHERE slug=? ORDER BY id DESC",
+            "SELECT id, document_slug, note, is_resolved, created_by, created_at, resolved_by, resolved_at FROM review_notes WHERE document_slug=? ORDER BY id DESC",
             (slug,),
         ).fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        item = dict(r)
+        item["slug"] = item.pop("document_slug", slug)
+        out.append(item)
+    return out
 
 
 def add_review_note(db_factory: Callable[[], sqlite3.Connection], audit_fn, slug: str, note: str, actor: str) -> tuple[bool, str]:
@@ -30,7 +35,7 @@ def add_review_note(db_factory: Callable[[], sqlite3.Connection], audit_fn, slug
         if not row:
             return False, 'Documento não encontrado'
         conn.execute(
-            "INSERT INTO review_notes(slug, note, is_resolved, created_by, created_at, resolved_by, resolved_at) VALUES(?, ?, 0, ?, datetime('now'), NULL, NULL)",
+            "INSERT INTO review_notes(document_slug, note, is_resolved, created_by, created_at, resolved_by, resolved_at) VALUES(?, ?, 0, ?, datetime('now'), '', '')",
             (slug, text, actor),
         )
     audit_fn(actor, 'review.note.add', slug, text[:300])
@@ -38,22 +43,24 @@ def add_review_note(db_factory: Callable[[], sqlite3.Connection], audit_fn, slug
 
 
 def set_review_note_resolution(db_factory: Callable[[], sqlite3.Connection], audit_fn, slug: str, note_id: int, actor: str, resolved: bool) -> tuple[bool, str]:
+    action = ''
     with db_factory() as conn:
-        row = conn.execute('SELECT id, is_resolved FROM review_notes WHERE id=? AND slug=?', (note_id, slug)).fetchone()
+        row = conn.execute('SELECT id, is_resolved FROM review_notes WHERE id=? AND document_slug=?', (note_id, slug)).fetchone()
         if not row:
             return False, 'Nota não encontrada'
         if resolved:
             conn.execute(
-                "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=datetime('now') WHERE id=? AND slug=?",
+                "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=datetime('now') WHERE id=? AND document_slug=?",
                 (actor, note_id, slug),
             )
-            audit_fn(actor, 'review.note.resolve', slug, f'note_id={note_id}')
+            action = 'review.note.resolve'
         else:
             conn.execute(
-                "UPDATE review_notes SET is_resolved=0, resolved_by=NULL, resolved_at=NULL WHERE id=? AND slug=?",
+                "UPDATE review_notes SET is_resolved=0, resolved_by='', resolved_at='' WHERE id=? AND document_slug=?",
                 (note_id, slug),
             )
-            audit_fn(actor, 'review.note.reopen', slug, f'note_id={note_id}')
+            action = 'review.note.reopen'
+    audit_fn(actor, action, slug, f'note_id={note_id}')
     return True, 'ok'
 
 
@@ -63,8 +70,8 @@ def list_document_dependencies(db_factory: Callable[[], sqlite3.Connection], slu
             """
             SELECT d.slug, d.name, d.status, d.priority, d.owner, d.project_id
               FROM document_dependencies dd
-              JOIN documents d ON d.slug = dd.depends_on_slug
-             WHERE dd.slug=? AND dd.project_id=?
+              JOIN documents d ON d.slug = dd.depends_on_slug AND d.project_id = dd.project_id
+             WHERE dd.document_slug=? AND dd.project_id=?
              ORDER BY d.name COLLATE NOCASE
             """,
             (slug, project_id),
@@ -90,7 +97,7 @@ def would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_dep
         if cur == source_slug:
             return True
         rows = conn.execute(
-            'SELECT depends_on_slug FROM document_dependencies WHERE slug=? AND project_id=?',
+            'SELECT depends_on_slug FROM document_dependencies WHERE document_slug=? AND project_id=?',
             (cur, project_id),
         ).fetchall()
         for r in rows:
@@ -122,11 +129,11 @@ def set_document_dependencies(db_factory: Callable[[], sqlite3.Connection], audi
             if would_create_cycle(conn, slug, dep, project_id):
                 return False, f'Dependência criaria ciclo: {dep}'
 
-        conn.execute('DELETE FROM document_dependencies WHERE slug=? AND project_id=?', (slug, project_id))
+        conn.execute('DELETE FROM document_dependencies WHERE document_slug=? AND project_id=?', (slug, project_id))
         for dep in clean:
             conn.execute(
-                'INSERT INTO document_dependencies(slug, depends_on_slug, project_id) VALUES(?, ?, ?)',
-                (slug, dep, project_id),
+                'INSERT INTO document_dependencies(document_slug, depends_on_slug, project_id, created_by, created_at) VALUES(?, ?, ?, ?, datetime(\'now\'))',
+                (slug, dep, project_id, actor),
             )
 
     audit_fn(actor, 'document.dependencies.set', slug, ','.join(clean))
