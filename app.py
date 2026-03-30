@@ -2578,6 +2578,19 @@ def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]
     return True, f"sent={sent}"
 
 
+def _setting(settings: dict, key: str, env_key: str, default: str = "") -> str:
+    row = (settings or {}).get(key, {})
+    value = row.get("value") if isinstance(row, dict) else None
+    if value is None or str(value) == "":
+        return str(os.getenv(env_key, default))
+    return str(value)
+
+
+def dependency_max_status() -> str:
+    settings = get_admin_settings()
+    return _setting(settings, "workflow.dependency_max_status", "PDASH_DEPENDENCY_MAX_STATUS", "Backlog")
+
+
 def _backup_config(settings: dict) -> dict:
     raw_days = _setting(settings, "backup.weekdays", "PDASH_BACKUP_WEEKDAYS", "[]")
     try:
@@ -3797,7 +3810,7 @@ class Handler(BaseHTTPRequestHandler):
                 row = conn.execute("SELECT username,password_hash,role FROM users WHERE username=?", (username,)).fetchone()
             if not row or not verify_password(password, row["password_hash"]):
                 return self._json(401, {"ok": False, "error": "Credenciais inválidas"})
-            tok = create_session(row["username"], row["role"])
+            tok = create_auth_session(SESSIONS, SESSION_TTL_SECONDS, row["username"], row["role"])
             cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
             role_active = role_is_active(row["role"])
             return self._json(200, {
