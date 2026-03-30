@@ -2587,6 +2587,46 @@ def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]
     return True, f"sent={sent}"
 
 
+def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
+    settings = get_admin_settings()
+    smtp_host = _setting(settings, "smtp.host", "PDASH_SMTP_HOST", "")
+    smtp_port_raw = _setting(settings, "smtp.port", "PDASH_SMTP_PORT", "587")
+    smtp_user = _setting(settings, "smtp.user", "PDASH_SMTP_USER", "")
+    smtp_pass = _setting(settings, "smtp.pass", "PDASH_SMTP_PASS", "")
+    smtp_from = _setting(settings, "smtp.from", "PDASH_SMTP_FROM", smtp_user)
+    smtp_tls = _setting(settings, "smtp.tls", "PDASH_SMTP_TLS", "true").lower() in {"1", "true", "yes", "on"}
+
+    if not str(to_email or "").strip():
+        return False, "destinatário obrigatório"
+    if not smtp_host:
+        return False, "SMTP não configurado"
+    try:
+        smtp_port = int(str(smtp_port_raw or "587").strip())
+    except Exception:
+        return False, "porta SMTP inválida"
+    if not smtp_from:
+        return False, "remetente SMTP não configurado"
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = smtp_from
+    msg["To"] = str(to_email).strip()
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+            server.ehlo()
+            if smtp_tls:
+                server.starttls()
+                server.ehlo()
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        return True, "ok"
+    except Exception as e:
+        return False, str(e)
+
+
 def _setting(settings: dict, key: str, env_key: str, default: str = "") -> str:
     row = (settings or {}).get(key, {})
     value = row.get("value") if isinstance(row, dict) else None
