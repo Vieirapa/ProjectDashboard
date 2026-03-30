@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="/home/panosso/.openclaw/workspace/ProjectDashboard"
+APP_URL="http://127.0.0.1:8765/login.html"
+
+cd "$REPO_DIR"
+
+echo "[1/5] Atualizando repositório..."
+git pull --ff-only
+
+echo
+echo "[2/5] Commit atual..."
+git log --oneline -n 3
+
+echo
+echo "[3/5] Reinstalando ProjectDashboard..."
+sudo ENABLE_NGINX=no ENABLE_HTTPS=no ./install.sh
+
+echo
+echo "[4/5] Reiniciando serviço..."
+sudo systemctl restart projectdashboard
+
+echo
+echo "[5/5] Validando serviço e HTTP..."
+sudo systemctl status projectdashboard --no-pager
+
+echo
+if curl -fsS "$APP_URL" >/dev/null 2>&1; then
+  echo "✅ HTTP OK: $APP_URL"
+else
+  echo "⚠️ HTTP check falhou: $APP_URL"
+fi
+
+echo
+echo "Pronto. Agora teste no HOST: http://127.0.0.5:8765/"
