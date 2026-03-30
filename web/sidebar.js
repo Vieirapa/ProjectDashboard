@@ -1,9 +1,33 @@
+/*
+ * sidebar.js
+ * ==========
+ *
+ * Responsável por montar dinamicamente a sidebar principal da aplicação.
+ *
+ * Papel deste arquivo
+ * -------------------
+ * - Descobrir o usuário autenticado.
+ * - Descobrir o catálogo de projetos acessíveis.
+ * - Descobrir páginas permitidas pela política de permissões.
+ * - Renderizar a navegação lateral coerente com o contexto atual.
+ *
+ * Como deve ser tratado no restante da aplicação
+ * ----------------------------------------------
+ * - Deve permanecer focado em shell/navegação.
+ * - Não deve concentrar lógica de domínio de negócio.
+ * - Alterações nele impactam praticamente todas as telas, então mudanças devem
+ *   ser pequenas, consistentes e bem validadas visualmente.
+ */
+
 (async () => {
   const root = document.getElementById('sidebar-root');
   if (!root) return;
 
   const active = root.dataset.active || '';
 
+  // -------------------------------------------------------------------------
+  // Helper HTTP JSON da sidebar
+  // -------------------------------------------------------------------------
   async function api(url, opts = {}) {
     const res = await fetch(url, opts);
     const data = await res.json().catch(() => ({}));
@@ -11,6 +35,9 @@
     return data;
   }
 
+  // -------------------------------------------------------------------------
+  // Resolve o projeto atual a partir da URL ou do primeiro projeto visível
+  // -------------------------------------------------------------------------
   function currentProjectId(projects) {
     const raw = new URLSearchParams(window.location.search).get('project_id');
     const id = Number(raw);

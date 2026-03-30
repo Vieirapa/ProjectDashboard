@@ -1,6 +1,30 @@
+/*
+ * edit.js
+ * =======
+ *
+ * Responsável pela tela de edição detalhada de um documento/card.
+ *
+ * Papel deste arquivo
+ * -------------------
+ * - Carregar o documento individual.
+ * - Permitir edição de campos principais.
+ * - Gerenciar dependências.
+ * - Gerenciar upload/anexo e histórico de versões.
+ * - Gerenciar notas de revisão e resolução.
+ *
+ * Como deve ser tratado no restante da aplicação
+ * ----------------------------------------------
+ * - Deve funcionar como coordenador da tela de detalhe.
+ * - Regras de negócio continuam no backend.
+ * - Este arquivo integra componentes visuais, estado local e APIs.
+ */
+
 const params = new URLSearchParams(location.search);
 const slug = params.get('slug');
 
+// ---------------------------------------------------------------------------
+// Projeto corrente resolvido a partir da query string
+// ---------------------------------------------------------------------------
 function currentProjectId() {
   const pid = Number(new URLSearchParams(location.search).get('project_id'));
   return Number.isFinite(pid) && pid > 0 ? pid : 1;
@@ -46,6 +70,9 @@ let dependencyDocs = [];
 let dependencySelected = new Set();
 saveBtn.disabled = true;
 
+// ---------------------------------------------------------------------------
+// Helper HTTP JSON da tela de edição
+// ---------------------------------------------------------------------------
 async function api(url, opts={}) {
   const r = await fetch(url, opts);
   const d = await r.json().catch(()=>({}));
@@ -132,6 +159,9 @@ function updateReviewNotesAvailability() {
     : 'Notas liberadas apenas quando o documento estiver em "em revisão"';
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento do histórico de notas de revisão
+// ---------------------------------------------------------------------------
 async function loadReviewNotes() {
   const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/review-notes`));
   if (!d.notes?.length) {
@@ -187,6 +217,9 @@ async function loadReviewNotes() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento do histórico de versões/anexos do documento
+// ---------------------------------------------------------------------------
 async function loadVersions() {
   try {
     const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/document/versions`));
@@ -205,6 +238,9 @@ async function loadVersions() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Renderização visual das dependências possíveis do documento
+// ---------------------------------------------------------------------------
 function renderDependencyChecklist() {
   if (!dependsOnSelect) return;
   const q = String(dependsSearch?.value || '').trim().toLowerCase();
@@ -240,6 +276,9 @@ function renderDependencyChecklist() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento das opções de dependência disponíveis no projeto atual
+// ---------------------------------------------------------------------------
 async function loadDependencyOptions(currentSlug, selected = []) {
   if (!dependsOnSelect) return;
   const data = await api(`/api/documents?project_id=${encodeURIComponent(String(currentProjectId()))}`);
@@ -265,6 +304,9 @@ function renderDependencyInfo(document) {
   dependencyInfo.textContent = `Dependências pendentes: ${pending.map((d) => d.name).join(', ')}`;
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento principal do documento na tela de edição
+// ---------------------------------------------------------------------------
 async function loadDocument() {
   const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`));
   const p = d.document;
@@ -369,6 +411,9 @@ addReviewNoteBtn.onclick = async () => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Salvamento principal da edição do documento
+// ---------------------------------------------------------------------------
 async function handleSave() {
   if (scopeBlocked) {
     feedback.textContent = 'Bloqueado por escopo inválido. Volte ao Kanban e abra o card no projeto correto.';

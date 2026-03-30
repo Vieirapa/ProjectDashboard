@@ -1,3 +1,24 @@
+/*
+ * dashboard.js
+ * ============
+ *
+ * Responsável pela tela inicial (home/dashboard) do ProjectDashboard.
+ *
+ * Papel deste arquivo
+ * -------------------
+ * - Carregar métricas resumidas dos projetos visíveis ao usuário.
+ * - Construir a tabela de resumo operacional por projeto.
+ * - Fornecer uma leitura rápida da situação atual da operação.
+ *
+ * Como este arquivo deve ser tratado no restante da aplicação
+ * ----------------------------------------------------------
+ * - Deve continuar focado em leitura e composição visual do dashboard.
+ * - Não deve concentrar regras complexas de domínio; para isso, deve consumir
+ *   endpoints já preparados pelo backend.
+ * - Pode ser evoluído para componentes reutilizáveis no futuro, mas hoje seu
+ *   papel é orquestrar a home de forma clara e simples.
+ */
+
 const kpiProjects = document.getElementById('kpiProjects');
 const kpiOwned = document.getElementById('kpiOwned');
 const kpiDone = document.getElementById('kpiDone');
@@ -6,6 +27,10 @@ const projectsSummaryTable = document.getElementById('projectsSummaryTable');
 const refreshHomeBtn = document.getElementById('refreshHomeBtn');
 const goKanbanBtn = document.getElementById('goKanbanBtn');
 
+
+// ---------------------------------------------------------------------------
+// Helper HTTP JSON do dashboard
+// ---------------------------------------------------------------------------
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
@@ -17,21 +42,37 @@ async function api(url, opts = {}) {
   return data;
 }
 
+
+// ---------------------------------------------------------------------------
+// Escape HTML defensivo para composição de tabela
+// ---------------------------------------------------------------------------
 function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
+
+// ---------------------------------------------------------------------------
+// Média aritmética simples
+// ---------------------------------------------------------------------------
 function avg(values) {
   if (!values.length) return null;
   const total = values.reduce((acc, n) => acc + (Number(n) || 0), 0);
   return total / values.length;
 }
 
+
+// ---------------------------------------------------------------------------
+// Formatação amigável de dias
+// ---------------------------------------------------------------------------
 function fmtDays(v) {
   if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
   return `${Number(v).toFixed(1)} dias`;
 }
 
+
+// ---------------------------------------------------------------------------
+// Classe visual de badge por valor numérico
+// ---------------------------------------------------------------------------
 function badgeClass(value) {
   const num = Number(value) || 0;
   if (num >= 12) return 'status-badge status-danger';
@@ -39,6 +80,10 @@ function badgeClass(value) {
   return 'status-badge status-success';
 }
 
+
+// ---------------------------------------------------------------------------
+// Carregamento principal do dashboard
+// ---------------------------------------------------------------------------
 async function loadDashboard() {
   projectsSummaryTable.innerHTML = '<div class="loading-state">Carregando métricas e resumo dos projetos...</div>';
 

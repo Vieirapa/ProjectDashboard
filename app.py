@@ -1,8 +1,40 @@
 #!/usr/bin/env python3
+"""
+ProjectDashboard — backend principal
+===================================
+
+Este arquivo ainda funciona como o ponto central de composição da aplicação.
+Mesmo com a modularização já iniciada, ele continua reunindo:
+
+- bootstrap do sistema
+- utilitários gerais
+- partes relevantes da lógica de domínio
+- rotas/dispatch HTTP
+- integração entre módulos extraídos e código legado
+
+Documentation goal
+------------------------
+À medida que o projeto evolui para uma arquitetura mais modular, este arquivo
+precisa ser legível o suficiente para que futuras extrações sejam seguras.
+Por isso, esta documentação descreve:
+
+- o papel de blocos importantes
+- o contrato esperado das funções utilitárias
+- como cada função deve ser chamada e tratada no restante do sistema
+
+Important note
+---------------------
+Nem toda função aqui representa um destino final de arquitetura. Muitas ainda
+existem em `app.py` por razões de evolução incremental. A documentação ajuda a
+reduzir risco enquanto a base é reorganizada.
+"""
+
 import base64
+import hashlib
 import json
 import os
 import re
+import secrets
 import sqlite3
 import subprocess
 import smtplib
@@ -22,12 +54,47 @@ from backend.auth.session import (
     parse_cookie,
     verify_password,
 )
+from backend.admin.settings import (
+    get_admin_settings as load_admin_settings,
+    update_admin_settings as persist_admin_settings,
+)
+from backend.admin.settings import (
+    get_admin_settings as load_admin_settings,
+    update_admin_settings as persist_admin_settings,
+)
 from backend.core.db import column_exists, connect_db, ensure_column, table_exists
+from backend.ops.system_ops import (
+    list_available_backups as ops_list_available_backups,
+    next_backup_run as ops_next_backup_run,
+    restore_backup_from_stamp as ops_restore_backup_from_stamp,
+    run_system_backup as ops_run_system_backup,
+    run_system_diagnostics as ops_run_system_diagnostics,
+    test_backup_path_permissions as ops_test_backup_path_permissions,
+)
+from backend.documents.review_workflow import (
+    add_review_note as workflow_add_review_note,
+    list_document_dependencies as workflow_list_document_dependencies,
+    list_review_notes as workflow_list_review_notes,
+    set_document_dependencies as workflow_set_document_dependencies,
+    set_review_note_resolution as workflow_set_review_note_resolution,
+    unresolved_dependencies as workflow_unresolved_dependencies,
+)
+from backend.reports.service import (
+    create_periodic_report as reports_create_periodic_report,
+    delete_periodic_report as reports_delete_periodic_report,
+    list_periodic_reports as reports_list_periodic_reports,
+    update_periodic_report as reports_update_periodic_report,
+)
+from backend.admin.recovery import list_deleted_documents as recovery_list_deleted_documents
 from backend.rbac.roles import (
     list_role_catalog as list_rbac_role_catalog,
     resolve_fallback_role as resolve_rbac_fallback_role,
     role_exists as rbac_role_exists,
     role_is_active as rbac_role_is_active,
+)
+from backend.rbac.permissions import (
+    get_effective_permissions as rbac_get_effective_permissions,
+    update_role_modules as rbac_update_role_modules,
 )
 
 APP_DIR = Path(__file__).parent
@@ -88,11 +155,49 @@ SESSION_TTL_SECONDS = 60 * 60 * 24
 SESSIONS: dict[str, dict] = {}
 
 
+# ---------------------------------------------------------------------------
+# Utilitários base de data, texto e conexão
+# ---------------------------------------------------------------------------
 def now_iso() -> str:
+    """
+    Devolve o timestamp atual em UTC no formato ISO-8601 com sufixo `Z`.
+
+    Return
+    -------
+    str
+        Exemplo: `2026-03-29T00:00:00Z`
+
+    How it should be used
+    -------------------
+    Deve ser usada sempre que a aplicação precisar gerar timestamps para
+    persistência, auditoria ou respostas coerentes em UTC.
+    """
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+# ---------------------------------------------------------------------------
+# Parsing defensivo de data ISO
+# ---------------------------------------------------------------------------
 def _parse_iso_date(value: str | None) -> datetime | None:
+    """
+    Converte uma string ISO em `datetime`, quando possível.
+
+    Parameters
+    ----------
+    value:
+        Data em string, normalmente vinda do banco ou de payloads internos.
+
+    Return
+    -------
+    datetime | None
+        Retorna `datetime` quando o valor é válido; `None` quando ausente ou
+        inválido.
+
+    Observação
+    ----------
+    O comportamento defensivo desta função evita quebrar a aplicação em fluxos
+    que lidam com dados legados ou parciais.
+    """
     if not value:
         return None
     v = str(value).strip()
@@ -104,7 +209,33 @@ def _parse_iso_date(value: str | None) -> datetime | None:
         return None
 
 
+# ---------------------------------------------------------------------------
+# Cálculo de idade/tempo de resolução de documento
+# ---------------------------------------------------------------------------
 def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[str, int]:
+    """
+    Calcula o rótulo e o número de dias relevantes para um documento.
+
+    Estratégia
+    ----------
+    - Se o documento já foi concluído e possui `released_at`, calcula dias até
+      solução.
+    - Caso contrário, calcula dias desde a abertura.
+
+    Parameters
+    ----------
+    opened_at:
+        Data de abertura do documento.
+    status:
+        Status atual do documento.
+    released_at:
+        Data de liberação/conclusão, quando existir.
+
+    Return
+    -------
+    tuple[str, int]
+        `(label, days)` para uso em UI e relatórios.
+    """
     opened = _parse_iso_date(opened_at) or datetime.now(UTC)
     if status == "Concluído" and released_at:
         released = _parse_iso_date(released_at) or datetime.now(UTC)
@@ -114,19 +245,73 @@ def _project_age_fields(opened_at: str, status: str, released_at: str) -> tuple[
     return "Dias desde abertura", days
 
 
+# ---------------------------------------------------------------------------
+# Geração de slug estável
+# ---------------------------------------------------------------------------
 def slugify(name: str) -> str:
+    """
+    Converte um nome livre em slug seguro para uso interno.
+
+    Parameters
+    ----------
+    name:
+        Texto-base que será normalizado.
+
+    Return
+    -------
+    str
+        Slug minúsculo, sem caracteres inválidos. Se nada sobrar após a
+        normalização, devolve `documento`.
+    """
     slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name.strip())
     slug = re.sub(r"-+", "-", slug).strip("-")
     return slug.lower() or "documento"
 
 
+# ---------------------------------------------------------------------------
+# Reading of fensiva de arquivo texto
+# ---------------------------------------------------------------------------
 def read_text_if_exists(path: Path) -> str:
+    """
+    Lê um arquivo texto apenas se ele existir e for arquivo regular.
+
+    Parameters
+    ----------
+    path:
+        Caminho do arquivo desejado.
+
+    Return
+    -------
+    str
+        Conteúdo do arquivo quando existir; string vazia caso contrário.
+    """
     if path.exists() and path.is_file():
         return path.read_text(encoding="utf-8", errors="ignore")
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Inferência de descrição a partir do README do projeto
+# ---------------------------------------------------------------------------
 def infer_description(project_dir: Path) -> str:
+    """
+    Tenta inferir uma descrição curta de projeto a partir do README local.
+
+    Estratégia
+    ----------
+    Procura a primeira linha não vazia que não seja cabeçalho Markdown e usa
+    esse conteúdo como resumo curto.
+
+    Parameters
+    ----------
+    project_dir:
+        Diretório-base do projeto a ser inspecionado.
+
+    Return
+    -------
+    str
+        Descrição resumida ou `Sem descrição` quando não for possível inferir.
+    """
     for line in read_text_if_exists(project_dir / "README.md").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
@@ -134,14 +319,93 @@ def infer_description(project_dir: Path) -> str:
     return "Sem descrição"
 
 
+# ---------------------------------------------------------------------------
+# Factory principal de conexão com banco
+# ---------------------------------------------------------------------------
 def db() -> sqlite3.Connection:
+    """
+    Devolve uma conexão SQLite pronta para uso pelo restante do backend.
+
+    Return
+    -------
+    sqlite3.Connection
+        Conexão com `row_factory` configurado.
+
+    How it should be used
+    -------------------
+    Esta é a factory padrão de banco no `app.py`. Funções de domínio e rotas
+    devem preferir `with db() as conn:` em vez de abrir conexões diretamente.
+    """
     return connect_db(DATA_DIR, DB_PATH)
 
 
-# --- Legacy migrations: projects -> documents ---
+# ---------------------------------------------------------------------------
+# Base de migrations versionadas (fase de transição)
+# ---------------------------------------------------------------------------
+SCHEMA_BASELINE_VERSION = "2026-03-r2-baseline"
+
+
+def ensure_schema_migrations_table(conn: sqlite3.Connection) -> None:
+    """Garante a existência da tabela de controle de migrations."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL,
+            applied_by TEXT NOT NULL DEFAULT 'system'
+        )
+        """
+    )
+
+
+def migration_applied(conn: sqlite3.Connection, version: str) -> bool:
+    """Informa se uma versão de schema já foi registrada como aplicada."""
+    row = conn.execute("SELECT 1 FROM schema_migrations WHERE version=?", (version,)).fetchone()
+    return row is not None
+
+
+def mark_migration_applied(conn: sqlite3.Connection, version: str, actor: str = "system") -> None:
+    """Registra uma versão de schema como aplicada sem duplicação."""
+    conn.execute(
+        """
+        INSERT INTO schema_migrations(version, applied_at, applied_by)
+        VALUES(?, ?, ?)
+        ON CONFLICT(version) DO NOTHING
+        """,
+        (version, now_iso(), actor),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Migrações legadas: projects -> documents
+# ---------------------------------------------------------------------------
 
 
 def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
+    """
+    Migra estruturas legadas do antigo modelo `projects` para o modelo atual de
+    `documents`, incluindo tabelas auxiliares relacionadas.
+
+    Parameters
+    ----------
+    conn:
+        Conexão ativa com o banco durante bootstrap/migração.
+
+    Return
+    -------
+    None
+
+    How it should be used
+    -------------------
+    Deve ser chamada apenas em rotinas de inicialização/migração do banco.
+    Não é uma função de uso operacional normal das rotas.
+
+    Observação
+    ----------
+    Trata compatibilidade com instalações antigas. Conforme o projeto evoluir
+    para migrations versionadas formais, esta lógica deve migrar para camadas
+    mais explícitas de evolução de schema.
+    """
     # Migrate legacy projects table into documents table (only if legacy schema exists)
     if table_exists(conn, 'projects') and column_exists(conn, 'projects', 'slug'):
         total_docs = conn.execute("SELECT COUNT(*) AS c FROM documents").fetchone()[0]
@@ -271,7 +535,27 @@ def can_delete_document(role: str, user: str, document: dict) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# Fundação de roles e catálogo de módulos
+# ---------------------------------------------------------------------------
 def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
+    """
+    Garante a base estrutural mínima de roles e módulos no banco.
+
+    Parameters
+    ----------
+    conn:
+        Conexão ativa do banco durante bootstrap.
+
+    Return
+    -------
+    None
+
+    How it should be used
+    -------------------
+    Deve ser executada no processo de inicialização do schema, antes de fluxos
+    administrativos que dependam de catálogo de roles/módulos.
+    """
     # Fase 1: base de roles no banco (compatível com modelo atual)
     conn.execute(
         """
@@ -433,8 +717,30 @@ def ensure_roles_foundation(conn: sqlite3.Connection) -> None:
             )
 
 
+# ---------------------------------------------------------------------------
+# Inicialização principal do banco e bootstrap do sistema
+# ---------------------------------------------------------------------------
 def init_db():
+    """
+    Inicializa o banco principal da aplicação, garantindo tabelas, colunas,
+    seeds e migrações defensivas necessárias para o estado atual do sistema.
+
+    Return
+    -------
+    None
+
+    How it should be used
+    -------------------
+    Esta função deve ser chamada em bootstrap de instalação e em inicialização
+    do backend quando for necessário garantir integridade mínima do schema.
+
+    Observação
+    ----------
+    Esta função ainda concentra responsabilidades históricas e é candidata a
+    futura decomposição em uma camada mais formal de migrations/bootstrap.
+    """
     with db() as conn:
+        ensure_schema_migrations_table(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -741,7 +1047,29 @@ def migrate_existing_documents():
             )
 
 
+# ---------------------------------------------------------------------------
+# Consulta e leitura de documentos
+# ---------------------------------------------------------------------------
 def list_documents(project_id: int | None = None) -> list[dict]:
+    """
+    Lista documentos do sistema, opcionalmente filtrando por projeto.
+
+    Parameters
+    ----------
+    project_id:
+        Identificador do projeto. Quando omitido, a função retorna documentos
+        de todos os projetos visíveis no banco.
+
+    Return
+    -------
+    list[dict]
+        Lista de documentos já normalizados para uso por rotas e UI.
+
+    How it should be used
+    -------------------
+    Deve ser chamada por endpoints de listagem, dashboards e telas operacionais.
+    É uma função de leitura; não deve aplicar efeitos colaterais.
+    """
     with db() as conn:
         if project_id is None:
             rows = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents ORDER BY name").fetchall()
@@ -786,7 +1114,29 @@ def list_documents(project_id: int | None = None) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Reading of  documento individual
+# ---------------------------------------------------------------------------
 def get_document(slug: str, project_id: int | None = None) -> dict | None:
+    """
+    Resolve um documento individual a partir do slug, opcionalmente limitado a um projeto.
+
+    Parameters
+    ----------
+    slug:
+        Identificador lógico do documento.
+    project_id:
+        Projeto esperado para escopo defensivo, quando aplicável.
+
+    Return
+    -------
+    dict | None
+        Documento encontrado em formato de dicionário ou `None` quando não existe.
+
+    How it should be used
+    -------------------
+    Base para rotas de detalhe, edição, revisão, anexo e validação de escopo.
+    """
     with db() as conn:
         if project_id is None:
             r = conn.execute("SELECT slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at,project_id FROM documents WHERE slug=?", (slug,)).fetchone()
@@ -812,7 +1162,29 @@ def get_document(slug: str, project_id: int | None = None) -> dict | None:
     }
 
 
+# ---------------------------------------------------------------------------
+# Normalização de payload de dependências
+# ---------------------------------------------------------------------------
 def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
+    """
+    Extrai e normaliza a lista de slugs de dependência a partir de um payload.
+
+    Parameters
+    ----------
+    payload:
+        Payload bruto recebido pela aplicação, normalmente vindo de PATCH/POST.
+
+    Return
+    -------
+    list[str] | None
+        Lista normalizada de slugs quando o payload traz dependências; `None`
+        quando o chamador não informou o campo.
+
+    How it should be used
+    -------------------
+    Helper interno para criação/edição de documentos. Ela separa a semântica de
+    “campo ausente” da semântica de “lista vazia”.
+    """
     if not isinstance(payload, dict):
         return None
     raw = payload.get("depends_on") if "depends_on" in payload else payload.get("dependsOn")
@@ -830,27 +1202,46 @@ def _dependency_slugs_from_payload(payload: dict | None) -> list[str] | None:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Reading of  dependências explícitas de documento
+# ---------------------------------------------------------------------------
 def list_document_dependencies(slug: str, project_id: int) -> list[dict]:
-    with db() as conn:
-        rows = conn.execute(
-            """
-            SELECT dd.depends_on_slug, d.name, d.status
-            FROM document_dependencies dd
-            JOIN documents d ON d.slug = dd.depends_on_slug
-            WHERE dd.document_slug=? AND dd.project_id=?
-            ORDER BY d.name
-            """,
-            (slug, project_id),
-        ).fetchall()
-    return [{"slug": r["depends_on_slug"], "name": r["name"], "status": r["status"]} for r in rows]
+    return workflow_list_document_dependencies(db, slug, project_id)
 
-
+# ---------------------------------------------------------------------------
+# Dependências pendentes
+# ---------------------------------------------------------------------------
 def unresolved_dependencies(slug: str, project_id: int) -> list[dict]:
-    deps = list_document_dependencies(slug, project_id)
-    return [d for d in deps if str(d.get("status") or "") != "Concluído"]
+    return workflow_unresolved_dependencies(db, slug, project_id)
 
-
+# ---------------------------------------------------------------------------
+# Detecção defensiva de ciclo em grafo de dependências
+# ---------------------------------------------------------------------------
 def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_dep_slug: str, project_id: int) -> bool:
+    """
+    Informa se adicionar uma dependência criaria ciclo entre documentos.
+
+    Parameters
+    ----------
+    conn:
+        Conexão ativa do banco.
+    source_slug:
+        Documento que receberia a dependência.
+    candidate_dep_slug:
+        Documento candidato a virar dependência.
+    project_id:
+        Projeto no qual o relacionamento deve ser validado.
+
+    Return
+    -------
+    bool
+        `True` quando a nova dependência criaria ciclo.
+
+    How it should be used
+    -------------------
+    Deve ser chamada antes de persistir dependências para preservar integridade
+    do fluxo de trabalho.
+    """
     stack = [candidate_dep_slug]
     seen: set[str] = set()
     while stack:
@@ -871,30 +1262,11 @@ def _would_create_cycle(conn: sqlite3.Connection, source_slug: str, candidate_de
     return False
 
 
+# ---------------------------------------------------------------------------
+# Persistência de dependências de documento
+# ---------------------------------------------------------------------------
 def set_document_dependencies(slug: str, project_id: int, depends_on_slugs: list[str], actor: str) -> tuple[bool, str]:
-    with db() as conn:
-        doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (slug, project_id)).fetchone()
-        if not doc:
-            return False, "Documento não encontrado"
-
-        for dep_slug in depends_on_slugs:
-            if dep_slug == slug:
-                return False, "Um documento não pode depender de si mesmo"
-            dep_doc = conn.execute("SELECT slug FROM documents WHERE slug=? AND project_id=?", (dep_slug, project_id)).fetchone()
-            if not dep_doc:
-                return False, f"Dependência inválida (fora do projeto ou inexistente): {dep_slug}"
-            if _would_create_cycle(conn, slug, dep_slug, project_id):
-                return False, f"Dependência cíclica detectada com {dep_slug}"
-
-        conn.execute("DELETE FROM document_dependencies WHERE document_slug=? AND project_id=?", (slug, project_id))
-        now = now_iso()
-        for dep_slug in depends_on_slugs:
-            conn.execute(
-                "INSERT OR IGNORE INTO document_dependencies (project_id, document_slug, depends_on_slug, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
-                (project_id, slug, dep_slug, actor, now),
-            )
-
-    return True, "ok"
+    return workflow_set_document_dependencies(db, audit, slug, project_id, depends_on_slugs, actor)
 
 
 def list_audit_logs(limit: int = 200) -> list[dict]:
@@ -1109,7 +1481,7 @@ def delete_role_admin(selector: str, actor: str, reassign_to: str | None = None)
         conn.execute("DELETE FROM role_module_permissions WHERE role_id=?", (int(role_row["id"]),))
         conn.execute("DELETE FROM role_modules WHERE LOWER(TRIM(role_name))=?", (role_key,))
 
-        # Remove role de projetos legados (CSV)
+        # Removes role de projetos legados (CSV)
         project_rows = conn.execute("SELECT project_id, allowed_roles FROM projects").fetchall()
         for pr in project_rows:
             vals = [x.strip().lower() for x in str(pr["allowed_roles"] or "").split(',') if x.strip()]
@@ -1261,113 +1633,12 @@ def get_role_module_permissions(role_name: str) -> dict[str, bool]:
 
 
 def get_effective_permissions(user: dict | None) -> dict:
-    if not user:
-        return {"role": "", "roleActive": False, "allowedModules": [], "allowedPages": []}
-    role = str(user.get("role") or "").strip().lower()
-    if not role_is_active(role):
-        return {
-            "role": role,
-            "roleActive": False,
-            "allowedModules": [],
-            "allowedPages": [],
-        }
-
-    modules = list_app_modules(active_only=True)
-    mod_by_id = {m["module_id"]: m for m in modules}
-    role_perms = get_role_module_permissions(role)
-    allowed_modules = [mid for mid, ok in role_perms.items() if ok and mid in mod_by_id]
-    allowed_pages = sorted({mod_by_id[mid]["page_key"] for mid in allowed_modules if mid in mod_by_id})
-    return {
-        "role": role,
-        "roleActive": True,
-        "allowedModules": allowed_modules,
-        "allowedPages": allowed_pages,
-    }
+    return rbac_get_effective_permissions(role_is_active, list_app_modules, get_role_module_permissions, user)
 
 
 def update_role_modules(role_name: str, payload: dict, actor: str) -> tuple[bool, str]:
-    role = str(role_name or "").strip().lower()
-    if not role:
-        return False, "role inválida"
-    if not re.fullmatch(r"[a-z0-9_\-]{2,64}", role):
-        return False, "role inválida"
-    if role == "admin":
-        return False, "role admin é imutável"
+    return rbac_update_role_modules(db, now_iso, role_name, payload, actor)
 
-    permissions_payload = payload.get("permissions")
-    normalized: dict[str, int] = {}
-
-    if isinstance(permissions_payload, dict):
-        for module_id, can_access in permissions_payload.items():
-            normalized[str(module_id)] = 1 if bool(can_access) else 0
-    elif isinstance(payload.get("modules"), list):
-        for item in payload.get("modules"):
-            if not isinstance(item, dict):
-                continue
-            module_id = str(item.get("module_id") or item.get("moduleId") or "").strip()
-            if not module_id:
-                continue
-            normalized[module_id] = 1 if bool(item.get("can_access") or item.get("canAccess")) else 0
-    else:
-        return False, "permissions inválidas"
-
-    if not normalized:
-        return False, "nenhuma permissão informada"
-
-    with db() as conn:
-        valid_modules = {
-            r["module_id"]
-            for r in conn.execute("SELECT module_id FROM app_modules").fetchall()
-        }
-        invalid = [mid for mid in normalized.keys() if mid not in valid_modules]
-        if invalid:
-            return False, f"módulos inválidos: {', '.join(invalid)}"
-
-        now = now_iso()
-        role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role,)).fetchone()
-        if role_row is None:
-            deleted = conn.execute("SELECT 1 FROM deleted_roles WHERE role_key=?", (role,)).fetchone()
-            if deleted is not None:
-                return False, "role foi removida e não pode ser recriada por atualização de permissões"
-            conn.execute(
-                """
-                INSERT INTO roles (role_key, display_name, is_system, is_superadmin, active, created_at, updated_at, created_by, updated_by)
-                VALUES (?, ?, 0, 0, 1, ?, ?, ?, ?)
-                """,
-                (role, role, now, now, actor, actor),
-            )
-            role_row = conn.execute("SELECT id FROM roles WHERE role_key=?", (role,)).fetchone()
-
-        role_id = int(role_row["id"])
-
-        for module_id, can_access in normalized.items():
-            # Legado (compatibilidade)
-            conn.execute(
-                """
-                INSERT INTO role_modules (role_name, module_id, can_access, updated_at, updated_by)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(role_name, module_id) DO UPDATE SET
-                    can_access=excluded.can_access,
-                    updated_at=excluded.updated_at,
-                    updated_by=excluded.updated_by
-                """,
-                (role, module_id, int(can_access), now, actor),
-            )
-
-            # Novo modelo (fase 1+)
-            conn.execute(
-                """
-                INSERT INTO role_module_permissions (role_id, module_id, can_access, updated_at, updated_by)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(role_id, module_id) DO UPDATE SET
-                    can_access=excluded.can_access,
-                    updated_at=excluded.updated_at,
-                    updated_by=excluded.updated_by
-                """,
-                (role_id, module_id, int(can_access), now, actor),
-            )
-
-    return True, "ok"
 
 
 def _normalize_allowed_roles(raw: str | list | None) -> str:
@@ -1411,7 +1682,23 @@ def _to_bool_int(value) -> int:
     return 1 if s in {'1', 'true', 'yes', 'on'} else 0
 
 
+# ---------------------------------------------------------------------------
+# Registro/catálogo de projetos
+# ---------------------------------------------------------------------------
 def list_projects_registry() -> list[dict]:
+    """
+    Lists the  projetos registrados no sistema.
+
+    Return
+    -------
+    list[dict]
+        Projetos normalizados para uso em catálogo, selects e páginas de gestão.
+
+    How it should be used
+    -------------------
+    Função de leitura para tela de projetos, navegação, Kanban e fluxos que
+    precisem conhecer o catálogo atual de projetos.
+    """
     with db() as conn:
         rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles, is_template, template_source_project_id FROM projects ORDER BY project_id").fetchall()
     out = []
@@ -1423,7 +1710,23 @@ def list_projects_registry() -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Criação de projeto no registro principal
+# ---------------------------------------------------------------------------
 def create_project_registry(payload: dict) -> tuple[bool, str, int | None]:
+    """
+    Cria um novo projeto no catálogo principal da aplicação.
+
+    Parameters
+    ----------
+    payload:
+        Dados de criação do projeto recebidos da UI/API.
+
+    Return
+    -------
+    tuple[bool, str, int | None]
+        `(ok, message, project_id)` com identificador do novo projeto em caso de sucesso.
+    """
     name = str(payload.get("project_name") or "").strip()
     start_date = str(payload.get("start_date") or "").strip()
     notes = str(payload.get("notes") or "").strip()
@@ -1442,7 +1745,25 @@ def create_project_registry(payload: dict) -> tuple[bool, str, int | None]:
     return True, "ok", new_id
 
 
+# ---------------------------------------------------------------------------
+# Updatesção de projeto existente
+# ---------------------------------------------------------------------------
 def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
+    """
+    Updates os dados de um projeto já registrado.
+
+    Parameters
+    ----------
+    project_id:
+        Projeto alvo.
+    payload:
+        Alterações solicitadas.
+
+    Return
+    -------
+    tuple[bool, str]
+        `(ok, message)` com resultado da operação.
+    """
     fields = []
     vals: list = []
     if "project_name" in payload:
@@ -1474,7 +1795,23 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Remoção de projeto e limpeza associada
+# ---------------------------------------------------------------------------
 def delete_project_registry(project_id: int) -> tuple[bool, str, int]:
+    """
+    Removes um projeto do registro e apaga seus artefatos associados quando aplicável.
+
+    Parameters
+    ----------
+    project_id:
+        Projeto alvo da remoção.
+
+    Return
+    -------
+    tuple[bool, str, int]
+        `(ok, message, deleted_cards)` com total de cards apagados no processo.
+    """
     deleted_cards = 0
     with db() as conn:
         exists = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
@@ -1728,7 +2065,30 @@ def sync_document_meta(document: dict):
     (p / "document.json").write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Criação de documento
+# ---------------------------------------------------------------------------
 def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
+    """
+    Cria um novo documento/card no sistema.
+
+    Parameters
+    ----------
+    payload:
+        Dados informados pela UI/API para criação do documento.
+    actor:
+        Usuário responsável pela criação.
+
+    Return
+    -------
+    tuple[bool, str, str | None]
+        `(ok, message, slug)` com o slug criado quando houver sucesso.
+
+    How it should be used
+    -------------------
+    Deve ser chamada por rotas de criação e por fluxos que materializam um novo
+    card no Kanban. A função também integra dependências, prazos e auditoria.
+    """
     name = (payload.get("name") or "").strip()
     if not name:
         return False, "Nome é obrigatório", None
@@ -1814,10 +2174,37 @@ def create_document(payload: dict, actor: str) -> tuple[bool, str, str | None]:
     return True, "ok", slug
 
 
+# ---------------------------------------------------------------------------
+# Updatesção parcial de documento
+# ---------------------------------------------------------------------------
 def patch_document(slug: str, payload: dict, project_id: int | None = None, actor: str = "system") -> tuple[bool, str]:
+    """
+    Updates parcialmente um documento existente.
+
+    Parameters
+    ----------
+    slug:
+        Documento alvo.
+    payload:
+        Campos parciais a alterar.
+    project_id:
+        Escopo opcional de projeto para validação defensiva.
+    actor:
+        Usuário responsável pela alteração.
+
+    Return
+    -------
+    tuple[bool, str]
+        `(ok, message)` com sucesso ou motivo da rejeição.
+
+    How it should be used
+    -------------------
+    Principal função de edição do card. Ela deve ser chamada por rotas de edição
+    e precisa manter integridade de status, dependências, prazo e auditoria.
+    """
     p = get_document(slug, project_id)
     if not p:
-        return False, "Documento não encontrado"
+        return False, "Document not found"
 
     effective_project_id = int(project_id or p.get("projectId") or 1)
     try:
@@ -1892,190 +2279,66 @@ def ensure_docs_repo() -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Leitura consolidada de configurações administrativas
+# ---------------------------------------------------------------------------
 def get_admin_settings() -> dict:
-    with db() as conn:
-        rows = conn.execute("SELECT key, value, updated_by, updated_at FROM app_settings ORDER BY key").fetchall()
-    return {r["key"]: {"value": r["value"], "updated_by": r["updated_by"], "updated_at": r["updated_at"]} for r in rows}
+    """
+    Lê as configurações administrativas persistidas em `app_settings`.
+
+    Return
+    -------
+    dict
+        Mapa `key -> {value, updated_by, updated_at}`.
+
+    How it should be used
+    -------------------
+    Base para SMTP, backup, workflow, diagnóstico, relatórios e demais áreas de
+    configuração operacional.
+    """
+    return load_admin_settings(db)
 
 
+# ---------------------------------------------------------------------------
+# Updatesção validada de configurações administrativas
+# ---------------------------------------------------------------------------
 def update_admin_settings(payload: dict, actor: str) -> tuple[bool, str]:
-    allowed = {
-        "smtp.host", "smtp.port", "smtp.user", "smtp.pass", "smtp.from", "smtp.tls",
-        "invite.default_message", "workflow.default_due_days", "workflow.dependency_max_status",
-        "backup.enabled", "backup.path", "backup.weekdays", "backup.run_time",
-        "system.git_repo", "system.git_branch",
-        "deleted.retention_days",
-    }
-    incoming = {k: str(v) for k, v in (payload or {}).items() if k in allowed}
-    if not incoming:
-        return False, "Nenhuma configuração válida enviada"
+    """
+    Updates configurações administrativas com validação de consistência.
 
-    if "smtp.port" in incoming:
-        try:
-            p = int(incoming["smtp.port"])
-            if p <= 0 or p > 65535:
-                return False, "smtp.port inválida"
-        except Exception:
-            return False, "smtp.port inválida"
+    Parameters
+    ----------
+    payload:
+        Conjunto de chaves/valores enviados pela UI/API.
+    actor:
+        Usuário responsável pela alteração.
 
-    if "smtp.tls" in incoming:
-        incoming["smtp.tls"] = "true" if incoming["smtp.tls"].strip().lower() in {"1", "true", "yes", "on"} else "false"
+    Return
+    -------
+    tuple[bool, str]
+        `(ok, message)` indicando sucesso ou falha de validação.
 
-    if "workflow.default_due_days" in incoming:
-        try:
-            days = int(incoming["workflow.default_due_days"])
-            if days < 0 or days > 3650:
-                return False, "workflow.default_due_days inválido"
-        except Exception:
-            return False, "workflow.default_due_days inválido"
-
-    if "workflow.dependency_max_status" in incoming:
-        v = str(incoming["workflow.dependency_max_status"] or "").strip()
-        if v not in STATUSES:
-            return False, "workflow.dependency_max_status inválido"
-        incoming["workflow.dependency_max_status"] = v
-
-    if "backup.enabled" in incoming:
-        incoming["backup.enabled"] = "true" if incoming["backup.enabled"].strip().lower() in {"1", "true", "yes", "on"} else "false"
-
-    if "backup.path" in incoming:
-        incoming["backup.path"] = str(_resolve_backup_path(incoming["backup.path"]))
-
-    if "backup.weekdays" in incoming:
-        try:
-            raw = json.loads(incoming["backup.weekdays"])
-            if not isinstance(raw, list):
-                return False, "backup.weekdays inválido"
-            clean_days = sorted({str(int(x)) for x in raw if str(x).strip() != ""})
-            for d in clean_days:
-                if d not in {"0", "1", "2", "3", "4", "5", "6"}:
-                    return False, "backup.weekdays inválido"
-            incoming["backup.weekdays"] = json.dumps(clean_days, ensure_ascii=False)
-        except Exception:
-            return False, "backup.weekdays inválido"
-
-    if "backup.run_time" in incoming:
-        rt = incoming["backup.run_time"].strip()
-        if not re.match(r"^\d{2}:\d{2}$", rt):
-            return False, "backup.run_time inválido"
-        hh, mm = rt.split(":")
-        if int(hh) > 23 or int(mm) > 59:
-            return False, "backup.run_time inválido"
-        incoming["backup.run_time"] = rt
-
-    # Consistency rule: automatic backup requires at least one weekday selected.
-    if incoming.get("backup.enabled") == "true":
-        raw_weekdays = incoming.get("backup.weekdays")
-        if raw_weekdays is None:
-            current = get_admin_settings().get("backup.weekdays", {}).get("value", "[]")
-            raw_weekdays = current
-        try:
-            vals = json.loads(raw_weekdays)
-            valid = [str(x) for x in vals if str(x) in {"0", "1", "2", "3", "4", "5", "6"}]
-        except Exception:
-            valid = []
-        if not valid:
-            return False, "Selecione ao menos um dia da semana para backup automático"
-
-    if "system.git_repo" in incoming and incoming["system.git_repo"]:
-        repo = incoming["system.git_repo"].strip()
-        if not (repo.startswith("https://") or repo.startswith("git@") or repo.startswith("ssh://")):
-            return False, "system.git_repo inválido"
-        incoming["system.git_repo"] = repo
-
-    if "system.git_branch" in incoming and incoming["system.git_branch"]:
-        branch = incoming["system.git_branch"].strip()
-        if not re.match(r"^[A-Za-z0-9._/-]+$", branch):
-            return False, "system.git_branch inválido"
-        incoming["system.git_branch"] = branch
-
-    if "deleted.retention_days" in incoming:
-        try:
-            days = int(incoming["deleted.retention_days"])
-            if days < 1 or days > 3650:
-                return False, "deleted.retention_days inválido"
-            incoming["deleted.retention_days"] = str(days)
-        except Exception:
-            return False, "deleted.retention_days inválido"
-
-    with db() as conn:
-        for key, value in incoming.items():
-            conn.execute(
-                "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-                (key, value, actor, now_iso()),
-            )
-    return True, "ok"
+    How it should be used
+    -------------------
+    Deve ser usada por rotas administrativas; centraliza validação de payload,
+    normalização e persistência.
+    """
+    return persist_admin_settings(db, now_iso, payload, actor)
 
 
-def _setting(settings: dict, key: str, env_name: str, default: str = "") -> str:
-    row = settings.get(key) if isinstance(settings, dict) else None
-    val = (row.get("value") if isinstance(row, dict) else "") if row else ""
-    return (val or os.getenv(env_name, default) or default).strip()
 
-
-def default_due_date_iso() -> str:
-    settings = get_admin_settings()
-    raw = _setting(settings, "workflow.default_due_days", "PDASH_DEFAULT_DUE_DAYS", "7")
-    try:
-        days = int(raw)
-    except Exception:
-        days = 7
-    days = max(0, min(days, 3650))
-    return (datetime.now(UTC) + timedelta(days=days)).date().isoformat()
-
-
-def dependency_max_status(settings: dict | None = None) -> str:
-    settings = settings or get_admin_settings()
-    configured = _setting(settings, "workflow.dependency_max_status", "PDASH_DEPENDENCY_MAX_STATUS", "Backlog")
-    return configured if configured in STATUSES else "Backlog"
-
-
-def status_rank(status: str) -> int:
-    try:
-        return STATUSES.index(status)
-    except Exception:
-        return 0
-
-
-def status_allowed_with_pending_dependencies(target_status: str, settings: dict | None = None) -> tuple[bool, str]:
-    max_status = dependency_max_status(settings)
-    if status_rank(target_status) <= status_rank(max_status):
-        return True, max_status
-    return False, max_status
-
-
-def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
-    settings = get_admin_settings()
-    host = _setting(settings, "smtp.host", "PDASH_SMTP_HOST", "")
-    port = int(_setting(settings, "smtp.port", "PDASH_SMTP_PORT", "587") or "587")
-    user = _setting(settings, "smtp.user", "PDASH_SMTP_USER", "")
-    password = _setting(settings, "smtp.pass", "PDASH_SMTP_PASS", "")
-    sender = _setting(settings, "smtp.from", "PDASH_SMTP_FROM", user or "")
-    use_tls = _setting(settings, "smtp.tls", "PDASH_SMTP_TLS", "true").lower() not in {"0", "false", "no"}
-
-    if not host or not sender:
-        return False, "SMTP não configurado (defina host e remetente em Configurações)"
-
-    msg = EmailMessage()
-    msg["From"] = sender
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.set_content(body)
-
-    try:
-        with smtplib.SMTP(host, port, timeout=20) as server:
-            if use_tls:
-                server.starttls()
-            if user:
-                server.login(user, password)
-            server.send_message(msg)
-        return True, "ok"
-    except Exception as e:
-        return False, f"Falha ao enviar email: {e}"
-
-
+# ---------------------------------------------------------------------------
+# Catálogo de relatórios periódicos
+# ---------------------------------------------------------------------------
 def list_periodic_reports() -> list[dict]:
+    """
+    Lists the  relatórios periódicos cadastrados no sistema.
+
+    Return
+    -------
+    list[dict]
+        Relatórios normalizados para uso administrativo e operacional.
+    """
     with db() as conn:
         rows = conn.execute("SELECT * FROM periodic_reports ORDER BY id DESC").fetchall()
     out = []
@@ -2088,10 +2351,29 @@ def list_periodic_reports() -> list[dict]:
                 item[k.replace("_json", "")] = []
             item.pop(k, None)
         out.append(item)
-    return out
+    return reports_list_periodic_reports(db)
 
 
+# ---------------------------------------------------------------------------
+# Criação de relatório periódico
+# ---------------------------------------------------------------------------
 def create_periodic_report(payload: dict, actor: str) -> tuple[bool, str]:
+    """
+    Creates a new  regra de relatório periódico.
+
+    Parameters
+    ----------
+    payload:
+        Configuration do relatório enviada pela UI.
+    actor:
+        Usuário responsável pela criação.
+
+    Return
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+    """
+    return reports_create_periodic_report(db, now_iso, STATUSES, PRIORITIES, payload, actor)
     name = str(payload.get("name") or "").strip()
     statuses = payload.get("statuses") or []
     priorities = payload.get("priorities") or []
@@ -2126,7 +2408,28 @@ def create_periodic_report(payload: dict, actor: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Updatesção de relatório periódico
+# ---------------------------------------------------------------------------
 def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[bool, str]:
+    """
+    Updates uma regra já cadastrada de relatório periódico.
+
+    Parameters
+    ----------
+    report_id:
+        Relatório alvo.
+    payload:
+        Alterações solicitadas.
+    actor:
+        Usuário responsável.
+
+    Return
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+    """
+    return reports_update_periodic_report(db, now_iso, STATUSES, PRIORITIES, report_id, payload, actor)
     fields = {}
     mapping = {
         "name": "name", "run_time": "run_time", "message": "message", "active": "active",
@@ -2150,16 +2453,33 @@ def update_periodic_report(report_id: int, payload: dict, actor: str) -> tuple[b
     with db() as conn:
         exists = conn.execute("SELECT id FROM periodic_reports WHERE id=?", (report_id,)).fetchone()
         if not exists:
-            return False, "Relatório não encontrado"
+            return False, "Report not found"
         conn.execute(f"UPDATE periodic_reports SET {set_clause} WHERE id=?", tuple(params))
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Exclusão de relatório periódico
+# ---------------------------------------------------------------------------
 def delete_periodic_report(report_id: int) -> tuple[bool, str]:
+    """
+    Removes uma regra de relatório periódico.
+
+    Parameters
+    ----------
+    report_id:
+        Identificador do relatório.
+
+    Return
+    -------
+    tuple[bool, str]
+        Resultado da operação.
+    """
+    return reports_delete_periodic_report(db, report_id)
     with db() as conn:
         exists = conn.execute("SELECT id FROM periodic_reports WHERE id=?", (report_id,)).fetchone()
         if not exists:
-            return False, "Relatório não encontrado"
+            return False, "Report not found"
         conn.execute("DELETE FROM periodic_reports WHERE id=?", (report_id,))
     return True, "ok"
 
@@ -2197,7 +2517,23 @@ def _render_report_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Composição de conteúdo de relatório periódico
+# ---------------------------------------------------------------------------
 def compose_periodic_report_email(report: dict) -> tuple[str, str, list[sqlite3.Row]]:
+    """
+    Monta assunto, corpo e conjunto de linhas usadas em um relatório periódico.
+
+    Parameters
+    ----------
+    report:
+        Configuration do relatório a ser executado.
+
+    Return
+    -------
+    tuple[str, str, list[sqlite3.Row]]
+        `(subject, body, rows)` para envio e/ou pré-visualização.
+    """
     roles = report.get("roles") or []
     users = []
     if roles:
@@ -2214,14 +2550,32 @@ def compose_periodic_report_email(report: dict) -> tuple[str, str, list[sqlite3.
     return subject, email_body, users
 
 
+# ---------------------------------------------------------------------------
+# Operational execution of  relatório periódico
+# ---------------------------------------------------------------------------
 def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]:
+    """
+    Executa um relatório periódico e dispara seu envio quando aplicável.
+
+    Parameters
+    ----------
+    report:
+        Configuration do relatório.
+    actor:
+        Usuário/ator lógico da execução.
+
+    Return
+    -------
+    tuple[bool, str]
+        Resultado da execução.
+    """
     roles = report.get("roles") or []
     if not roles:
-        return False, "sem perfis de destino"
+        return False, "no target roles"
 
     subject, email_body, users = compose_periodic_report_email(report)
     if not users:
-        return False, "nenhum usuário com email encontrado para os perfis selecionados"
+        return False, "no users with email found for selected roles"
 
     sent = 0
     for u in users:
@@ -2230,8 +2584,152 @@ def run_periodic_report(report: dict, actor: str = "system") -> tuple[bool, str]
             sent += 1
 
     if sent == 0:
-        return False, "falha ao enviar para os destinatários"
+        return False, "failed to send to recipients"
     return True, f"sent={sent}"
+
+
+def send_invite_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
+    settings = get_admin_settings()
+    smtp_host = _setting(settings, "smtp.host", "PDASH_SMTP_HOST", "")
+    smtp_port_raw = _setting(settings, "smtp.port", "PDASH_SMTP_PORT", "587")
+    smtp_user = _setting(settings, "smtp.user", "PDASH_SMTP_USER", "")
+    smtp_pass = _setting(settings, "smtp.pass", "PDASH_SMTP_PASS", "")
+    smtp_from = _setting(settings, "smtp.from", "PDASH_SMTP_FROM", smtp_user)
+    smtp_tls = _setting(settings, "smtp.tls", "PDASH_SMTP_TLS", "true").lower() in {"1", "true", "yes", "on"}
+
+    if not str(to_email or "").strip():
+        return False, "Recipient is required"
+    if not smtp_host:
+        return False, "SMTP not configured"
+    try:
+        smtp_port = int(str(smtp_port_raw or "587").strip())
+    except Exception:
+        return False, "Invalid SMTP port"
+    if not smtp_from:
+        return False, "remetente SMTP not configured"
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = smtp_from
+    msg["To"] = str(to_email).strip()
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+            server.ehlo()
+            if smtp_tls:
+                server.starttls()
+                server.ehlo()
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        return True, "ok"
+    except Exception as e:
+        return False, str(e)
+
+
+def _setting(settings: dict, key: str, env_key: str, default: str = "") -> str:
+    row = (settings or {}).get(key, {})
+    value = row.get("value") if isinstance(row, dict) else None
+    if value is None or str(value) == "":
+        return str(os.getenv(env_key, default))
+    return str(value)
+
+
+def dependency_max_status() -> str:
+    settings = get_admin_settings()
+    return _setting(settings, "workflow.dependency_max_status", "PDASH_DEPENDENCY_MAX_STATUS", "Backlog")
+
+
+def default_due_date_iso() -> str:
+    settings = get_admin_settings()
+    raw = _setting(settings, "workflow.default_due_days", "PDASH_DEFAULT_DUE_DAYS", "7")
+    try:
+        days = int(str(raw or "7").strip())
+    except Exception:
+        days = 7
+    if days < 0:
+        days = 0
+    return (datetime.now(UTC) + timedelta(days=days)).date().isoformat()
+
+
+def status_allowed_with_pending_dependencies(target_status: str) -> tuple[bool, str]:
+    max_status = dependency_max_status()
+    order = {"Backlog": 0, "Em andamento": 1, "Em revisão": 2, "Concluído": 3}
+    target = str(target_status or "Backlog").strip()
+    if target not in order:
+        target = "Backlog"
+    limit = str(max_status or "Backlog").strip()
+    if limit not in order:
+        limit = "Backlog"
+    return (order[target] <= order[limit], limit)
+
+
+def get_user_profile(username: str) -> dict | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT username, email, phone, extension, work_area, notes, priority_color_enabled, priority_colors_json FROM users WHERE username=?",
+            (username,),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        colors = json.loads(row["priority_colors_json"] or "{}")
+        if not isinstance(colors, dict):
+            colors = {}
+    except Exception:
+        colors = {}
+    return {
+        "username": row["username"],
+        "email": row["email"],
+        "phone": row["phone"],
+        "extension": row["extension"],
+        "work_area": row["work_area"],
+        "notes": row["notes"],
+        "priority_color_enabled": bool(int(row["priority_color_enabled"] or 0)),
+        "priority_colors": colors,
+    }
+
+
+def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
+    if not isinstance(payload, dict):
+        return False, "Invalid payload"
+    colors = payload.get("priority_colors") or {}
+    if not isinstance(colors, dict):
+        colors = {}
+    data = {
+        "email": str(payload.get("email") or "").strip(),
+        "phone": str(payload.get("phone") or "").strip(),
+        "extension": str(payload.get("extension") or "").strip(),
+        "work_area": str(payload.get("work_area") or "").strip(),
+        "notes": str(payload.get("notes") or "").strip(),
+        "priority_color_enabled": 1 if bool(payload.get("priority_color_enabled")) else 0,
+        "priority_colors_json": json.dumps(colors, ensure_ascii=False),
+    }
+    with db() as conn:
+        exists = conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone()
+        if not exists:
+            return False, "User not found"
+        conn.execute(
+            "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=?, priority_color_enabled=?, priority_colors_json=? WHERE username=?",
+            (data["email"], data["phone"], data["extension"], data["work_area"], data["notes"], data["priority_color_enabled"], data["priority_colors_json"], username),
+        )
+    return True, "ok"
+
+
+def change_own_password(username: str, current_password: str, new_password: str) -> tuple[bool, str]:
+    if not str(current_password or "") or not str(new_password or ""):
+        return False, "Current and new password are required"
+    if len(str(new_password)) < 4:
+        return False, "New password is too short"
+    with db() as conn:
+        row = conn.execute("SELECT password_hash FROM users WHERE username=?", (username,)).fetchone()
+        if not row:
+            return False, "User not found"
+        if not verify_password(current_password, row["password_hash"]):
+            return False, "Current password is invalid"
+        conn.execute("UPDATE users SET password_hash=? WHERE username=?", (hash_password(new_password), username))
+    return True, "ok"
 
 
 def _backup_config(settings: dict) -> dict:
@@ -2305,27 +2803,45 @@ def _resolve_backup_path(path_value: str | None) -> Path:
     return p
 
 
+# ---------------------------------------------------------------------------
+# Validação de permissões do caminho de backup
+# ---------------------------------------------------------------------------
 def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str, dict]:
-    settings = get_admin_settings()
-    cfg = _backup_config(settings)
-    target = _resolve_backup_path(path_raw or cfg["path"])
-    detail = {"path": str(target), "exists": False, "writable": False}
+    """
+    Testa se o caminho configurado para backup existe e aceita escrita.
 
-    try:
-        detail["exists"] = target.exists()
-        target.mkdir(parents=True, exist_ok=True)
-        probe = target / f".pdash-permcheck-{int(time.time())}.tmp"
-        probe.write_text("ok", encoding="utf-8")
-        probe.unlink(missing_ok=True)
-        detail["writable"] = True
-        return True, f"Caminho de backup OK para escrita: {target}", detail
-    except PermissionError:
-        return False, _backup_permission_hint(target), detail
-    except Exception as e:
-        return False, f"Falha ao validar caminho de backup '{target}': {e}", detail
+    Parameters
+    ----------
+    path_raw:
+        Caminho opcional informado manualmente para teste.
+
+    Return
+    -------
+    tuple[bool, str, dict]
+        `(ok, message, detail)` com detalhes de existência e gravabilidade.
+    """
+    return ops_test_backup_path_permissions(get_admin_settings, _backup_config, _resolve_backup_path, _backup_permission_hint, path_raw)
 
 
+# ---------------------------------------------------------------------------
+# Execução de backup do sistema
+# ---------------------------------------------------------------------------
 def run_system_backup(actor: str = "system", path_override: str | None = None) -> tuple[bool, str]:
+    """
+    Executa backup do banco e dos artefatos documentais do sistema.
+
+    Parameters
+    ----------
+    actor:
+        Usuário/ator lógico da operação.
+    path_override:
+        Caminho opcional para sobrescrever o destino configurado.
+
+    Return
+    -------
+    tuple[bool, str]
+        Resultado textual da operação.
+    """
     settings = get_admin_settings()
     cfg = _backup_config(settings)
     primary_out_dir = _resolve_backup_path(path_override or cfg["path"])
@@ -2372,179 +2888,88 @@ def run_system_backup(actor: str = "system", path_override: str | None = None) -
     audit(actor, "system.backup.run", str(used_dir), ", ".join(copied))
     return True, f"backup salvo em {used_dir} ({', '.join(copied)})"
 
+# ---------------------------------------------------------------------------
+# Catálogo de backups disponíveis
+# ---------------------------------------------------------------------------
 def list_available_backups(path_raw: str | None = None) -> tuple[bool, str, dict]:
-    settings = get_admin_settings()
-    cfg = _backup_config(settings)
-    backup_dir = _resolve_backup_path(path_raw or cfg["path"])
+    """
+    Lists the  backups disponíveis em um diretório configurado.
 
-    if not backup_dir.exists() or not backup_dir.is_dir():
-        return True, "ok", {"path": str(backup_dir), "items": [], "total": 0}
+    Parameters
+    ----------
+    path_raw:
+        Caminho opcional a ser inspecionado.
 
-    db_re = re.compile(r"^projectdashboard-db-(\d{8}-\d{6})\.sqlite3$")
-    docs_re = re.compile(r"^projectdashboard-docs-(\d{8}-\d{6})\.tar\.gz$")
+    Return
+    -------
+    tuple[bool, str, dict]
+        `(ok, message, payload)` com itens agrupados por snapshot.
+    """
+    return ops_list_available_backups(get_admin_settings, _backup_config, _resolve_backup_path, path_raw)
 
-    grouped: dict[str, dict] = {}
-    for p in backup_dir.iterdir():
-        if not p.is_file():
-            continue
-        mdb = db_re.match(p.name)
-        if mdb:
-            stamp = mdb.group(1)
-            item = grouped.setdefault(stamp, {"stamp": stamp, "db_backup": None, "docs_backup": None})
-            item["db_backup"] = str(p)
-            continue
-        mdocs = docs_re.match(p.name)
-        if mdocs:
-            stamp = mdocs.group(1)
-            item = grouped.setdefault(stamp, {"stamp": stamp, "db_backup": None, "docs_backup": None})
-            item["docs_backup"] = str(p)
+# __PDASH_REPLACED__ list_available_backups
 
-    items = [v for v in grouped.values() if v.get("db_backup")]
-    items.sort(key=lambda x: x.get("stamp") or "", reverse=True)
-
-    for it in items:
-        st = str(it.get("stamp") or "")
-        try:
-            dt = datetime.strptime(st, "%Y%m%d-%H%M%S")
-            it["when"] = dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            it["when"] = st
-
-    return True, "ok", {"path": str(backup_dir), "items": items, "total": len(items)}
-
-
+# ---------------------------------------------------------------------------
+# Cálculo do próximo backup agendado
+# ---------------------------------------------------------------------------
 def next_backup_run() -> dict:
-    settings = get_admin_settings()
-    cfg = _backup_config(settings)
-    result = {
-        "enabled": bool(cfg.get("enabled")),
-        "weekdays": [str(x) for x in (cfg.get("weekdays") or [])],
-        "run_time": str(cfg.get("run_time") or "03:00"),
-        "next_run_iso": None,
-        "next_run_human": None,
-    }
-    if not result["enabled"] or not result["weekdays"]:
-        return result
+    """
+    Calcula a próxima janela prevista de execução automática de backup.
 
-    try:
-        hh, mm = result["run_time"].split(":")
-        hour = int(hh); minute = int(mm)
-    except Exception:
-        hour, minute = 3, 0
+    Return
+    -------
+    dict
+        Estrutura com estado, dias configurados, horário e próximo horário
+        resolvido quando houver.
+    """
+    return ops_next_backup_run(get_admin_settings, _backup_config)
 
-    allowed = {int(x) for x in result["weekdays"] if str(x).isdigit()}
-    now = datetime.now()
-    for i in range(0, 15):
-        d = now + timedelta(days=i)
-        if d.weekday() not in allowed:
-            continue
-        candidate = d.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if candidate <= now:
-            continue
-        result["next_run_iso"] = candidate.isoformat()
-        result["next_run_human"] = candidate.strftime("%Y-%m-%d %H:%M")
-        break
-    return result
+# __PDASH_REPLACED__ next_backup_run
 
-
+# ---------------------------------------------------------------------------
+# Restauração de backup por snapshot
+# ---------------------------------------------------------------------------
 def restore_backup_from_stamp(stamp: str, path_raw: str | None, actor: str) -> tuple[bool, str]:
-    ok, msg, payload = list_available_backups(path_raw)
-    if not ok:
-        return False, msg
+    """
+    Restaura um snapshot de backup específico.
 
-    target = None
-    for it in payload.get("items", []):
-        if str(it.get("stamp") or "") == str(stamp or ""):
-            target = it
-            break
-    if not target:
-        return False, "Backup selecionado não encontrado"
+    Parameters
+    ----------
+    stamp:
+        Identificador temporal do snapshot.
+    path_raw:
+        Caminho opcional da origem dos backups.
+    actor:
+        Usuário responsável pela operação.
 
-    db_backup = str(target.get("db_backup") or "").strip()
-    docs_backup = str(target.get("docs_backup") or "").strip()
-    if not db_backup:
-        return False, "Backup de banco não encontrado para o snapshot selecionado"
+    Return
+    -------
+    tuple[bool, str]
+        Resultado textual da restauração.
+    """
+    return ops_restore_backup_from_stamp(list_available_backups, audit, APP_DIR, stamp, path_raw, actor)
 
-    script = APP_DIR / "scripts" / "restore_backup.sh"
-    if not script.exists():
-        return False, f"Script de restore não encontrado: {script}"
+# __PDASH_REPLACED__ restore_backup_from_stamp
 
-    cmd = [
-        str(script),
-        "--db-backup", db_backup,
-        "--install-dir", str(APP_DIR),
-        "--allow-non-root",
-    ]
-    if docs_backup:
-        cmd.extend(["--docs-backup", docs_backup])
-
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    except Exception as e:
-        return False, f"Falha ao executar restore: {e}"
-
-    out = (r.stdout or "").strip()
-    err = (r.stderr or "").strip()
-    detail = (out + ("\n" + err if err else "")).strip()
-
-    if r.returncode != 0:
-        return False, f"Restore falhou (code={r.returncode}). {detail[:1200]}"
-
-    audit(actor, "system.backup.restore", str(stamp), f"path={payload.get('path')} docs={bool(docs_backup)}")
-    return True, f"Restore concluído para {stamp}. {detail[:800]}"
-
-
+# ---------------------------------------------------------------------------
+# Diagnóstico geral do sistema
+# ---------------------------------------------------------------------------
 def run_system_diagnostics() -> dict:
-    settings = get_admin_settings()
-    repo_url = _setting(settings, "system.git_repo", "PDASH_GIT_REPO", "https://github.com/Vieirapa/ProjectDashboard.git")
-    repo_branch = _setting(settings, "system.git_branch", "PDASH_GIT_BRANCH", "develop")
+    """
+    Runs a set of operational and version checks for the application.
 
-    diagnostics = {
-        "timestamp": now_iso(),
-        "checks": [],
-        "version": {
-            "local": "unknown",
-            "remote": "unknown",
-            "repo": repo_url,
-            "branch": repo_branch,
-            "updateAvailable": False,
-        }
-    }
+    Return
+    -------
+    dict
+        Structure containing timestamp, checks, and local/remote version comparison state.
 
-    def add_check(name: str, ok: bool, detail: str):
-        diagnostics["checks"].append({"name": name, "ok": bool(ok), "detail": detail})
+    How it should be used
+    -------------------
+    Base for the diagnostics screen, health badge, and operational troubleshooting.
+    """
+    return ops_run_system_diagnostics(get_admin_settings, _setting, now_iso, DB_PATH, DATA_DIR, BASE_DIR, APP_DIR)
 
-    add_check("Banco de dados", DB_PATH.exists(), str(DB_PATH))
-    add_check("Pasta de dados", DATA_DIR.exists(), str(DATA_DIR))
-    add_check("Pasta de documentos", BASE_DIR.exists(), str(BASE_DIR))
-
-    if (APP_DIR / ".git").exists():
-        try:
-            local = subprocess.check_output(["git", "-C", str(APP_DIR), "rev-parse", "HEAD"], text=True, timeout=6).strip()
-            diagnostics["version"]["local"] = local
-            add_check("Git local", True, local[:12])
-        except Exception as e:
-            add_check("Git local", False, str(e))
-    else:
-        add_check("Git local", False, "instalação sem .git (normal em deploy via rsync)")
-
-    try:
-        remote_line = subprocess.check_output(["git", "ls-remote", repo_url, f"refs/heads/{repo_branch}"], text=True, timeout=10).strip()
-        remote = remote_line.split()[0] if remote_line else ""
-        if remote:
-            diagnostics["version"]["remote"] = remote
-            add_check("GitHub remoto", True, remote[:12])
-        else:
-            add_check("GitHub remoto", False, "branch não encontrada")
-    except Exception as e:
-        add_check("GitHub remoto", False, str(e))
-
-    local = diagnostics["version"]["local"]
-    remote = diagnostics["version"]["remote"]
-    diagnostics["version"]["updateAvailable"] = bool(local and remote and local != "unknown" and remote != "unknown" and local != remote)
-
-    return diagnostics
-
+# __PDASH_REPLACED__ run_system_diagnostics
 
 def report_scheduler_loop():
     while True:
@@ -2609,7 +3034,23 @@ def list_document_versions(slug: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# History of  notas de revisão
+# ---------------------------------------------------------------------------
 def list_review_notes(slug: str) -> list[dict]:
+    """
+    Lists the  histórico de notas de revisão de um documento.
+
+    Parameters
+    ----------
+    slug:
+        Documento alvo.
+
+    Return
+    -------
+    list[dict]
+        Notas ordenadas para exibição em histórico e tratamento operacional.
+    """
     with db() as conn:
         rows = conn.execute(
             """
@@ -2620,54 +3061,20 @@ def list_review_notes(slug: str) -> list[dict]:
             """,
             (slug,),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return workflow_list_review_notes(db, slug)
 
 
+# ---------------------------------------------------------------------------
+# Inclusão de nova nota de revisão
+# ---------------------------------------------------------------------------
 def add_review_note(slug: str, note: str, actor: str) -> tuple[bool, str]:
-    proj = get_document(slug)
-    if not proj:
-        return False, "Documento não encontrado"
-    if (proj.get("status") or "").strip().lower() != "em revisão":
-        return False, "Notas de revisão só podem ser adicionadas quando o documento estiver em 'em revisão'"
-    clean_note = (note or "").strip()
-    if not clean_note:
-        return False, "Nota não pode estar vazia"
-    if len(clean_note) > 4000:
-        return False, "Nota muito longa (máximo 4000 caracteres)"
-    with db() as conn:
-        conn.execute(
-            "INSERT INTO review_notes (document_slug, note, created_by, created_at) VALUES (?, ?, ?, ?)",
-            (slug, clean_note, actor, now_iso()),
-        )
-    return True, "ok"
+    return workflow_add_review_note(db, audit, slug, note, actor)
 
-
+# ---------------------------------------------------------------------------
+# Resolução/reabertura de nota de revisão
+# ---------------------------------------------------------------------------
 def set_review_note_resolution(slug: str, note_id: int, actor: str, resolved: bool) -> tuple[bool, str]:
-    proj = get_document(slug)
-    if not proj:
-        return False, "Documento não encontrado"
-    if (proj.get("status") or "").strip().lower() != "em revisão":
-        return False, "Notas só podem ser alteradas quando o documento estiver em 'em revisão'"
-
-    with db() as conn:
-        row = conn.execute(
-            "SELECT id FROM review_notes WHERE id=? AND document_slug=?",
-            (note_id, slug),
-        ).fetchone()
-        if not row:
-            return False, "Nota não encontrada"
-
-        if resolved:
-            conn.execute(
-                "UPDATE review_notes SET is_resolved=1, resolved_by=?, resolved_at=? WHERE id=? AND document_slug=?",
-                (actor, now_iso(), note_id, slug),
-            )
-        else:
-            conn.execute(
-                "UPDATE review_notes SET is_resolved=0, resolved_by='', resolved_at='' WHERE id=? AND document_slug=?",
-                (note_id, slug),
-            )
-    return True, "ok"
+    return workflow_set_review_note_resolution(db, audit, slug, note_id, actor, resolved)
 
 
 def get_document_version(slug: str, version: int | None = None) -> dict | None:
@@ -2688,7 +3095,7 @@ def get_document_version(slug: str, version: int | None = None) -> dict | None:
 def save_document_file(slug: str, filename: str, mime_type: str, b64_content: str, actor: str) -> tuple[bool, str]:
     p = get_document(slug)
     if not p:
-        return False, "Documento não encontrado"
+        return False, "Document not found"
 
     ok_repo, repo_msg = ensure_docs_repo()
     if not ok_repo:
@@ -2747,6 +3154,9 @@ def save_document_file(slug: str, filename: str, mime_type: str, b64_content: st
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# Catálogo de documentos apagados recuperáveis
+# ---------------------------------------------------------------------------
 def list_deleted_documents(
     q: str | None = None,
     deleted_by: str | None = None,
@@ -2755,363 +3165,114 @@ def list_deleted_documents(
     page: int = 1,
     page_size: int = 10,
 ) -> dict:
-    base_query = "FROM deleted_documents"
-    where: list[str] = []
-    params: list[object] = []
+    """
+    Lista documentos apagados ainda elegíveis para recuperação, com filtros e paginação.
 
-    qv = (q or "").strip()
-    if qv:
-        where.append("(name LIKE ? OR slug LIKE ?)")
-        like = f"%{qv}%"
-        params.extend([like, like])
+    Parameters
+    ----------
+    q:
+        Busca textual por nome/slug.
+    deleted_by:
+        Filtro por usuário que executou a exclusão.
+    deleted_from:
+        Data inicial da janela de exclusão.
+    deleted_to:
+        Data final da janela de exclusão.
+    page:
+        Página atual.
+    page_size:
+        Quantidade de itens por página.
 
-    byv = (deleted_by or "").strip()
-    if byv:
-        where.append("LOWER(TRIM(COALESCE(deleted_by, ''))) LIKE ?")
-        params.append(f"%{byv.lower()}%")
-
-    def _normalize_date_start(raw: str | None) -> str | None:
-        v = (raw or "").strip()
-        if not v:
-            return None
-        if len(v) == 10:
-            return f"{v}T00:00:00Z"
-        return v
-
-    def _normalize_date_end(raw: str | None) -> str | None:
-        v = (raw or "").strip()
-        if not v:
-            return None
-        if len(v) == 10:
-            return f"{v}T23:59:59Z"
-        return v
-
-    from_v = _normalize_date_start(deleted_from)
-    to_v = _normalize_date_end(deleted_to)
-    if from_v:
-        where.append("deleted_at >= ?")
-        params.append(from_v)
-    if to_v:
-        where.append("deleted_at <= ?")
-        params.append(to_v)
-
-    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
-
-    safe_page = max(1, int(page or 1))
-    safe_page_size = max(1, min(int(page_size or 10), 100))
-
-    with db() as conn:
-        total = int(conn.execute(f"SELECT COUNT(*) AS c {base_query}{where_sql}", tuple(params)).fetchone()["c"])
-        total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
-        safe_page = min(safe_page, total_pages)
-        offset = (safe_page - 1) * safe_page_size
-
-        rows = conn.execute(
-            f"SELECT id, slug, name, deleted_at, deleted_by, trash_path {base_query}{where_sql} ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
-            tuple(params) + (safe_page_size, offset),
-        ).fetchall()
-
-    return {
-        "items": [dict(r) for r in rows],
-        "total": total,
-        "page": safe_page,
-        "page_size": safe_page_size,
-        "total_pages": total_pages,
-    }
+    Return
+    -------
+    dict
+        Payload paginado para a UI administrativa de recuperação.
+    """
+    return recovery_list_deleted_documents(db, q, deleted_by, deleted_from, deleted_to, page, page_size)
 
 
-def _purge_deleted_document_record(record: sqlite3.Row | dict) -> tuple[bool, str]:
-    rec = dict(record)
-    trash_path = Path(rec.get("trash_path") or "")
-    if trash_path.exists() and trash_path.is_dir():
-        shutil.rmtree(trash_path, ignore_errors=True)
 
-    try:
-        versions = json.loads(rec.get("document_versions_json") or "[]")
-    except Exception:
-        versions = []
-    for v in versions:
-        rel = str(v.get("file_rel_path") or "").strip()
-        if rel:
-            try:
-                p = DOCS_REPO_DIR / rel
-                if p.exists():
-                    p.unlink()
-            except Exception:
-                pass
-
-    with db() as conn:
-        conn.execute("DELETE FROM deleted_documents WHERE id=?", (int(rec["id"]),))
-    return True, "ok"
-
-
+# ---------------------------------------------------------------------------
+# Expurgo automático de documentos apagados vencidos
+# ---------------------------------------------------------------------------
 def purge_expired_deleted_documents(actor: str = "system") -> tuple[int, int]:
-    settings = get_admin_settings()
-    try:
-        retention_days = int(_setting(settings, "deleted.retention_days", "PDASH_DELETED_RETENTION_DAYS", "30"))
-    except Exception:
-        retention_days = 30
-    retention_days = max(1, min(retention_days, 3650))
-    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
-
-    purged = 0
-    with db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM deleted_documents WHERE deleted_at < ? ORDER BY deleted_at ASC",
-            (cutoff.replace(microsecond=0).isoformat() + "Z",),
-        ).fetchall()
-    for r in rows:
-        ok, _ = _purge_deleted_document_record(r)
-        if ok:
-            purged += 1
-    if purged:
-        audit(actor, "document.deleted.purge", "deleted_documents", f"purged={purged} retention_days={retention_days}")
-    return purged, retention_days
+    return recovery_purge_expired_deleted_documents(db, audit, actor)
 
 
+
+# ---------------------------------------------------------------------------
+# Restauração de documento apagado
+# ---------------------------------------------------------------------------
 def restore_deleted_document(deleted_id: int, actor: str) -> tuple[bool, str]:
-    with db() as conn:
-        row = conn.execute("SELECT * FROM deleted_documents WHERE id=?", (deleted_id,)).fetchone()
-    if not row:
-        return False, "Registro de documento apagado não encontrado"
-
-    rec = dict(row)
-    try:
-        document = json.loads(rec.get("document_json") or "{}")
-        notes = json.loads(rec.get("review_notes_json") or "[]")
-        versions = json.loads(rec.get("document_versions_json") or "[]")
-    except Exception:
-        return False, "Dados de restauração inválidos"
-
-    slug = str(document.get("slug") or rec.get("slug") or "").strip()
-    if not slug:
-        return False, "Slug inválido para restauração"
-
-    with db() as conn:
-        exists = conn.execute("SELECT 1 FROM documents WHERE slug=?", (slug,)).fetchone()
-        if exists:
-            return False, "Já existe um documento ativo com este slug"
-
-    trash_path = Path(rec.get("trash_path") or "")
-    target_path = BASE_DIR / slug
-    if target_path.exists():
-        return False, "Já existe pasta de documento com este slug"
-
-    if trash_path.exists() and trash_path.is_dir():
-        try:
-            shutil.move(str(trash_path), str(target_path))
-        except Exception as e:
-            return False, f"Falha ao restaurar pasta do documento: {e}"
-
-    document["path"] = str(target_path)
-
-    with db() as conn:
-        conn.execute(
-            "INSERT INTO documents (slug,name,status,priority,owner,due_date,description,path,updated_at,document_status,document_name,document_mime,document_path,created_by,opened_at,released_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                document.get("slug", slug), document.get("name", rec.get("name", slug)), document.get("status", "Backlog"),
-                document.get("priority", "Média"), document.get("owner", ""), document.get("dueDate", ""),
-                document.get("description", "Sem descrição"), document.get("path", str(target_path)), document.get("updatedAt", now_iso()),
-                document.get("documentStatus", "aguardando edição"), document.get("documentName", ""), document.get("documentMime", ""),
-                document.get("documentPath", ""), document.get("createdBy", actor), document.get("openedAt", now_iso()), document.get("releasedAt", ""),
-            ),
-        )
-        for n in notes:
-            conn.execute(
-                "INSERT INTO review_notes (document_slug, note, created_by, created_at, resolved_by, resolved_at, is_resolved) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (slug, n.get("note", ""), n.get("created_by", ""), n.get("created_at", now_iso()), n.get("resolved_by", ""), n.get("resolved_at", ""), int(n.get("is_resolved") or 0)),
-            )
-        for v in versions:
-            conn.execute(
-                "INSERT OR IGNORE INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (slug, int(v.get("version") or 1), v.get("document_name", ""), v.get("document_mime", "application/octet-stream"), v.get("document_status", ""), v.get("file_rel_path", ""), v.get("git_commit", ""), v.get("checksum", ""), v.get("created_by", ""), v.get("created_at", now_iso())),
-            )
-        conn.execute("DELETE FROM deleted_documents WHERE id=?", (deleted_id,))
-
-    audit(actor, "document.restore", slug, f"deleted_id={deleted_id}")
-    return True, "ok"
+    return recovery_restore_deleted_document(db, audit, deleted_id, actor)
 
 
+
+# ---------------------------------------------------------------------------
+# Exclusão definitiva de documento já apagado
+# ---------------------------------------------------------------------------
 def delete_deleted_document_permanently(deleted_id: int, actor: str) -> tuple[bool, str]:
-    with db() as conn:
-        row = conn.execute("SELECT * FROM deleted_documents WHERE id=?", (deleted_id,)).fetchone()
-    if not row:
-        return False, "Registro de documento apagado não encontrado"
-    ok, msg = _purge_deleted_document_record(row)
-    if ok:
-        audit(actor, "document.deleted.purge.manual", str(deleted_id))
-    return ok, msg
+    return recovery_delete_deleted_document_permanently(db, audit, deleted_id, actor)
 
 
+
+# ---------------------------------------------------------------------------
+# Exclusão lógica de documento para área recuperável
+# ---------------------------------------------------------------------------
 def delete_document(slug: str, actor: str) -> tuple[bool, str]:
-    p = get_document(slug)
-    if not p:
-        return False, "Documento não encontrado"
-
-    proj_path = Path(p.get("path") or "")
-    trash_root = DATA_DIR / "deleted_documents"
-    trash_root.mkdir(parents=True, exist_ok=True)
-    target = trash_root / f"{slug}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-
-    if proj_path.exists():
-        try:
-            resolved_proj = proj_path.resolve()
-            resolved_base = BASE_DIR.resolve()
-            if str(resolved_proj).startswith(str(resolved_base) + os.sep):
-                shutil.move(str(resolved_proj), str(target))
-        except Exception as e:
-            return False, f"Falha ao remover pasta do documento: {e}"
-
-    with db() as conn:
-        notes = conn.execute("SELECT * FROM review_notes WHERE document_slug=?", (slug,)).fetchall()
-        versions = conn.execute("SELECT * FROM document_versions WHERE document_slug=?", (slug,)).fetchall()
-
-        conn.execute(
-            "INSERT INTO deleted_documents (slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                p.get("slug", slug), p.get("name", slug), now_iso(), actor, str(target),
-                json.dumps(p, ensure_ascii=False),
-                json.dumps([dict(x) for x in notes], ensure_ascii=False),
-                json.dumps([dict(x) for x in versions], ensure_ascii=False),
-            ),
-        )
-
-        conn.execute("DELETE FROM review_notes WHERE document_slug=?", (slug,))
-        conn.execute("DELETE FROM document_versions WHERE document_slug=?", (slug,))
-        conn.execute("DELETE FROM document_dependencies WHERE document_slug=? OR depends_on_slug=?", (slug, slug))
-        conn.execute("DELETE FROM documents WHERE slug=?", (slug,))
-    return True, "ok"
+    return recovery_delete_document(db, audit, document_file_path, slug, actor)
 
 
-def get_user_profile(username: str) -> dict | None:
-    with db() as conn:
-        row = conn.execute(
-            "SELECT username, role, email, phone, extension, work_area, notes, priority_color_enabled, priority_colors_json FROM users WHERE username=?",
-            (username,),
-        ).fetchone()
-    if not row:
-        return None
 
-    profile = dict(row)
-    default_colors = {
-        "Baixa": "#dbeafe",
-        "Média": "#fef3c7",
-        "Alta": "#fed7aa",
-        "Urgente": "#fecaca",
-    }
-    raw = str(profile.get("priority_colors_json") or "").strip()
-    try:
-        parsed = json.loads(raw) if raw else {}
-    except Exception:
-        parsed = {}
-    if not isinstance(parsed, dict):
-        parsed = {}
-
-    normalized_parsed: dict[str, str] = {}
-    for k, v in parsed.items():
-        nk = _normalize_priority_label(str(k))
-        if nk:
-            normalized_parsed[nk] = str(v)
-
-    colors = {
-        "Baixa": str(normalized_parsed.get("Baixa") or default_colors["Baixa"]),
-        "Média": str(normalized_parsed.get("Média") or default_colors["Média"]),
-        "Alta": str(normalized_parsed.get("Alta") or default_colors["Alta"]),
-        "Urgente": str(normalized_parsed.get("Urgente") or default_colors["Urgente"]),
-    }
-
-    profile["priority_color_enabled"] = bool(int(profile.get("priority_color_enabled") or 0))
-    profile["priority_colors"] = colors
-    profile.pop("priority_colors_json", None)
-    return profile
-
-
-def _normalize_priority_label(raw: str) -> str:
-    v = str(raw or "").strip().lower()
-    if v in {"baixa"}:
-        return "Baixa"
-    if v in {"media", "média"}:
-        return "Média"
-    if v in {"alta"}:
-        return "Alta"
-    if v in {"urgente"}:
-        return "Urgente"
-    return ""
-
-
-def update_user_profile(username: str, payload: dict) -> tuple[bool, str]:
-    email = str(payload.get("email") or "").strip()
-    phone = str(payload.get("phone") or "").strip()
-    extension = str(payload.get("extension") or "").strip()
-    work_area = str(payload.get("work_area") or "").strip()
-    notes = str(payload.get("notes") or "").strip()
-
-    if len(email) > 200 or len(phone) > 80 or len(extension) > 40 or len(work_area) > 120 or len(notes) > 4000:
-        return False, "Campos do perfil excedem o limite permitido"
-
-    priority_color_enabled = bool(payload.get("priority_color_enabled"))
-    default_colors = {
-        "Baixa": "#dbeafe",
-        "Média": "#fef3c7",
-        "Alta": "#fed7aa",
-        "Urgente": "#fecaca",
-    }
-    incoming_colors = payload.get("priority_colors") or {}
-    if not isinstance(incoming_colors, dict):
-        incoming_colors = {}
-
-    normalized_incoming: dict[str, str] = {}
-    for raw_k, raw_v in incoming_colors.items():
-        nk = _normalize_priority_label(str(raw_k))
-        if nk:
-            normalized_incoming[nk] = str(raw_v)
-
-    colors = {}
-    for key in ["Baixa", "Média", "Alta", "Urgente"]:
-        value = str(normalized_incoming.get(key) or default_colors[key]).strip()
-        if not re.match(r"^#[0-9a-fA-F]{6}$", value):
-            return False, f"Cor inválida para prioridade {key}"
-        colors[key] = value
-
-    with db() as conn:
-        row = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
-        if not row:
-            return False, "Usuário não encontrado"
-        conn.execute(
-            "UPDATE users SET email=?, phone=?, extension=?, work_area=?, notes=?, priority_color_enabled=?, priority_colors_json=? WHERE username=?",
-            (email, phone, extension, work_area, notes, int(priority_color_enabled), json.dumps(colors, ensure_ascii=False), username),
-        )
-
-    return True, "ok"
-
-
-def change_own_password(username: str, current_password: str, new_password: str) -> tuple[bool, str]:
-    current_password = current_password or ""
-    new_password = new_password or ""
-    if len(new_password) < 4:
-        return False, "Nova senha muito curta"
-
-    with db() as conn:
-        row = conn.execute("SELECT password_hash FROM users WHERE username=?", (username,)).fetchone()
-        if not row:
-            return False, "Usuário não encontrado"
-        if not verify_password(current_password, row["password_hash"]):
-            return False, "Senha atual inválida"
-        conn.execute("UPDATE users SET password_hash=? WHERE username=?", (hash_password(new_password), username))
-
-    return True, "ok"
-
-
-def create_session(username: str, role: str) -> str:
-    return create_auth_session(SESSIONS, SESSION_TTL_SECONDS, username, role)
-
-
-def current_user_from_cookie(raw_cookie: str | None) -> dict | None:
-    return current_user_from_session_cookie(SESSIONS, SESSION_COOKIE, raw_cookie)
-
-
+# ---------------------------------------------------------------------------
+# Handler HTTP principal da aplicação
+# ---------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
+    """
+    Handler HTTP central do ProjectDashboard.
+
+    Papel desta classe
+    ------------------
+    Esta classe concentra o ciclo de atendimento HTTP da aplicação, incluindo:
+    - leitura de sessão/cookie
+    - autorização por página e módulo
+    - entrega de assets estáticos
+    - dispatch de endpoints HTML e API
+    - serialização de respostas JSON
+
+    Como ela deve ser tratada no restante do programa
+    -----------------------------------------------
+    - Regras de negócio não devem crescer desnecessariamente dentro do Handler.
+    - Sempre que possível, o Handler deve delegar para funções/módulos de domínio.
+    - O Handler deve atuar principalmente como camada de transporte, autenticação,
+      validação de acesso e composição de resposta.
+    """
+
+    # -----------------------------------------------------------------------
+    # Resposta JSON padrão
+    # -----------------------------------------------------------------------
     def _json(self, code: int, payload: dict, set_cookie: str | None = None):
+        """
+        Envia uma resposta JSON HTTP padronizada.
+
+        Parameters
+        ----------
+        code:
+            Status HTTP da resposta.
+        payload:
+            Dicionário serializável para JSON.
+        set_cookie:
+            Cookie opcional a ser anexado ao header da resposta.
+
+        Return
+        -------
+        None
+
+        How it should be used
+        -------------------
+        É o helper padrão para respostas de API. Deve ser preferido em vez de
+        escrita manual repetitiva no socket HTTP.
+        """
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -3121,7 +3282,29 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # -----------------------------------------------------------------------
+    # Entrega de arquivo estático/HTML
+    # -----------------------------------------------------------------------
     def _serve(self, path: Path, content_type: str):
+        """
+        Entrega um arquivo estático/HTML com headers de cache desabilitado.
+
+        Parameters
+        ----------
+        path:
+            Caminho do arquivo a servir.
+        content_type:
+            MIME type da resposta.
+
+        Return
+        -------
+        None
+
+        How it should be used
+        -------------------
+        Helper interno para páginas HTML, JS e CSS. Mantém o frontend sem cache
+        agressivo durante desenvolvimento e rollout iterativo.
+        """
         if not path.exists():
             self.send_error(404); return
         b = path.read_bytes()
@@ -3135,7 +3318,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    # -----------------------------------------------------------------------
+    # Reading of  payload JSON da requisição
+    # -----------------------------------------------------------------------
     def _read_json(self):
+        """
+        Lê e faz parse do corpo JSON da requisição atual.
+
+        Return
+        -------
+        tuple[bool, dict]
+            `(ok, payload)` com o dicionário parseado ou mensagem de erro.
+
+        How it should be used
+        -------------------
+        Deve ser usada por rotas POST/PATCH/DELETE que esperam JSON no body.
+        """
         l = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(l).decode("utf-8") if l else "{}"
         try:
@@ -3143,8 +3341,19 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return False, {"error": "JSON inválido"}
 
+    # -----------------------------------------------------------------------
+    # Resolução do usuário autenticado
+    # -----------------------------------------------------------------------
     def _user(self):
-        return current_user_from_cookie(self.headers.get("Cookie"))
+        """
+        Resolve o usuário autenticado a partir do cookie da requisição atual.
+
+        Return
+        -------
+        dict | None
+            Estrutura de usuário autenticado ou `None`.
+        """
+        return current_user_from_session_cookie(SESSIONS, SESSION_COOKIE, self.headers.get("Cookie"))
 
     def _is_user_role_active(self, user: dict | None = None) -> bool:
         u = user or self._user()
@@ -3165,7 +3374,24 @@ class Handler(BaseHTTPRequestHandler):
             "user": {"username": username, "role": role},
         }
 
+    # -----------------------------------------------------------------------
+    # Guarda de autenticação
+    # -----------------------------------------------------------------------
     def _require_auth(self, allow_inactive: bool = False):
+        """
+        Garante que a rota atual só prossiga com usuário autenticado.
+
+        Parameters
+        ----------
+        allow_inactive:
+            Quando `True`, permite usuário autenticado com role inativa.
+
+        Return
+        -------
+        dict | None
+            Usuário autenticado enriquecido com `role_active`, ou `None` quando
+            a requisição já foi respondida com erro.
+        """
         u = self._user()
         if not u:
             self._json(401, {"ok": False, "error": "unauthorized"})
@@ -3177,21 +3403,60 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return merged
 
+    # -----------------------------------------------------------------------
+    # Guarda de administração equivalente
+    # -----------------------------------------------------------------------
     def _require_admin(self):
+        """
+        Garante que o usuário atual tenha um role administrativo equivalente.
+
+        Return
+        -------
+        dict | None
+            Usuário autenticado quando autorizado; `None` quando a requisição já
+            foi encerrada com erro de autenticação/autorização.
+        """
         u = self._require_auth()
         if not u: return None
         if (u.get("role") or "").strip().lower() not in ADMIN_EQUIV_ROLES:
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
+    # -----------------------------------------------------------------------
+    # Guarda de admin raiz
+    # -----------------------------------------------------------------------
     def _require_root_admin(self):
+        """
+        Garante que o usuário atual seja exatamente o role `admin` raiz.
+
+        Return
+        -------
+        dict | None
+            Usuário autenticado quando permitido; `None` em caso contrário.
+        """
         u = self._require_auth()
         if not u: return None
         if (u.get("role") or "").strip().lower() != "admin":
             self._json(403, {"ok": False, "error": "forbidden"}); return None
         return u
 
+    # -----------------------------------------------------------------------
+    # Guarda de acesso por módulo
+    # -----------------------------------------------------------------------
     def _require_module(self, module_id: str):
+        """
+        Garante que o usuário atual possua acesso ao módulo informado.
+
+        Parameters
+        ----------
+        module_id:
+            Identificador lógico do módulo protegido.
+
+        Return
+        -------
+        dict | None
+            Usuário autenticado quando autorizado; `None` caso contrário.
+        """
         u = self._require_auth()
         if not u:
             return None
@@ -3200,7 +3465,23 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return u
 
+    # -----------------------------------------------------------------------
+    # Guarda de acesso por lista de módulos
+    # -----------------------------------------------------------------------
     def _require_any_module(self, module_ids: list[str]):
+        """
+        Garante que o usuário atual tenha acesso a pelo menos um dos módulos informados.
+
+        Parameters
+        ----------
+        module_ids:
+            Lista de módulos aceitos pela rota.
+
+        Return
+        -------
+        dict | None
+            Usuário autenticado quando autorizado; `None` caso contrário.
+        """
         u = self._require_auth()
         if not u:
             return None
@@ -3314,9 +3595,27 @@ class Handler(BaseHTTPRequestHandler):
         any_scope = get_document(slug)
         if any_scope:
             return self._json(409, {"ok": False, "error": f"Escopo inválido: documento pertence ao projeto {any_scope.get('projectId')}, mas o contexto atual é {project_id}."})
-        return self._json(404, {"ok": False, "error": "Documento não encontrado"})
+        return self._json(404, {"ok": False, "error": "Document not found"})
 
+    # -----------------------------------------------------------------------
+    # Dispatch principal de rotas GET
+    # -----------------------------------------------------------------------
     def do_GET(self):
+        """
+        Processes HTTP GET requests.
+
+        What this method does
+        ---------------------
+        - resolve path e query string
+        - aplica lógica de autenticação/role inativa
+        - entrega páginas HTML e assets estáticos
+        - expõe endpoints de leitura via API
+
+        How it should be handled in the rest of the program
+        ---------------------------------------------
+        Idealmente deve permanecer como dispatch/orquestração, delegando para
+        funções de domínio e helpers específicos sempre que a lógica crescer.
+        """
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
@@ -3403,7 +3702,7 @@ class Handler(BaseHTTPRequestHandler):
             if not u: return
             profile = get_user_profile(u["username"])
             if not profile:
-                return self._json(404, {"ok": False, "error": "Usuário não encontrado"})
+                return self._json(404, {"ok": False, "error": "User not found"})
             return self._json(200, {"ok": True, "profile": profile})
 
         if p == "/api/documents":
@@ -3627,7 +3926,18 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+    # -----------------------------------------------------------------------
+    # Dispatch principal de rotas POST
+    # -----------------------------------------------------------------------
     def do_POST(self):
+        """
+        Processes HTTP POST requests.
+
+        What this method does
+        ---------------------
+        Trata fluxos de criação, autenticação, ações administrativas e operações
+        que geram efeitos colaterais no sistema.
+        """
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
@@ -3640,8 +3950,8 @@ class Handler(BaseHTTPRequestHandler):
             with db() as conn:
                 row = conn.execute("SELECT username,password_hash,role FROM users WHERE username=?", (username,)).fetchone()
             if not row or not verify_password(password, row["password_hash"]):
-                return self._json(401, {"ok": False, "error": "Credenciais inválidas"})
-            tok = create_session(row["username"], row["role"])
+                return self._json(401, {"ok": False, "error": "Invalid credentials"})
+            tok = create_auth_session(SESSIONS, SESSION_TTL_SECONDS, row["username"], row["role"])
             cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
             role_active = role_is_active(row["role"])
             return self._json(200, {
@@ -3800,7 +4110,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 deleted_id = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             done, msg = restore_deleted_document(deleted_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
@@ -3823,10 +4133,10 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 rid = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             reports = [r for r in list_periodic_reports() if int(r.get("id") or 0) == rid]
             if not reports:
-                return self._json(404, {"ok": False, "error": "Relatório não encontrado"})
+                return self._json(404, {"ok": False, "error": "Report not found"})
             report = reports[0]
             subject, preview_text, recipients = compose_periodic_report_email(report)
             done, msg = run_periodic_report(report, admin["username"])
@@ -3854,7 +4164,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 template_project_id = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "ID inválido"})
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
             ok, body = self._read_json()
             if not ok:
                 return self._json(400, {"ok": False, "error": body["error"]})
@@ -3891,7 +4201,7 @@ class Handler(BaseHTTPRequestHandler):
                     conn.execute("INSERT INTO users (username,password_hash,role,created_at) VALUES (?,?,?,?)",
                                  (username, hash_password(password), role, now_iso()))
             except sqlite3.IntegrityError:
-                return self._json(400, {"ok": False, "error": "usuário já existe"})
+                return self._json(400, {"ok": False, "error": "user already exists"})
             audit(admin["username"], "user.create", username, f"role={role}")
             return self._json(200, {"ok": True})
 
@@ -3935,7 +4245,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     message_text = message_text.replace("{invite_link}", full_invite_url).replace("{expires_at}", exp)
 
-                ok_email, msg_email = send_invite_email(email_to, "Convite para ProjectDashboard", message_text)
+                ok_email, msg_email = send_invite_email(email_to, "Invite para ProjectDashboard", message_text)
                 if not ok_email:
                     return self._json(400, {"ok": False, "error": msg_email})
                 email_status = "sent"
@@ -3964,25 +4274,36 @@ class Handler(BaseHTTPRequestHandler):
             username = (body.get("username") or "").strip()
             password = body.get("password") or ""
             if not token or not username or not password:
-                return self._json(400, {"ok": False, "error": "dados incompletos"})
+                return self._json(400, {"ok": False, "error": "incomplete data"})
             with db() as conn:
                 inv = conn.execute("SELECT token, role, used_by, expires_at FROM invites WHERE token=?", (token,)).fetchone()
-                if not inv: return self._json(400, {"ok": False, "error": "convite inválido"})
-                if inv["used_by"]: return self._json(400, {"ok": False, "error": "convite já usado"})
+                if not inv: return self._json(400, {"ok": False, "error": "invalid invite"})
+                if inv["used_by"]: return self._json(400, {"ok": False, "error": "invite already used"})
                 if datetime.fromisoformat(inv["expires_at"].replace("Z", "+00:00")) < datetime.now(UTC):
-                    return self._json(400, {"ok": False, "error": "convite expirado"})
+                    return self._json(400, {"ok": False, "error": "invite expired"})
                 try:
                     conn.execute("INSERT INTO users (username,password_hash,role,created_at) VALUES (?,?,?,?)",
                                  (username, hash_password(password), inv["role"], now_iso()))
                     conn.execute("UPDATE invites SET used_by=? WHERE token=?", (username, token))
                 except sqlite3.IntegrityError:
-                    return self._json(400, {"ok": False, "error": "usuário já existe"})
+                    return self._json(400, {"ok": False, "error": "user already exists"})
             audit(username, "user.signup", username, f"role={inv['role']}")
             return self._json(200, {"ok": True})
 
         self.send_error(404)
 
+    # -----------------------------------------------------------------------
+    # Dispatch principal de rotas PATCH
+    # -----------------------------------------------------------------------
     def do_PATCH(self):
+        """
+        Processes HTTP PATCH requests.
+
+        What this method does
+        ---------------------
+        Trata atualizações parciais de recursos existentes, principalmente em
+        rotas de edição incremental de documentos, projetos, settings e afins.
+        """
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
@@ -4122,7 +4443,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 rid = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = update_periodic_report(rid, body, admin["username"])
@@ -4137,7 +4458,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 project_id = int(pid)
             except Exception:
-                return self._json(400, {"ok": False, "error": "ID inválido"})
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             done, msg = update_project_registry(project_id, body)
@@ -4189,7 +4510,18 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+    # -----------------------------------------------------------------------
+    # Dispatch principal de rotas DELETE
+    # -----------------------------------------------------------------------
     def do_DELETE(self):
+        """
+        Processa requisições HTTP DELETE.
+
+        What this method does
+        ---------------------
+        Trata remoções lógicas ou administrativas de recursos, sempre respeitando
+        autenticação, autorização e rotinas de auditoria quando aplicável.
+        """
         parsed = urlparse(self.path)
         p = parsed.path
         qs = parse_qs(parsed.query)
@@ -4228,7 +4560,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 deleted_id = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             done, msg = delete_deleted_document_permanently(deleted_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
@@ -4241,7 +4573,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 rid = int(parts[3])
             except Exception:
-                return self._json(400, {"ok": False, "error": "id inválido"})
+                return self._json(400, {"ok": False, "error": "invalid id"})
             done, msg = delete_periodic_report(rid)
             if done:
                 audit(admin["username"], "report.periodic.delete", str(rid))
@@ -4253,7 +4585,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 project_id = int(p.split("/")[4])
             except Exception:
-                return self._json(400, {"ok": False, "error": "ID inválido"})
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
             done, msg, deleted_cards = delete_project_registry(project_id)
             if done:
                 audit(admin["username"], "project.registry.delete", str(project_id), f"deleted_cards={deleted_cards}")

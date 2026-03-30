@@ -1044,6 +1044,39 @@ dialog form {
   padding: var(--space-4);
 }
 
+.invite-output-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.invite-output-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.invite-output-text {
+  flex: 1;
+}
+
+.invite-copy-btn {
+  white-space: nowrap;
+}
+
+.invite-output-link-wrap {
+  word-break: break-all;
+}
+
+.invite-output-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.invite-copy-feedback {
+  color: var(--color-text-soft);
+}
+
 .review-note-item {
   border: 1px solid var(--color-border);
   border-radius: 14px;

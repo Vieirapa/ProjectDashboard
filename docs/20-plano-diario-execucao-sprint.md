@@ -181,7 +181,7 @@ Concluir consistência textual da UI e fechar sprint com validação final.
 
 ### Tarefas técnicas
 1. **Revisão de microcopy**
-   - Home, Kanban, Projetos, Perfil, Usuários/Convites, Configurações.
+   - Home, Kanban, Projetos, Perfil, Usuários/Invites, Configurações.
    - corrigir ortografia, acentuação, termos inconsistentes.
 
 2. **Checklist de linguagem**

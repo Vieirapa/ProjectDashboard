@@ -133,14 +133,14 @@ Evoluir o sistema de papéis (roles) para um modelo dinâmico e administrável p
 ## Fase 5 — Limpeza técnica + hardening + documentação final
 
 ### Entregas
-1. Remover legado desnecessário (`ROLES` hardcoded, CSV legado após janela de migração).
+1. Removesr legado desnecessário (`ROLES` hardcoded, CSV legado após janela de migração).
 2. Revisar auditoria para ações de role management.
 3. Cobrir com testes (unitários/integrados/manuais):
    - criação/edição/exclusão de roles
    - bloqueios em `admin`
    - herança de permissão default em módulo novo
    - projetos + usuários com role dinâmica
-4. Atualizar documentação operacional e runbooks.
+4. Updatesr documentação operacional e runbooks.
 
 ### Arquivos provavelmente afetados
 - `app.py`

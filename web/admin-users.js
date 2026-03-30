@@ -3,6 +3,68 @@ const auditList = document.getElementById('auditList');
 const logoutBtn = document.getElementById('logoutBtn');
 const inviteOut = document.getElementById('inviteOut');
 
+function escHtml(s) {
+  return String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+async function copyText(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  try {
+    await navigator.clipboard.writeText(raw);
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = raw;
+    ta.setAttribute('readonly', 'readonly');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+    return ok;
+  }
+}
+
+function renderInviteOutput(message, link = '', copied = false) {
+  if (!inviteOut) return;
+  const safeMessage = escHtml(message || 'Nenhum convite gerado ainda.');
+  const safeLink = String(link || '').trim();
+  if (!safeLink) {
+    inviteOut.innerHTML = safeMessage;
+    return;
+  }
+  inviteOut.innerHTML = `
+    <div class="invite-output-row">
+      <div class="invite-output-text">${safeMessage}</div>
+      <button type="button" id="copyInviteBtn" class="secondary invite-copy-btn" title="Copiar link do convite">📋 Copiar link</button>
+    </div>
+    <div class="invite-output-link-wrap">
+      <a class="invite-output-link" href="${escHtml(safeLink)}" target="_blank" rel="noopener noreferrer">${escHtml(safeLink)}</a>
+    </div>
+    <div id="inviteCopyFeedback" class="small invite-copy-feedback">${copied ? 'Link copiado ✅' : ''}</div>
+  `;
+  const btn = document.getElementById('copyInviteBtn');
+  const feedback = document.getElementById('inviteCopyFeedback');
+  btn?.addEventListener('click', async () => {
+    const ok = await copyText(safeLink);
+    if (feedback) feedback.textContent = ok ? 'Link copiado ✅' : 'Não foi possível copiar automaticamente.';
+  });
+}
+
 let me = null;
 let roles = ['member', 'admin'];
 let allowedModules = new Set();
@@ -188,15 +250,18 @@ document.getElementById('inviteForm').onsubmit = async (e) => {
       message: document.getElementById('inviteMessage').value,
     })});
     const full = d.fullInviteUrl || `${location.origin}${d.inviteUrl}`;
-    inviteOut.textContent = sendEmail
-      ? `Convite (expira ${d.expiresAt}) enviado para ${document.getElementById('inviteEmail').value}. Link: ${full}`
-      : `Convite (expira ${d.expiresAt}): ${full}`;
-    await navigator.clipboard.writeText(full);
+    const message = sendEmail
+      ? `Convite (expira ${d.expiresAt}) enviado para ${document.getElementById('inviteEmail').value}.`
+      : `Convite gerado (expira ${d.expiresAt}).`;
+    const copied = await copyText(full);
+    renderInviteOutput(message, full, copied);
     if (hasModule('admin_users.audit_log')) await loadAudit();
   } catch (e) { alert(e.message); }
 };
 
 logoutBtn.onclick = async () => { await api('/api/logout',{method:'POST'}); location.href='/login.html'; };
+
+renderInviteOutput('Nenhum convite gerado ainda.');
 
 (async()=>{
   try {

@@ -1,14 +1,77 @@
 from __future__ import annotations
 
+"""
+backend.rbac.roles
+==================
+
+Módulo responsável pelo núcleo de catálogo e estado de roles do sistema.
+
+Objetivo deste módulo
+---------------------
+Concentrar a parte mais estável e coesa do RBAC, especialmente:
+- catálogo de roles
+- verificação de existência
+- verificação de ativação
+- fallback seguro de role
+
+How it should be used
+-------------------
+- O `app.py` delega para este módulo em operações centrais de leitura do
+  catálogo de roles.
+- Regras mais amplas de permissões por módulo/página continuam fora daqui por
+  enquanto, para manter esta extração pequena e segura.
+
+Escopo deste módulo
+-------------------
+Este módulo não faz CRUD administrativo completo nem calcula permissões
+efetivas por módulo. Seu foco é o estado e a disponibilidade das roles.
+"""
+
 import sqlite3
 from collections.abc import Callable
 
 
+# ---------------------------------------------------------------------------
+# Catálogo efetivo de roles
+# ---------------------------------------------------------------------------
 def list_role_catalog(
     db_factory: Callable[[], sqlite3.Connection],
     default_roles: list[str],
     include_admin: bool = True,
 ) -> list[str]:
+    """
+    Retorna o catálogo efetivo de roles conhecidas pela aplicação.
+
+    Estratégia de funcionamento
+    ---------------------------
+    1. Tenta usar a tabela oficial `roles` quando ela existir e estiver populada.
+    2. Se isso ainda não estiver disponível, usa fallback legado combinando:
+       - roles padrão da aplicação
+       - roles encontradas em usuários
+       - roles encontradas na matriz role_modules
+       - roles declaradas em projetos
+
+    Parameters
+    ----------
+    db_factory:
+        Factory de conexão com o banco, normalmente `app.db`.
+    default_roles:
+        Lista de roles padrão embutidas no sistema, usada como fallback.
+    include_admin:
+        Define se `admin` deve aparecer no retorno.
+
+    Return
+    -------
+    list[str]
+        Lists the rdenada por descoberta/ordem de banco, sem duplicidades.
+
+    How it should be used
+    -------------------
+    Deve ser chamada por partes do sistema que precisem:
+    - montar selects de role
+    - validar choices em UI/admin
+    - listar roles disponíveis no momento atual
+    """
     out: list[str] = []
     seen: set[str] = set()
 
@@ -53,11 +116,35 @@ def list_role_catalog(
     return [r for r in out if r != 'admin']
 
 
+# ---------------------------------------------------------------------------
+# Existência de role
+# ---------------------------------------------------------------------------
 def role_exists(
     db_factory: Callable[[], sqlite3.Connection],
     role_key: str,
     active_only: bool = True,
 ) -> bool:
+    """
+    Informa se uma role existe no catálogo.
+
+    Parameters
+    ----------
+    db_factory:
+        Factory de conexão com o banco.
+    role_key:
+        Identificador lógico da role.
+    active_only:
+        Quando `True`, considera apenas roles ativas.
+
+    Return
+    -------
+    bool
+        `True` quando a role existe dentro do critério escolhido.
+
+    Uso típico
+    ----------
+    Utilizado em validações administrativas, formulários e regras defensivas.
+    """
     role = str(role_key or '').strip().lower()
     if not role:
         return False
@@ -69,11 +156,37 @@ def role_exists(
     return row is not None
 
 
+# ---------------------------------------------------------------------------
+# Ativação de role
+# ---------------------------------------------------------------------------
 def role_is_active(
     db_factory: Callable[[], sqlite3.Connection],
     role_key: str,
     default_roles: list[str],
 ) -> bool:
+    """
+    Informa se uma role está ativa para uso no sistema.
+
+    Parameters
+    ----------
+    db_factory:
+        Factory de conexão com o banco.
+    role_key:
+        Role a verificar.
+    default_roles:
+        Roles padrão da app, usadas como fallback em instalações antigas ou
+        durante bootstrap parcial.
+
+    Return
+    -------
+    bool
+        `True` para roles ativas; `False` caso contrário.
+
+    Observação
+    ----------
+    Em caso de `OperationalError`, o módulo assume fallback legado para não
+    quebrar bootstrap/migrações ainda não concluídas.
+    """
     role = str(role_key or '').strip().lower()
     if not role:
         return False
@@ -87,10 +200,41 @@ def role_is_active(
         return role in {r.lower() for r in default_roles}
 
 
+# ---------------------------------------------------------------------------
+# Fallback seguro de role
+# ---------------------------------------------------------------------------
 def resolve_fallback_role(
     db_factory: Callable[[], sqlite3.Connection],
     preferred: str = 'member',
 ) -> str:
+    """
+    Resolve uma role segura para fallback quando a role desejada não pode ser usada.
+
+    Estratégia de fallback
+    ----------------------
+    1. Usa a role preferida, se estiver ativa.
+    2. Caso contrário, escolhe a primeira role ativa que não seja `admin`.
+    3. Se não houver outra opção, usa `admin`.
+
+    Parameters
+    ----------
+    db_factory:
+        Factory de conexão com o banco.
+    preferred:
+        Role preferencial desejada pelo chamador.
+
+    Return
+    -------
+    str
+        Role final resolvida para uso seguro.
+
+    How it should be used
+    -------------------
+    Útil em cenários de:
+    - reatribuição de usuários
+    - remoção/inativação de role
+    - normalização de estado administrativo
+    """
     pref = str(preferred or '').strip().lower()
     with db_factory() as conn:
         if pref:

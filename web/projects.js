@@ -1,3 +1,23 @@
+/*
+ * projects.js
+ * ===========
+ *
+ * Responsável pela tela de gestão de projetos.
+ *
+ * Papel deste arquivo
+ * -------------------
+ * - Carregar o catálogo de projetos.
+ * - Permitir criação, edição, clonagem e exclusão de projetos.
+ * - Gerenciar roles com acesso ao projeto.
+ * - Exibir os cards vinculados ao projeto selecionado.
+ *
+ * Como deve ser tratado no restante da aplicação
+ * ----------------------------------------------
+ * - Deve permanecer centrado no ciclo da tela de projetos.
+ * - Regras estruturais de negócio devem continuar no backend.
+ * - Este arquivo coordena UI, estado local e chamadas de API.
+ */
+
 const logoutBtn = document.getElementById('logoutBtn');
 
 const projectId = document.getElementById('projectId');
@@ -24,6 +44,9 @@ let projectRolesCatalog = [];
 
 const DEFAULT_PROJECT_ROLES = ['member', 'desenhista', 'colaborador', 'revisor', 'cliente'];
 
+// ---------------------------------------------------------------------------
+// Normalização de catálogo de roles para uso na UI
+// ---------------------------------------------------------------------------
 function normalizeRoleCatalog(items) {
   const out = [];
   const seen = new Set();
@@ -42,6 +65,9 @@ function normalizeRoleCatalog(items) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Helper HTTP JSON da tela de projetos
+// ---------------------------------------------------------------------------
 async function api(url, opts = {}) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
@@ -66,6 +92,9 @@ function fmtDate(v) {
   return d.toLocaleString('pt-BR');
 }
 
+// ---------------------------------------------------------------------------
+// Renderização dos checkboxes de roles com acesso ao projeto
+// ---------------------------------------------------------------------------
 function renderAllowedRolesChecks(roles) {
   projectRolesCatalog = normalizeRoleCatalog(roles);
 
@@ -80,6 +109,9 @@ function renderAllowedRolesChecks(roles) {
   )).join('');
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento do catálogo dinâmico de roles para a tela
+// ---------------------------------------------------------------------------
 async function loadProjectRolesCatalog() {
   try {
     const d = await api('/api/admin/roles');
@@ -158,6 +190,9 @@ async function loadMe() {
   applyModuleVisibility();
 }
 
+// ---------------------------------------------------------------------------
+// Preenchimento do formulário principal da tela
+// ---------------------------------------------------------------------------
 function setForm(p = null) {
   selectedProjectId = p?.project_id ? Number(p.project_id) : null;
   projectId.value = p?.project_id || '';
@@ -194,6 +229,9 @@ function filteredProjects() {
   return projects;
 }
 
+// ---------------------------------------------------------------------------
+// Renderização da tabela/lista de projetos
+// ---------------------------------------------------------------------------
 function renderList() {
   const shown = filteredProjects();
   if (!shown.length) {
@@ -214,6 +252,9 @@ function renderList() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Carregamento dos cards vinculados ao projeto selecionado
+// ---------------------------------------------------------------------------
 async function loadCardsForSelectedProject() {
   if (!selectedProjectId) {
     projectCardsList.textContent = 'Selecione um projeto para listar os cards.';
@@ -259,6 +300,9 @@ async function loadCardsForSelectedProject() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Refresh geral da tela de projetos
+// ---------------------------------------------------------------------------
 async function refresh(preferredId = null, fallbackToLast = false) {
   const canManageProjects = hasModule('projects.create_edit');
   const d = canManageProjects ? await api('/api/admin/projects') : await api('/api/projects-registry');

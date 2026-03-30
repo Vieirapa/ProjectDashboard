@@ -25,7 +25,7 @@ O **ProjectDashboard** é um sistema web estilo Kanban para gerenciar documentos
 
 ## `lider_projeto`
 - Acesso operacional amplo: Início, Projetos, Kanban e Meu Perfil.
-- **Não** acessa Usuários/Convites nem Configurações.
+- **Não** acessa Usuários/Invites nem Configurações.
 
 ## `member`
 - Cria/edita cards e atua no fluxo operacional.
@@ -51,7 +51,7 @@ Menu lateral (varia por perfil):
 - **Início** (`/`) — visão geral com KPIs por projetos acessíveis
 - **Projetos** (`/projects.html`) — gestão de cadastro de projetos (admin/líder)
 - **Kanban** (`/kanban.html?project_id=...`) — operação diária dos cards
-- **Usuários & Convites** (`/admin-users.html`) — somente admin
+- **Usuários & Invites** (`/admin-users.html`) — somente admin
 - **Configurações** (`/settings.html`) — somente admin
 - **Meu perfil** (`/profile.html`) — dados do usuário e preferências
 - **Logout**
@@ -118,7 +118,7 @@ Na tela de detalhes (`/edit.html?slug=...`):
 
 ---
 
-## 4.5 Usuários & Convites (somente admin)
+## 4.5 Usuários & Invites (somente admin)
 
 Recursos administrativos:
 
@@ -218,7 +218,7 @@ Cada usuário pode:
 - [ ] Criação/edição de cards funcionando
 - [ ] Upload e revisão funcionando na tela de detalhes
 - [ ] Projetos: CRUD e papéis permitidos por projeto
-- [ ] Usuários/Convites (admin)
+- [ ] Usuários/Invites (admin)
 - [ ] SMTP e teste de e-mail
 - [ ] Backup manual e backup agendado
 - [ ] Diagnóstico e relatórios periódicos
