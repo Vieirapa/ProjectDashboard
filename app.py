@@ -30,6 +30,7 @@ reduzir risco enquanto a base é reorganizada.
 """
 
 import base64
+import hashlib
 import json
 import os
 import re
