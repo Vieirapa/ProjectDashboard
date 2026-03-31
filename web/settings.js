@@ -37,6 +37,8 @@ const deletedDocumentsPager = document.getElementById('deletedDocumentsPager');
 const deletedFiltersState = document.getElementById('deletedFiltersState');
 const reportPreview = document.getElementById('reportPreview');
 const diagOutput = document.getElementById('diagOutput');
+const diagHealthSummary = document.getElementById('diagHealthSummary');
+const diagHealthText = document.getElementById('diagHealthText');
 const testSmtpBtn = document.getElementById('testSmtpBtn');
 const runBackupNowBtn = document.getElementById('runBackupNowBtn');
 const testBackupPathBtn = document.getElementById('testBackupPathBtn');
@@ -298,10 +300,40 @@ function renderDiagnostics(diagnostics) {
   }
   lines.push('');
   lines.push('Verificações:');
-  (diagnostics?.checks || []).forEach((c) => {
+
+  const checks = diagnostics?.checks || [];
+  let okCount = 0;
+  let failCount = 0;
+  checks.forEach((c) => {
+    if (c.ok) okCount += 1;
+    else failCount += 1;
     lines.push(`- ${c.ok ? '✅' : '❌'} ${c.name}: ${c.detail || '-'}`);
   });
   diagOutput.value = lines.join('\n');
+
+  if (!diagHealthSummary || !diagHealthText) return;
+  diagHealthSummary.classList.remove('status-neutral', 'status-success', 'status-warning', 'status-danger');
+
+  if (!checks.length) {
+    diagHealthSummary.classList.add('status-neutral');
+    diagHealthText.textContent = 'Nenhuma verificação retornada pelo diagnóstico.';
+    return;
+  }
+
+  if (failCount === 0) {
+    diagHealthSummary.classList.add('status-success');
+    diagHealthText.textContent = `Saudável · ${okCount} verificação(ões) OK e nenhuma falha crítica.`;
+    return;
+  }
+
+  if (failCount <= 2) {
+    diagHealthSummary.classList.add('status-warning');
+    diagHealthText.textContent = `Atenção · ${failCount} falha(s) encontrada(s). Revise os detalhes antes de operar.`;
+    return;
+  }
+
+  diagHealthSummary.classList.add('status-danger');
+  diagHealthText.textContent = `Crítico · ${failCount} falha(s) encontrada(s). O ambiente precisa de correção antes de depender deste fluxo.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,8 +502,8 @@ async function loadDeletedDocuments() {
   if (!filteredRows.length) {
     const hasFilter = Object.values(deletedFilters).some((x) => String(x || '').trim());
     deletedDocumentsList.textContent = hasFilter
-      ? 'Nenhum documento apagado encontrado para os filtros informados.'
-      : 'Nenhum documento apagado.';
+      ? 'Nenhum documento apagado encontrado para os filtros informados. Ajuste ou limpe os filtros para ampliar a busca.'
+      : 'Nenhum documento apagado disponível para recuperação no momento.';
     renderDeletedPager();
     return;
   }
@@ -504,7 +536,7 @@ async function loadDeletedDocuments() {
 
   deletedDocumentsList.querySelectorAll('[data-purge]').forEach((btn) => {
     btn.onclick = async () => {
-      if (!confirm('Permanently delete this item and associated files?')) return;
+      if (!confirm('Apagar permanentemente este item e os arquivos associados? Esta ação não poderá ser desfeita.')) return;
       try {
         await api(`/api/admin/deleted-documents/${btn.dataset.purge}`, { method: 'DELETE' });
         deletedPolicyFeedback.textContent = 'Apagado permanentemente.';
@@ -563,7 +595,7 @@ async function loadReports() {
 
   reportsList.querySelectorAll('[data-del]').forEach((btn) => {
     btn.onclick = async () => {
-      if (!confirm('Excluir este relatório periódico?')) return;
+      if (!confirm('Excluir este relatório periódico? O agendamento deixará de executar após esta ação.')) return;
       try {
         await api(`/api/admin/reports/${btn.dataset.del}`, { method: 'DELETE' });
         await loadReports();
@@ -945,7 +977,7 @@ testBackupPathBtn.onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: f.backupPath.value || '' }),
     });
-    backupFeedback.textContent = d.message || 'Caminho de backup validado ✅';
+    backupFeedback.textContent = d.message || 'Caminho de backup validado ✅ Pronto para uso.';
   } catch (err) {
     if (err?.status === 404) {
       backupFeedback.textContent = 'Este servidor ainda não tem o endpoint de teste de permissões. Atualize/reinicie a instância com a versão mais recente do ProjectDashboard e tente novamente.';
@@ -1008,7 +1040,7 @@ restoreBackupBtn.onclick = async () => {
         confirm_text: confirmText,
       }),
     });
-    backupFeedback.textContent = d.message || `Restore do backup ${stamp} concluído ✅`;
+    backupFeedback.textContent = d.message || `Restore do backup ${stamp} concluído ✅ Revise a aplicação e confirme o estado esperado.`;
   } catch (err) {
     backupFeedback.textContent = err.message;
   }
@@ -1019,7 +1051,7 @@ runDiagBtn.onclick = async () => {
   try {
     const d = await api('/api/admin/system/diagnostics');
     renderDiagnostics(d.diagnostics || {});
-    diagFeedback.textContent = 'Diagnóstico executado ✅';
+    diagFeedback.textContent = 'Diagnóstico executado ✅ Revise o resumo de saúde e os detalhes abaixo.';
   } catch (err) {
     diagFeedback.textContent = err.message;
   }

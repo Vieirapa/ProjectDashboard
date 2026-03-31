@@ -473,7 +473,7 @@ formEl.addEventListener('submit', (e) => {
 saveBtn.onclick = handleSave;
 
 deleteBtn.onclick = async () => {
-  if (!confirm('Apagar este documento do dashboard? (somente admin)')) return;
+  if (!confirm('Apagar este documento do dashboard? Esta ação moverá o item para a área recuperável e pode afetar o fluxo do projeto. (somente admin)')) return;
   try {
     await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'DELETE'});
     location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;

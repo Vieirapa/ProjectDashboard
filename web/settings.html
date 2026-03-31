@@ -147,6 +147,11 @@
             <label>Branch (ramo)</label>
             <input id="system_git_branch" placeholder="main" />
 
+            <div id="diagHealthSummary" class="settings-inline-feedback status-neutral" role="status" aria-live="polite">
+              <strong>Saúde operacional:</strong>
+              <span id="diagHealthText">Aguardando execução do diagnóstico.</span>
+            </div>
+
             <div class="dialog-actions" style="justify-content:flex-start;">
               <button type="submit">Salvar fonte de versão</button>
               <button type="button" id="runDiagBtn" class="secondary">Rodar diagnóstico agora</button>
@@ -198,7 +203,7 @@
               <p id="deletedFiltersState" class="small"></p>
             </div>
 
-            <div id="deletedDocumentsList" class="small settings-data-box">Nenhum documento apagado.</div>
+            <div id="deletedDocumentsList" class="small settings-data-box empty-state">Nenhum documento apagado.</div>
             <div id="deletedDocumentsPager" class="small" style="margin-top:8px;"></div>
           </div>
         </section>
