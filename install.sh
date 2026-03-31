@@ -133,9 +133,14 @@ if [[ ! -d "${INSTALL_DIR}/.venv" || ! -x "${INSTALL_DIR}/.venv/bin/python" ]]; 
   sudo -u "${APP_USER}" "${PYTHON_BIN}" -m venv "${INSTALL_DIR}/.venv"
 fi
 
-APP_HOST="0.0.0.0"
-if [[ "$ENABLE_NGINX" == "yes" ]]; then
-  APP_HOST="127.0.0.1"
+CURRENT_APP_HOST=""
+if [[ -f /etc/projectdashboard.env ]]; then
+  CURRENT_APP_HOST="$(grep -E '^PDASH_HOST=' /etc/projectdashboard.env 2>/dev/null | cut -d= -f2- || true)"
+fi
+
+APP_HOST="${PDASH_HOST:-${CURRENT_APP_HOST:-}}"
+if [[ -z "$APP_HOST" ]]; then
+  APP_HOST="0.0.0.0"
 fi
 
 BUILD_COMMIT="unknown"
