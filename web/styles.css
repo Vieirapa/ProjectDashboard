@@ -322,6 +322,12 @@ textarea {
   gap: 10px;
 }
 
+.deps-checklist-scroll {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
 .deps-checklist .small {
   display: flex;
   align-items: center;
@@ -490,6 +496,16 @@ dialog form {
   padding: var(--space-6) var(--space-5) var(--space-4);
 }
 
+.page-hero > div:first-child {
+  min-width: 0;
+}
+
+.page-hero h1 {
+  margin-bottom: var(--space-2);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
 .page-hero-home {
   background: linear-gradient(180deg, rgba(255,255,255,0.68) 0%, rgba(255,255,255,0.12) 100%);
   border-bottom: 1px solid rgba(215, 222, 232, 0.85);
@@ -590,8 +606,18 @@ dialog form {
   margin-bottom: var(--space-4);
 }
 
+.section-head > div:first-child {
+  min-width: 0;
+}
+
 .section-head h3 {
   margin: 0;
+  line-height: 1.2;
+}
+
+.section-head .small {
+  max-width: 380px;
+  text-align: right;
 }
 
 .dashboard-table-wrap {
@@ -1044,6 +1070,44 @@ dialog form {
   padding: var(--space-4);
 }
 
+.settings-inline-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  line-height: 1.45;
+}
+
+.settings-inline-feedback strong {
+  white-space: nowrap;
+}
+
+.status-neutral.settings-inline-feedback {
+  background: #e2e8f0;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.status-success.settings-inline-feedback {
+  background: #d1fae5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.status-warning.settings-inline-feedback {
+  background: #ffedd5;
+  color: #c2410c;
+  border-color: #fdba74;
+}
+
+.status-danger.settings-inline-feedback {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
 .invite-output-box {
   display: flex;
   flex-direction: column;
@@ -1339,6 +1403,16 @@ dialog form {
     grid-template-columns: 1fr;
     height: auto;
     overflow: visible;
+  }
+
+  .page-hero,
+  .section-head {
+    flex-direction: column;
+  }
+
+  .section-head .small {
+    max-width: none;
+    text-align: left;
   }
 
   .sidebar {

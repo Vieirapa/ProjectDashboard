@@ -26,6 +26,7 @@ The installer configures:
 - runtime folders under install path:
   - `/opt/projectdashboard/data`
   - `/opt/projectdashboard/data/docs_repo`
+- domain folders:
   - `/opt/projectdashboard/documents`
   - `/opt/projectdashboard/projects`
 - `projectdashboard.service` enabled at boot
@@ -42,7 +43,7 @@ The installer configures:
 - optional Ubuntu firewall setup via UFW (`ENABLE_UFW=yes`, default)
 - bootstrap admin account: `admin` / `admin`
 
-After first login as admin, configure `/settings.html` (SMTP, defaults, periodic reports, backup policy, diagnostics).
+After first login as admin, configure `/settings.html` (SMTP, defaults, backup policy, diagnostics, recoverable documents and periodic reports).
 
 ## Installer Variables
 
@@ -78,6 +79,7 @@ The script performs:
 - checkout of requested ref (or latest `develop`)
 - pre-upgrade backup if `/opt/projectdashboard/scripts/backup.sh` exists
 - reinstall/upgrade via `install.sh`
+- optional pass-through of `DOMAIN`, `LE_EMAIL`, `ENABLE_NGINX`, `ENABLE_HTTPS`, `ENABLE_BACKUP_TIMER`, `ENABLE_UFW` and `INSTALL_SMOKE_TEST`
 
 ## Manual Execution (Development)
 
@@ -108,7 +110,7 @@ Expected backup files:
 2. restore DB and optional archives
 3. re-apply ownership
 4. start service
-5. validate login and key endpoints
+5. validate login and key endpoints (preferably with smoke)
 
 Use:
 - `scripts/restore_backup.sh --help`

@@ -46,11 +46,13 @@
   }
 
   try {
-    const [{ user }, { projects }, permsResp] = await Promise.all([
+    const [meResp, { projects }, permsResp] = await Promise.all([
       api('/api/me'),
       api('/api/projects-registry'),
       api('/api/me/permissions'),
     ]);
+
+    const { user, build } = meResp;
 
     const projectItems = projects || [];
     const projectId = currentProjectId(projectItems);
@@ -81,7 +83,10 @@
       <a class="side-link ${active === 'profile' ? 'active' : ''}" href="/profile.html?project_id=${projectId}">Meu perfil</a>
       <a id="logoutLink" class="side-link side-link-logout" href="#">Logout</a>
 
-      <div class="side-foot">${user.username} · ${user.role}</div>
+      <div class="side-foot">
+        <div>${user.username} · ${user.role}</div>
+        ${build?.showInSidebar ? `<div class="side-build-meta">build ${build.commit || 'unknown'}${build.branch && build.branch !== 'unknown' ? ` · ${build.branch}` : ''}</div>` : ''}
+      </div>
     `;
 
     const logoutLink = document.getElementById('logoutLink');

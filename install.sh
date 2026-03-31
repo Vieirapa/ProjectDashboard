@@ -133,9 +133,22 @@ if [[ ! -d "${INSTALL_DIR}/.venv" || ! -x "${INSTALL_DIR}/.venv/bin/python" ]]; 
   sudo -u "${APP_USER}" "${PYTHON_BIN}" -m venv "${INSTALL_DIR}/.venv"
 fi
 
-APP_HOST="0.0.0.0"
-if [[ "$ENABLE_NGINX" == "yes" ]]; then
-  APP_HOST="127.0.0.1"
+CURRENT_APP_HOST=""
+if [[ -f /etc/projectdashboard.env ]]; then
+  CURRENT_APP_HOST="$(grep -E '^PDASH_HOST=' /etc/projectdashboard.env 2>/dev/null | cut -d= -f2- || true)"
+fi
+
+APP_HOST="${PDASH_HOST:-${CURRENT_APP_HOST:-}}"
+if [[ -z "$APP_HOST" ]]; then
+  APP_HOST="0.0.0.0"
+fi
+
+BUILD_COMMIT="unknown"
+BUILD_BRANCH="unknown"
+BUILD_INSTALLED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+if git -C "${SCRIPT_DIR}" rev-parse --git-dir >/dev/null 2>&1; then
+  BUILD_COMMIT="$(git -C "${SCRIPT_DIR}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  BUILD_BRANCH="$(git -C "${SCRIPT_DIR}" branch --show-current 2>/dev/null || echo unknown)"
 fi
 
 ENV_FILE="/etc/projectdashboard.env"
@@ -145,6 +158,10 @@ set_or_replace_env "$ENV_FILE" "PDASH_PORT" "${PORT}"
 set_or_replace_env "$ENV_FILE" "PDASH_PROJECTS_DIR" "${PROJECTS_DIR}"
 set_or_replace_env "$ENV_FILE" "PDASH_DOCUMENTS_DIR" "${DOCUMENTS_DIR}"
 set_or_replace_env "$ENV_FILE" "PDASH_INITIAL_PASSWORD" "${ADMIN_PASSWORD}"
+set_or_replace_env "$ENV_FILE" "PDASH_BUILD_INFO_MODE" "dev"
+set_or_replace_env "$ENV_FILE" "PDASH_BUILD_COMMIT" "${BUILD_COMMIT}"
+set_or_replace_env "$ENV_FILE" "PDASH_BUILD_BRANCH" "${BUILD_BRANCH}"
+set_or_replace_env "$ENV_FILE" "PDASH_BUILD_INSTALLED_AT" "${BUILD_INSTALLED_AT}"
 
 # Preserve existing SMTP settings if already configured; seed empty keys when missing.
 set_or_replace_env "$ENV_FILE" "PDASH_SMTP_HOST" "$(grep -E '^PDASH_SMTP_HOST=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
