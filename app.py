@@ -64,6 +64,7 @@ from backend.admin.settings import (
 )
 from backend.core.db import column_exists, connect_db, ensure_column, table_exists
 from backend.ops.system_ops import (
+    get_runtime_build_info as ops_get_runtime_build_info,
     list_available_backups as ops_list_available_backups,
     next_backup_run as ops_next_backup_run,
     restore_backup_from_stamp as ops_restore_backup_from_stamp,
@@ -3682,6 +3683,7 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 "role_active": active,
                 "inactive_message": None if active else "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
+                "build": ops_get_runtime_build_info(APP_DIR),
             })
 
         if p == "/api/me/permissions":

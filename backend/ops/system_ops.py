@@ -8,6 +8,7 @@ Operações operacionais do sistema relacionadas a backup, restauração,
 catálogo de snapshots e diagnóstico básico.
 """
 
+import os
 import re
 import subprocess
 import time
@@ -117,6 +118,38 @@ def list_available_backups(get_admin_settings_fn, backup_config_fn, resolve_back
     return True, 'ok', {'path': str(backup_dir), 'items': items, 'total': len(items)}
 
 
+def get_runtime_build_info(app_dir: Path) -> dict:
+    env_mode = str(os.getenv('PDASH_BUILD_INFO_MODE', 'dev')).strip().lower()
+    show_in_sidebar = env_mode in {'dev', 'development', 'on', 'true', '1'}
+
+    commit = 'unknown'
+    branch = 'unknown'
+    source = 'filesystem'
+
+    try:
+        res = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=str(app_dir), capture_output=True, text=True, check=False)
+        if res.returncode == 0 and (res.stdout or '').strip():
+            commit = res.stdout.strip()
+            source = 'git'
+    except Exception:
+        pass
+
+    try:
+        res = subprocess.run(['git', 'branch', '--show-current'], cwd=str(app_dir), capture_output=True, text=True, check=False)
+        if res.returncode == 0 and (res.stdout or '').strip():
+            branch = res.stdout.strip()
+    except Exception:
+        pass
+
+    return {
+        'showInSidebar': show_in_sidebar,
+        'mode': env_mode,
+        'commit': commit,
+        'branch': branch,
+        'source': source,
+    }
+
+
 def next_backup_run(get_admin_settings_fn, backup_config_fn) -> dict:
     settings = get_admin_settings_fn()
     cfg = backup_config_fn(settings)
@@ -199,6 +232,8 @@ def run_system_diagnostics(get_admin_settings_fn, setting_fn, now_iso_fn, db_pat
         }
     }
 
+    build_info = get_runtime_build_info(app_dir)
+
     def add_check(name: str, ok: bool, detail: str):
         diagnostics['checks'].append({'name': name, 'ok': bool(ok), 'detail': detail})
 
@@ -213,6 +248,10 @@ def run_system_diagnostics(get_admin_settings_fn, setting_fn, now_iso_fn, db_pat
             add_check('Git local', True, local[:12])
         except Exception as e:
             add_check('Git local', False, str(e))
+    elif build_info.get('commit') and build_info.get('commit') != 'unknown':
+        diagnostics['version']['local'] = str(build_info.get('commit'))
+        detail = f"{build_info.get('commit')} ({build_info.get('source', 'runtime')})"
+        add_check('Build local', True, detail)
     else:
         add_check('Git local', False, 'instalação sem .git (normal em deploy via rsync)')
 

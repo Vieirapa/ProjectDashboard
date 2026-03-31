@@ -356,7 +356,7 @@ async function loadSettings() {
   lastPersistedBackupPath = f.backupPath.value || '';
   f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
   f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
-  f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'main');
+  f.systemGitBranch.value = getSetting(s, 'system.git_branch', 'develop');
   f.deletedRetentionDays.value = getSetting(s, 'deleted.retention_days', '30');
 
   let days = [];
@@ -901,7 +901,7 @@ diagForm.onsubmit = async (e) => {
         'system.git_branch': f.systemGitBranch.value,
       }),
     });
-    diagFeedback.textContent = 'Fonte de versão salva ✅';
+    diagFeedback.textContent = `Fonte de versão salva ✅ Repositório: ${f.systemGitRepo.value || '-'} · Branch: ${f.systemGitBranch.value || '-'}`;
   } catch (err) {
     diagFeedback.textContent = err.message;
   }
