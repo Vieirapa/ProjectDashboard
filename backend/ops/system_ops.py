@@ -122,30 +122,36 @@ def get_runtime_build_info(app_dir: Path) -> dict:
     env_mode = str(os.getenv('PDASH_BUILD_INFO_MODE', 'dev')).strip().lower()
     show_in_sidebar = env_mode in {'dev', 'development', 'on', 'true', '1'}
 
-    commit = 'unknown'
-    branch = 'unknown'
-    source = 'filesystem'
+    commit = str(os.getenv('PDASH_BUILD_COMMIT', '')).strip() or 'unknown'
+    branch = str(os.getenv('PDASH_BUILD_BRANCH', '')).strip() or 'unknown'
+    installed_at = str(os.getenv('PDASH_BUILD_INSTALLED_AT', '')).strip() or None
+    source = 'env' if commit != 'unknown' or branch != 'unknown' else 'filesystem'
 
-    try:
-        res = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=str(app_dir), capture_output=True, text=True, check=False)
-        if res.returncode == 0 and (res.stdout or '').strip():
-            commit = res.stdout.strip()
-            source = 'git'
-    except Exception:
-        pass
+    if commit == 'unknown':
+        try:
+            res = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=str(app_dir), capture_output=True, text=True, check=False)
+            if res.returncode == 0 and (res.stdout or '').strip():
+                commit = res.stdout.strip()
+                source = 'git'
+        except Exception:
+            pass
 
-    try:
-        res = subprocess.run(['git', 'branch', '--show-current'], cwd=str(app_dir), capture_output=True, text=True, check=False)
-        if res.returncode == 0 and (res.stdout or '').strip():
-            branch = res.stdout.strip()
-    except Exception:
-        pass
+    if branch == 'unknown':
+        try:
+            res = subprocess.run(['git', 'branch', '--show-current'], cwd=str(app_dir), capture_output=True, text=True, check=False)
+            if res.returncode == 0 and (res.stdout or '').strip():
+                branch = res.stdout.strip()
+                if source == 'filesystem':
+                    source = 'git'
+        except Exception:
+            pass
 
     return {
         'showInSidebar': show_in_sidebar,
         'mode': env_mode,
         'commit': commit,
         'branch': branch,
+        'installedAt': installed_at,
         'source': source,
     }
 
@@ -251,6 +257,8 @@ def run_system_diagnostics(get_admin_settings_fn, setting_fn, now_iso_fn, db_pat
     elif build_info.get('commit') and build_info.get('commit') != 'unknown':
         diagnostics['version']['local'] = str(build_info.get('commit'))
         detail = f"{build_info.get('commit')} ({build_info.get('source', 'runtime')})"
+        if build_info.get('installedAt'):
+            detail += f" · instalado em {build_info.get('installedAt')}"
         add_check('Build local', True, detail)
     else:
         add_check('Git local', False, 'instalação sem .git (normal em deploy via rsync)')
