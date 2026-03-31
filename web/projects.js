@@ -42,8 +42,6 @@ let selectedProjectId = null;
 let allowedModules = new Set();
 let projectRolesCatalog = [];
 
-const DEFAULT_PROJECT_ROLES = ['member', 'desenhista', 'colaborador', 'revisor', 'cliente'];
-
 // ---------------------------------------------------------------------------
 // Normalização de catálogo de roles para uso na UI
 // ---------------------------------------------------------------------------
@@ -56,11 +54,6 @@ function normalizeRoleCatalog(items) {
     seen.add(roleKey);
     const displayName = String(item?.display_name ?? item?.displayName ?? roleKey).trim() || roleKey;
     out.push({ role_key: roleKey, display_name: displayName });
-  });
-  DEFAULT_PROJECT_ROLES.forEach((roleKey) => {
-    if (seen.has(roleKey)) return;
-    seen.add(roleKey);
-    out.push({ role_key: roleKey, display_name: roleKey });
   });
   return out;
 }
@@ -131,7 +124,7 @@ async function loadProjectRolesCatalog() {
     }
 
     // fallback seguro final para não bloquear a tela
-    renderAllowedRolesChecks(DEFAULT_PROJECT_ROLES);
+    renderAllowedRolesChecks([]);
   }
 }
 
