@@ -42,8 +42,6 @@ let selectedProjectId = null;
 let allowedModules = new Set();
 let projectRolesCatalog = [];
 
-const DEFAULT_PROJECT_ROLES = ['member', 'desenhista', 'colaborador', 'revisor', 'cliente'];
-
 // ---------------------------------------------------------------------------
 // Normalização de catálogo de roles para uso na UI
 // ---------------------------------------------------------------------------
@@ -56,11 +54,6 @@ function normalizeRoleCatalog(items) {
     seen.add(roleKey);
     const displayName = String(item?.display_name ?? item?.displayName ?? roleKey).trim() || roleKey;
     out.push({ role_key: roleKey, display_name: displayName });
-  });
-  DEFAULT_PROJECT_ROLES.forEach((roleKey) => {
-    if (seen.has(roleKey)) return;
-    seen.add(roleKey);
-    out.push({ role_key: roleKey, display_name: roleKey });
   });
   return out;
 }
@@ -131,7 +124,7 @@ async function loadProjectRolesCatalog() {
     }
 
     // fallback seguro final para não bloquear a tela
-    renderAllowedRolesChecks(DEFAULT_PROJECT_ROLES);
+    renderAllowedRolesChecks([]);
   }
 }
 
@@ -142,14 +135,6 @@ function setAllowedRolesChecks(csvValue) {
       .map((x) => x.trim().toLowerCase())
       .filter(Boolean),
   ));
-
-  // Se houver role já salva no projeto mas ausente no catálogo atual,
-  // inclui dinamicamente no formulário para não perder dado ao salvar.
-  const knownKeys = new Set(projectRolesCatalog.map((r) => String(r.role_key || '').toLowerCase()));
-  const missing = selectedRoles.filter((role) => !knownKeys.has(role));
-  if (missing.length) {
-    renderAllowedRolesChecks(projectRolesCatalog.concat(missing.map((role) => ({ role_key: role, display_name: role }))));
-  }
 
   const selectedSet = new Set(selectedRoles);
   const checks = allowedRolesBox?.querySelectorAll('.allowed-role') || [];
