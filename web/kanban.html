@@ -103,6 +103,7 @@
       <h3>Novo documento</h3>
       <label>Nome</label><input id="pName" required />
       <label>Descrição</label><textarea id="pDescription" rows="3"></textarea>
+      <label>Anexar um arquivo</label><input id="pDocumentFile" type="file" />
       <label>Status</label><select id="pStatus"></select>
       <label>Prioridade</label><select id="pPriority"></select>
       <label>Responsável</label><input id="pOwner" list="ownersList" />
@@ -110,9 +111,8 @@
       <label>Prazo</label><input id="pDueDate" type="date" />
       <label>Depende de (opcional)</label>
       <input id="pDependsSearch" type="text" placeholder="Filtrar cards..." />
-      <div id="pDependsOn" class="deps-checklist"></div>
+      <div id="pDependsOn" class="deps-checklist deps-checklist-scroll"></div>
       <small class="small">Marque os cards pré-requisito.</small>
-      <label>Anexar um arquivo</label><input id="pDocumentFile" type="file" />
       <div class="dialog-actions">
         <button type="button" class="secondary" id="cancelDialogBtn">Cancelar</button>
         <button type="submit">Salvar</button>
