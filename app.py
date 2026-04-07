@@ -3757,12 +3757,18 @@ class Handler(BaseHTTPRequestHandler):
             if not ver:
                 return self._json(404, {"ok": False, "error": "Versão de documento não encontrada"})
 
+            latest_ver = ver if version is None else get_document_version(slug, None)
+            legacy_doc_path = Path(str(proj.get("documentPath") or "").strip())
+
             if version is None:
-                doc_path = Path(proj.get("documentPath") or "")
+                doc_path = legacy_doc_path
             else:
                 doc_path = DOCS_REPO_DIR / ver["file_rel_path"]
+                if (not doc_path.exists()) and latest_ver and int(ver.get("version") or 0) == int(latest_ver.get("version") or 0):
+                    if legacy_doc_path.exists() and legacy_doc_path.is_file():
+                        doc_path = legacy_doc_path
 
-            if not doc_path.exists():
+            if not doc_path.exists() or not doc_path.is_file():
                 return self._json(404, {"ok": False, "error": "Arquivo da versão não encontrado"})
             content = doc_path.read_bytes()
 
