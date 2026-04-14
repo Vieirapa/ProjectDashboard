@@ -35,11 +35,16 @@ function withProjectId(url) {
   return `${url}${sep}project_id=${encodeURIComponent(String(currentProjectId()))}`;
 }
 const backBtn = document.getElementById('backBtn');
+const backLinkBtn = document.getElementById('backLinkBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const deleteBtn = document.getElementById('deleteBtn');
 const feedback = document.getElementById('feedback');
 const formEl = document.getElementById('editForm');
 const saveBtn = document.getElementById('saveBtn');
+const detailNavStatus = document.getElementById('detailNavStatus');
+const saveStateBadge = document.getElementById('saveStateBadge');
+const uploadFeedback = document.getElementById('uploadFeedback');
+const documentActionSummary = document.getElementById('documentActionSummary');
 const reviewNoteInput = document.getElementById('reviewNoteInput');
 const addReviewNoteBtn = document.getElementById('addReviewNoteBtn');
 const reviewNotesHistory = document.getElementById('reviewNotesHistory');
@@ -75,6 +80,8 @@ let isSaving = false;
 let scopeBlocked = false;
 let dependencyDocs = [];
 let dependencySelected = new Set();
+let lastActivity = null;
+let savePhase = 'idle';
 saveBtn.disabled = true;
 
 // ---------------------------------------------------------------------------
@@ -124,6 +131,60 @@ function canDeleteCard() {
 function setDirty(v) {
   isDirty = !!v;
   saveBtn.disabled = scopeBlocked || !isDirty || isSaving || !canEditCard();
+  updateNavigationStatus();
+  refreshActionFeedback();
+}
+
+function setStatusChip(el, variant, message) {
+  if (!el) return;
+  el.className = `inline-status-chip inline-status-chip-${variant}`;
+  el.textContent = message;
+}
+
+function updateNavigationStatus() {
+  if (!detailNavStatus) return;
+  if (scopeBlocked) {
+    detailNavStatus.className = 'detail-nav-status small status-danger';
+    detailNavStatus.textContent = 'Edição bloqueada por escopo inválido.';
+    return;
+  }
+  if (isSaving) {
+    detailNavStatus.className = 'detail-nav-status small status-warning';
+    detailNavStatus.textContent = savePhase === 'uploading'
+      ? 'Salvando card e enviando nova versão do documento...'
+      : 'Salvando alterações do card...';
+    return;
+  }
+  if (isDirty) {
+    detailNavStatus.className = 'detail-nav-status small status-warning';
+    detailNavStatus.textContent = 'Há alterações pendentes. Salve antes de voltar ao Kanban.';
+    return;
+  }
+  detailNavStatus.className = 'detail-nav-status small';
+  detailNavStatus.textContent = 'Sem alterações pendentes.';
+}
+
+function refreshActionFeedback() {
+  const file = f.documentFile?.files?.[0];
+  if (file) {
+    setStatusChip(uploadFeedback, 'warning', `Upload pendente: ${file.name}`);
+    if (documentActionSummary) {
+      documentActionSummary.textContent = 'Novo arquivo selecionado. Ao salvar, a tela vai atualizar o card e criar uma nova versão no histórico do documento.';
+    }
+  } else {
+    setStatusChip(uploadFeedback, 'neutral', 'Nenhum novo arquivo selecionado.');
+    if (documentActionSummary) {
+      documentActionSummary.textContent = 'Sem upload pendente. Selecione um arquivo apenas quando quiser criar uma nova versão.';
+    }
+  }
+
+  if (isSaving) {
+    setStatusChip(saveStateBadge, 'warning', savePhase === 'uploading' ? 'Enviando arquivo...' : 'Salvando card...');
+  } else if (isDirty) {
+    setStatusChip(saveStateBadge, 'warning', file ? 'Card + upload pendentes.' : 'Alterações do card pendentes.');
+  } else {
+    setStatusChip(saveStateBadge, 'neutral', 'Pronto para editar.');
+  }
 }
 
 function setScopeBlocked(message) {
@@ -134,6 +195,8 @@ function setScopeBlocked(message) {
     if (!el) return;
     el.disabled = true;
   });
+  updateNavigationStatus();
+  setStatusChip(saveStateBadge, 'danger', 'Edição bloqueada.');
   feedback.textContent = message || 'Escopo inválido para este documento.';
 }
 
@@ -201,11 +264,15 @@ function mapCardStatusToDocumentState(status) {
 
 function renderDetailMeta(document) {
   if (!detailMetaSummary || !document) return;
+  const lastActor = lastActivity?.author || document.owner || document.createdBy || 'Sem autor definido';
+  const lastLabel = lastActivity?.label || 'Última movimentação ainda não identificada';
   const chips = [
     `<span class="detail-pill detail-pill-soft">Status: ${esc(document.status || '-')}</span>`,
     `<span class="detail-pill detail-pill-soft">Prioridade: ${esc(document.priority || '-')}</span>`,
     `<span class="detail-pill detail-pill-soft">Responsável: ${esc(document.owner || 'Não definido')}</span>`,
     `<span class="detail-pill detail-pill-soft">Prazo: ${esc(fmtDate(document.dueDate))}</span>`,
+    `<span class="detail-pill detail-pill-accent">Última atividade: ${esc(lastLabel)}</span>`,
+    `<span class="detail-pill detail-pill-soft">Último autor: ${esc(lastActor)}</span>`,
   ];
   detailMetaSummary.innerHTML = chips.join('');
 }
@@ -213,10 +280,12 @@ function renderDetailMeta(document) {
 function renderCurrentDocumentPanel(document) {
   if (!currentDocumentState || !currentDocumentTitle || !currentDocumentHint || !currentDocumentActions) return;
   const hasDocument = !!String(document?.documentName || '').trim();
+  const activityLabel = lastActivity?.label || fmtDateTime(document?.updatedAt);
+  const activityAuthor = lastActivity?.author || document?.owner || document?.createdBy || 'Sem autor definido';
   currentDocumentState.textContent = hasDocument ? documentStateLabel(document?.documentStatus) : 'Sem anexo';
   currentDocumentTitle.textContent = hasDocument ? String(document.documentName) : 'Nenhum documento anexado';
   currentDocumentHint.textContent = hasDocument
-    ? `Arquivo atual vinculado ao card. Última atualização: ${fmtDateTime(document?.updatedAt)}.`
+    ? `Arquivo atual vinculado ao card. Última atividade: ${activityLabel}. Último autor: ${activityAuthor}.`
     : 'Envie um arquivo para iniciar o histórico de versões deste card e deixar a operação rastreável.';
 
   const actions = [];
@@ -224,7 +293,7 @@ function renderCurrentDocumentPanel(document) {
     actions.push(`<a class="button-link" href="${withProjectId(`/api/documents/${encodeURIComponent(slug)}/document`)}" target="_blank" rel="noopener">Abrir arquivo atual</a>`);
   }
   if (canUploadDocument()) {
-    actions.push('<span class="detail-inline-hint">Novo upload cria uma nova versão no histórico.</span>');
+    actions.push('<span class="detail-inline-hint">Novo upload cria uma nova versão no histórico. Alterações de card continuam separadas deste bloco.</span>');
   }
   currentDocumentActions.innerHTML = actions.join('');
 }
@@ -232,9 +301,24 @@ function renderCurrentDocumentPanel(document) {
 // ---------------------------------------------------------------------------
 // Carregamento do histórico de notas de revisão
 // ---------------------------------------------------------------------------
+function registerLastActivity(candidate) {
+  if (!candidate?.at) return;
+  const candidateTime = new Date(candidate.at).getTime();
+  if (Number.isNaN(candidateTime)) return;
+  const currentTime = lastActivity?.at ? new Date(lastActivity.at).getTime() : Number.NEGATIVE_INFINITY;
+  if (candidateTime >= currentTime) lastActivity = candidate;
+}
+
 async function loadReviewNotes() {
   const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/review-notes`));
   const notes = d.notes || [];
+  if (notes[0]?.created_at) {
+    registerLastActivity({
+      at: notes[0].created_at,
+      author: notes[0].created_by || '-',
+      label: `nota de revisão em ${fmtDateTime(notes[0].created_at)}`,
+    });
+  }
   if (!notes.length) {
     reviewNotesHistory.textContent = 'Sem notas registradas. Quando o card entrar em revisão, registre aqui os ajustes combinados.';
     if (reviewSummary) reviewSummary.textContent = 'Nenhuma pendência de revisão registrada.';
@@ -312,6 +396,11 @@ async function loadVersions() {
       return;
     }
     const latest = versions[0];
+    registerLastActivity({
+      at: latest.created_at,
+      author: latest.created_by || '-',
+      label: `upload r${latest.version} em ${fmtDateTime(latest.created_at)}`,
+    });
     if (documentVersionsSummary) {
       documentVersionsSummary.textContent = `${versions.length} versão(ões) registrada(s). Última entrega: r${latest.version} em ${fmtDateTime(latest.created_at)} por ${latest.created_by || '-'}.`;
     }
@@ -408,6 +497,7 @@ function renderDependencyInfo(document) {
 // Carregamento principal do documento na tela de edição
 // ---------------------------------------------------------------------------
 async function loadDocument() {
+  lastActivity = null;
   const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`));
   const p = d.document;
   doc = p;
@@ -417,8 +507,11 @@ async function loadDocument() {
   }
   f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate;
   f.documentName.value = p.documentName || 'Sem anexo';
-  renderDetailMeta(p);
-  renderCurrentDocumentPanel(p);
+  registerLastActivity({
+    at: p.updatedAt || p.openedAt,
+    author: p.owner || p.createdBy || '-',
+    label: p.updatedAt ? `edição do card em ${fmtDateTime(p.updatedAt)}` : `abertura em ${fmtDateTime(p.openedAt)}`,
+  });
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
   d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
   ownersList.innerHTML = '';
@@ -441,7 +534,10 @@ async function loadDocument() {
   updateReviewNotesAvailability();
   await loadVersions();
   await loadReviewNotes();
+  renderDetailMeta(p);
+  renderCurrentDocumentPanel(p);
   setDirty(false);
+  refreshActionFeedback();
 }
 
 function fileToBase64(file) {
@@ -463,7 +559,10 @@ function fileToBase64(file) {
 if (dependsSearch) {
   dependsSearch.addEventListener('input', () => renderDependencyChecklist());
 }
-f.documentFile.addEventListener('change', () => setDirty(true));
+f.documentFile.addEventListener('change', () => {
+  setDirty(true);
+  refreshActionFeedback();
+});
 f.status.addEventListener('change', () => updateReviewNotesAvailability());
 
 window.addEventListener('beforeunload', (e) => {
@@ -472,13 +571,16 @@ window.addEventListener('beforeunload', (e) => {
   e.returnValue = '';
 });
 
-backBtn.onclick = () => {
+function navigateBackToBoard() {
   if (isDirty && !isSaving) {
     const leave = confirm('Você fez alterações que ainda não foram salvas. Se sair agora, elas serão perdidas. Deseja continuar?');
     if (!leave) return;
   }
   location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
-};
+}
+
+backBtn.onclick = navigateBackToBoard;
+if (backLinkBtn) backLinkBtn.onclick = navigateBackToBoard;
 
 logoutBtn.onclick = async () => {
   if (isDirty && !isSaving) {
@@ -507,6 +609,8 @@ addReviewNoteBtn.onclick = async () => {
     });
     reviewNoteInput.value = '';
     await loadReviewNotes();
+    renderDetailMeta(doc);
+    renderCurrentDocumentPanel(doc);
     feedback.textContent = 'Nota adicionada ✅ Histórico de revisão atualizado.';
   } catch (e) {
     feedback.textContent = e.message;
@@ -524,14 +628,22 @@ async function handleSave() {
   if (!canEditCard()) return;
   if (!isDirty) return;
   isSaving = true;
+  savePhase = 'saving';
+  saveBtn.textContent = 'Salvando...';
   saveBtn.disabled = true;
+  updateNavigationStatus();
+  refreshActionFeedback();
   try {
     const owner = (f.owner.value || '').trim();
     const validOwners = Array.from(ownersList.options).map(o => o.value);
     if (owner && !validOwners.includes(owner)) {
       feedback.textContent = 'Responsável inválido. Selecione um usuário existente da lista para manter o card consistente.';
       isSaving = false;
+      savePhase = 'idle';
+      saveBtn.textContent = 'Salvar alterações';
       saveBtn.disabled = !isDirty;
+      updateNavigationStatus();
+      refreshActionFeedback();
       return;
     }
 
@@ -543,6 +655,10 @@ async function handleSave() {
 
     const file = f.documentFile.files?.[0];
     if (file) {
+      savePhase = 'uploading';
+      saveBtn.textContent = 'Enviando arquivo...';
+      updateNavigationStatus();
+      refreshActionFeedback();
       const b64 = await fileToBase64(file);
       await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/document`), {
         method: 'POST',
@@ -569,17 +685,35 @@ async function handleSave() {
       documentStatus: mapCardStatusToDocumentState(f.status.value),
       updatedAt: new Date().toISOString(),
     };
-    renderDetailMeta(doc);
-    renderCurrentDocumentPanel(doc);
+    registerLastActivity({
+      at: doc.updatedAt,
+      author: me?.username || owner || '-',
+      label: file ? `edição + upload em ${fmtDateTime(doc.updatedAt)}` : `edição do card em ${fmtDateTime(doc.updatedAt)}`,
+    });
     await loadVersions();
     await loadReviewNotes();
+    renderDetailMeta(doc);
+    renderCurrentDocumentPanel(doc);
     setDirty(false);
-    feedback.textContent = 'Salvo com sucesso ✅ Detalhe, anexo e histórico foram atualizados.';
-    location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
+    isSaving = false;
+    savePhase = 'idle';
+    saveBtn.textContent = 'Salvar alterações';
+    updateNavigationStatus();
+    refreshActionFeedback();
+    setStatusChip(saveStateBadge, 'success', file ? 'Card salvo e upload concluído.' : 'Card salvo com sucesso.');
+    if (file) setStatusChip(uploadFeedback, 'success', `Upload concluído: ${f.documentName.value}`);
+    feedback.textContent = file
+      ? 'Salvo com sucesso ✅ Card atualizado e nova versão do documento registrada.'
+      : 'Salvo com sucesso ✅ Dados do card atualizados.';
   } catch (e) {
     feedback.textContent = e.message;
     isSaving = false;
+    savePhase = 'idle';
+    saveBtn.textContent = 'Salvar alterações';
     saveBtn.disabled = !isDirty;
+    updateNavigationStatus();
+    refreshActionFeedback();
+    setStatusChip(saveStateBadge, 'danger', 'Falha ao salvar.');
   }
 }
 
@@ -601,6 +735,8 @@ deleteBtn.onclick = async () => {
   try {
     await initMe();
     await loadDocument();
+    updateNavigationStatus();
+    refreshActionFeedback();
   } catch (e) {
     if (e?.status === 401) {
       location.href = '/login.html';

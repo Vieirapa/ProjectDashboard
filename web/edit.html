@@ -11,9 +11,14 @@
     <aside class="sidebar" id="sidebar-root" data-active="kanban"></aside>
 
     <main class="content">
-      <section class="page-hero">
+      <section class="page-hero page-hero-detail">
         <div>
           <p class="eyebrow">Detalhamento operacional</p>
+          <div class="detail-breadcrumbs">
+            <button id="backLinkBtn" class="button-link button-link-ghost" type="button">← Voltar ao Kanban</button>
+            <span class="small muted-text">/</span>
+            <span class="small muted-text">Detalhe do card</span>
+          </div>
           <h1>✏️ Editar Documento</h1>
           <p class="page-subtitle">Ajuste status, prioridade, dependências, anexo e acompanhe o histórico de revisão em uma visão mais clara do card.</p>
         </div>
@@ -22,6 +27,15 @@
           <button id="deleteBtn" class="danger">Apagar documento</button>
           <button id="logoutBtn" class="secondary">Logout</button>
         </div>
+      </section>
+
+      <section class="detail-nav-strip panel">
+        <div class="detail-nav-copy">
+          <p class="eyebrow">Navegação da tela</p>
+          <h3 class="mt-0">Edite o card, envie versão nova só quando precisar</h3>
+          <p class="small muted-text mb-0">O bloco principal altera dados operacionais. A área de documento cuida do arquivo e do histórico.</p>
+        </div>
+        <div id="detailNavStatus" class="detail-nav-status small">Sem alterações pendentes.</div>
       </section>
 
       <section class="edit-wrap">
@@ -38,10 +52,10 @@
 
             <div class="section-head">
               <div>
-                <p class="eyebrow">Documento</p>
+                <p class="eyebrow">Editar card</p>
                 <h3 class="mt-0">Dados principais</h3>
               </div>
-              <span class="small">Edite o card e mantenha o anexo sincronizado com o status atual.</span>
+              <span class="small">Aqui você altera contexto, status, responsável e prazo do card. O arquivo é gerenciado separadamente abaixo.</span>
             </div>
 
             <label>Nome do card</label><input id="name" required />
@@ -59,6 +73,7 @@
             <label>Prazo combinado</label><input id="dueDate" type="date" />
 
             <section class="detail-block detail-attachment-block">
+              <div id="documentActionSummary" class="small settings-data-box detail-inline-box detail-action-summary">Sem upload pendente. Selecione um arquivo apenas quando quiser criar uma nova versão.</div>
               <div class="section-head section-head-tight">
                 <div>
                   <p class="eyebrow">Anexo e documento</p>
@@ -75,6 +90,7 @@
                 <div id="currentDocumentActions" class="dialog-actions actions-left actions-wrap current-document-actions"></div>
               </div>
               <label>Enviar novo arquivo (1 por vez)</label><input id="documentFile" type="file" />
+              <div id="uploadFeedback" class="inline-status-chip inline-status-chip-neutral">Nenhum novo arquivo selecionado.</div>
               <label>Arquivo vinculado agora</label><input id="documentName" readonly />
               <div id="documentVersionsSummary" class="small settings-data-box detail-inline-box">Histórico de versões ainda não iniciado.</div>
               <div id="documentVersions" class="small settings-data-box document-version-list empty-state">Sem revisões ainda.</div>
@@ -95,8 +111,11 @@
               <div id="dependencyInfo" class="small settings-data-box detail-inline-box"></div>
             </section>
 
-            <div class="dialog-actions"><button id="saveBtn" type="button">Salvar alterações</button></div>
-            <p id="feedback" class="small"></p>
+            <div class="dialog-actions detail-save-actions">
+              <div id="saveStateBadge" class="inline-status-chip inline-status-chip-neutral">Pronto para editar.</div>
+              <button id="saveBtn" type="button">Salvar alterações</button>
+            </div>
+            <p id="feedback" class="small detail-feedback"></p>
           </form>
 
           <section class="review-panel panel">

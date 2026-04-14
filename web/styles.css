@@ -1720,6 +1720,12 @@ dialog form {
   border-color: rgba(148, 163, 184, 0.22);
 }
 
+.detail-pill-accent {
+  background: #ecfeff;
+  color: #0f766e;
+  border-color: rgba(13, 148, 136, 0.18);
+}
+
 .detail-block {
   display: grid;
   gap: var(--space-3);
@@ -1774,6 +1780,10 @@ dialog form {
   border: 1px solid rgba(37, 99, 235, 0.2);
   text-decoration: none;
   font-weight: 700;
+}
+
+.button-link-ghost {
+  background: transparent;
 }
 
 .button-link:hover {
@@ -1899,6 +1909,100 @@ dialog form {
   margin-top: 0 !important;
 }
 
+.mb-0 {
+  margin-bottom: 0 !important;
+}
+
+.detail-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.page-hero-detail {
+  padding-bottom: 18px;
+}
+
+.detail-nav-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 var(--space-5) var(--space-4);
+  padding: 16px 18px;
+}
+
+.detail-nav-copy {
+  min-width: 0;
+}
+
+.detail-nav-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #334155;
+  font-weight: 700;
+  text-align: center;
+}
+
+.detail-action-summary {
+  border-style: dashed;
+}
+
+.detail-save-actions {
+  justify-content: space-between;
+}
+
+.detail-feedback {
+  min-height: 20px;
+}
+
+.inline-status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.inline-status-chip-neutral {
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.22);
+  color: #334155;
+}
+
+.inline-status-chip-warning,
+.status-warning {
+  background: #fff7ed;
+  border-color: rgba(217, 119, 6, 0.18);
+  color: #b45309;
+}
+
+.inline-status-chip-success,
+.status-success {
+  background: #ecfdf5;
+  border-color: rgba(5, 150, 105, 0.2);
+  color: #047857;
+}
+
+.inline-status-chip-danger,
+.status-danger {
+  background: #fef2f2;
+  border-color: rgba(185, 28, 28, 0.18);
+  color: #b91c1c;
+}
+
 /* Responsive */
 @media (max-width: 1240px) {
   .home-kpi-grid,
@@ -1926,6 +2030,15 @@ dialog form {
 }
 
 @media (max-width: 920px) {
+  .detail-nav-strip {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .detail-nav-status {
+    width: 100%;
+  }
+
   .layout {
     grid-template-columns: 1fr;
     height: auto;
@@ -2005,6 +2118,12 @@ dialog form {
 }
 
 @media (max-width: 640px) {
+  .detail-nav-strip {
+    margin-left: var(--space-4);
+    margin-right: var(--space-4);
+    padding: 14px;
+  }
+
   .content > header,
   .board-title-row,
   .panel-grid,
@@ -2034,7 +2153,9 @@ dialog form {
   .detail-meta-summary,
   .document-version-head,
   .document-version-head > div,
-  .current-document-actions {
+  .current-document-actions,
+  .detail-breadcrumbs,
+  .detail-save-actions {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -2042,6 +2163,14 @@ dialog form {
   .header-actions > *,
   .dialog-actions > * {
     flex: 1 1 100%;
+  }
+
+  .inline-status-chip,
+  .detail-nav-status,
+  .button-link-ghost {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
   }
 
   .project-name-row,
