@@ -2,6 +2,10 @@ const usersList = document.getElementById('usersList');
 const auditList = document.getElementById('auditList');
 const logoutBtn = document.getElementById('logoutBtn');
 const inviteOut = document.getElementById('inviteOut');
+const adminUsersFeedback = document.getElementById('adminUsersFeedback');
+const adminUsersCount = document.getElementById('adminUsersCount');
+const adminAdminsCount = document.getElementById('adminAdminsCount');
+const adminAuditCount = document.getElementById('adminAuditCount');
 
 function escHtml(s) {
   return String(s ?? '')
@@ -37,6 +41,14 @@ async function copyText(text) {
     ta.remove();
     return ok;
   }
+}
+
+
+function setAdminFeedback(message, tone = 'neutral') {
+  if (!adminUsersFeedback) return;
+  const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
+  adminUsersFeedback.className = `settings-inline-feedback status-${safeTone} admin-users-feedback`;
+  adminUsersFeedback.innerHTML = `<strong>Status</strong><span>${escHtml(message || 'Sem atualizações no momento.')}</span>`;
 }
 
 function renderInviteOutput(message, link = '', copied = false) {
@@ -157,6 +169,13 @@ async function loadUsers() {
   roles = d.roles?.length ? d.roles : roles;
   refreshRoleSelectors();
 
+  if (adminUsersCount) adminUsersCount.textContent = String((d.users || []).length);
+  if (adminAdminsCount) adminAdminsCount.textContent = String((d.users || []).filter((u) => u.role === 'admin').length);
+  if (!(d.users || []).length) {
+    usersList.innerHTML = '<div class="empty-state">Nenhum usuário encontrado. Crie um acesso direto ou gere um convite para iniciar a base de pessoas.</div>';
+    return;
+  }
+
   usersList.innerHTML = `
     <table>
       <tr><th>Usuário</th><th>Role</th><th>Tarefas associadas</th><th>Criado em</th><th>Ações</th></tr>
@@ -206,6 +225,12 @@ async function loadUsers() {
 
 async function loadAudit() {
   const d = await api('/api/admin/audit');
+  if (adminAuditCount) adminAuditCount.textContent = String((d.logs || []).length);
+  if (!(d.logs || []).length) {
+    auditList.innerHTML = '<div class="empty-state">Nenhum evento de auditoria encontrado ainda para este recorte.</div>';
+    return;
+  }
+
   auditList.innerHTML = `
     <table>
       <tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Alvo</th><th>Detalhes</th></tr>
@@ -231,11 +256,11 @@ document.getElementById('createUserForm').onsubmit = async (e) => {
       password: document.getElementById('newPassword').value,
       role: document.getElementById('newRole').value,
     })});
-    alert('Usuário criado');
+    setAdminFeedback('Usuário criado com sucesso. A lista foi atualizada.', 'success');
     e.target.reset();
     if (hasModule('admin_users.list')) await loadUsers();
     if (hasModule('admin_users.audit_log')) await loadAudit();
-  } catch (e) { alert(e.message); }
+  } catch (e) { setAdminFeedback(e.message, 'danger'); }
 };
 
 document.getElementById('inviteForm').onsubmit = async (e) => {
@@ -255,13 +280,17 @@ document.getElementById('inviteForm').onsubmit = async (e) => {
       : `Convite gerado (expira ${d.expiresAt}).`;
     const copied = await copyText(full);
     renderInviteOutput(message, full, copied);
+    setAdminFeedback(sendEmail
+      ? `Convite gerado e fluxo de envio acionado para ${document.getElementById('inviteEmail').value || 'o destinatário informado'}.`
+      : 'Convite gerado com sucesso e pronto para compartilhamento.', 'success');
     if (hasModule('admin_users.audit_log')) await loadAudit();
-  } catch (e) { alert(e.message); }
+  } catch (e) { setAdminFeedback(e.message, 'danger'); }
 };
 
 logoutBtn.onclick = async () => { await api('/api/logout',{method:'POST'}); location.href='/login.html'; };
 
 renderInviteOutput('Nenhum convite gerado ainda.');
+setAdminFeedback('Tela pronta. Cadastre usuários imediatos ou use convites para onboarding guiado.', 'neutral');
 
 (async()=>{
   try {

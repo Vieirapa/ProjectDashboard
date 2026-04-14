@@ -461,22 +461,23 @@ function pct(part, total) {
   return `${Math.round((part / total) * 100)}%`;
 }
 
-function setProjectPackageStatus(message, isError = false) {
+function setProjectPackageStatus(message, tone = 'neutral') {
   if (!projectPackageStatus) return;
-  projectPackageStatus.textContent = message;
-  projectPackageStatus.style.color = isError ? '#fecaca' : '#cdd9ee';
+  const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
+  projectPackageStatus.className = `settings-inline-feedback status-${safeTone} project-package-status`;
+  projectPackageStatus.innerHTML = `<strong>Status</strong><span>${message}</span>`;
 }
 
 async function exportCurrentProject() {
   const pid = currentProjectIdFromUrl();
-  setProjectPackageStatus('Gerando pacote do projeto...');
+  setProjectPackageStatus('Gerando pacote ZIP do projeto. Isso pode levar alguns instantes.', 'neutral');
   if (exportProjectBtn) exportProjectBtn.disabled = true;
   try {
     const data = await api(`/api/admin/projects/${encodeURIComponent(String(pid))}/export`, { method: 'POST' });
-    setProjectPackageStatus(`Pacote gerado com sucesso. Download iniciado. Arquivo: ${data.package_path || 'caminho não informado'}`);
+    setProjectPackageStatus(`Pacote gerado com sucesso. O download foi iniciado e o arquivo salvo é ${data.package_path || 'não informado'}.`, 'success');
     window.open(`/api/admin/projects/${encodeURIComponent(String(pid))}/export/download`, '_blank');
   } catch (e) {
-    setProjectPackageStatus(e.message || 'Falha ao exportar pacote do projeto.', true);
+    setProjectPackageStatus(e.message || 'Falha ao exportar pacote do projeto.', 'danger');
     alert(e.message || 'Falha ao exportar pacote do projeto.');
   } finally {
     if (exportProjectBtn) exportProjectBtn.disabled = false;
@@ -486,14 +487,14 @@ async function exportCurrentProject() {
 async function archiveCurrentProject() {
   const pid = currentProjectIdFromUrl();
   if (!confirm('Arquivar este projeto vai gerar um pacote e retirar o acesso operacional de usuários não-admin. Deseja continuar?')) return;
-  setProjectPackageStatus('Arquivando projeto...');
+  setProjectPackageStatus('Arquivando projeto e removendo o acesso operacional de usuários não admin...', 'warning');
   if (archiveProjectBtn) archiveProjectBtn.disabled = true;
   try {
     const data = await api(`/api/admin/projects/${encodeURIComponent(String(pid))}/archive`, { method: 'POST' });
-    setProjectPackageStatus(`Projeto arquivado. Pacote salvo em: ${data.package_path || 'caminho não informado'}`);
+    setProjectPackageStatus(`Projeto arquivado com sucesso. O pacote final foi salvo em ${data.package_path || 'caminho não informado'}.`, 'success');
     await render();
   } catch (e) {
-    setProjectPackageStatus(e.message || 'Falha ao arquivar projeto.', true);
+    setProjectPackageStatus(e.message || 'Falha ao arquivar projeto.', 'danger');
     alert(e.message || 'Falha ao arquivar projeto.');
   } finally {
     if (archiveProjectBtn) archiveProjectBtn.disabled = false;
@@ -525,9 +526,9 @@ function updateProjectSummary() {
   if (sumReviewEl) sumReviewEl.textContent = `${review} (${pct(review, total)})`;
   if (sumDoneEl) sumDoneEl.textContent = `${done} (${pct(done, total)})`;
   if (project && project.archived) {
-    setProjectPackageStatus(`Projeto arquivado em ${formatPtDate(project.archived_at || '')}. Pacote disponível para admin.`);
+    setProjectPackageStatus(`Projeto arquivado em ${formatPtDate(project.archived_at || '')}. O pacote permanece disponível para consulta administrativa.`, 'success');
   } else {
-    setProjectPackageStatus('Gere um pacote ZIP completo do projeto ou arquive o acesso operacional para não-admin.');
+    setProjectPackageStatus('Pronto para exportar um pacote ZIP completo ou concluir o arquivamento deste projeto.', 'neutral');
   }
   if (archiveProjectBtn) archiveProjectBtn.disabled = !!(project && project.archived);
 }

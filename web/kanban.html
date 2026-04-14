@@ -55,19 +55,28 @@
               <div class="kanban-status-pill kanban-status-done">Concluídos <b id="sumDone">0 (0%)</b></div>
             </div>
           </div>
-          <aside class="project-summary-actions-panel">
+          <aside class="project-summary-actions-panel project-package-panel">
             <div class="project-summary-head">
               <div>
                 <span class="kanban-summary-label">Arquivos e andamento</span>
-                <h2>Dados e arquivos</h2>
+                <h2>Exportação e arquivamento</h2>
+              </div>
+            </div>
+            <div class="project-package-copy">
+              <p class="small muted-text">Use a exportação para guardar um pacote ZIP do projeto atual. Arquive apenas quando o fluxo operacional já puder ser encerrado para usuários não admin.</p>
+              <div class="project-package-hints">
+                <span class="detail-pill detail-pill-soft">ZIP com dados e anexos</span>
+                <span class="detail-pill detail-pill-soft">Arquivamento bloqueia acesso operacional</span>
               </div>
             </div>
             <div class="project-summary-action-buttons">
-              <button id="exportProjectBtn" type="button">Exportar projeto (ZIP)</button>
+              <button id="exportProjectBtn" type="button">Exportar pacote ZIP</button>
               <button id="archiveProjectBtn" type="button" class="danger">Arquivar projeto</button>
             </div>
-            <p class="small muted-text">Exporta dados, versões e arquivos reais do projeto para armazenamento externo.</p>
-            <p id="projectPackageStatus" class="small muted-text project-package-status">Aguardando ação.</p>
+            <div id="projectPackageStatus" class="settings-inline-feedback status-neutral project-package-status" role="status" aria-live="polite">
+              <strong>Status</strong>
+              <span>Pronto para exportar um pacote ou concluir o arquivamento deste projeto.</span>
+            </div>
           </aside>
         </div>
       </section>

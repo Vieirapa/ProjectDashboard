@@ -21,6 +21,27 @@
       </section>
 
       <section class="edit-wrap settings-page-wrap">
+        <div id="adminUsersFeedback" class="settings-inline-feedback status-neutral admin-users-feedback" role="status" aria-live="polite">
+          <strong>Status</strong>
+          <span>Use esta área para cadastrar acessos, gerar convites e acompanhar governança sem sair da operação.</span>
+        </div>
+        <div class="admin-users-insight-strip" aria-label="Resumo operacional de usuários e convites">
+          <article class="projects-insight-card">
+            <span class="kanban-summary-label">Usuários</span>
+            <strong id="adminUsersCount">0</strong>
+            <p class="small">cadastros ativos visíveis nesta página</p>
+          </article>
+          <article class="projects-insight-card">
+            <span class="kanban-summary-label">Admins</span>
+            <strong id="adminAdminsCount">0</strong>
+            <p class="small">contas com acesso administrativo</p>
+          </article>
+          <article class="projects-insight-card">
+            <span class="kanban-summary-label">Auditoria</span>
+            <strong id="adminAuditCount">0</strong>
+            <p class="small">eventos recentes carregados para revisão</p>
+          </article>
+        </div>
         <div class="settings-section-grid">
           <section class="panel settings-panel" data-module-id="admin_users.create">
             <div class="section-head">
@@ -28,13 +49,13 @@
                 <p class="eyebrow">Acesso direto</p>
                 <h3>Criar usuário</h3>
               </div>
-              <span class="small">Cadastro manual para acesso imediato.</span>
+              <span class="small">Crie um acesso direto quando a pessoa já precisa começar a operar agora.</span>
             </div>
             <form id="createUserForm" class="form-grid settings-form-grid">
               <label>Usuário</label>
-              <input id="newUsername" placeholder="username" required />
+              <input id="newUsername" placeholder="ex.: ana.silva" required />
               <label>Senha</label>
-              <input id="newPassword" placeholder="senha" required />
+              <input id="newPassword" placeholder="defina uma senha inicial" required />
               <label>Role</label>
               <select id="newRole"><option value="member">member</option><option value="admin">admin</option></select>
               <div class="dialog-actions actions-left">
@@ -49,7 +70,7 @@
                 <p class="eyebrow">Onboarding</p>
                 <h3>Convidar novo usuário</h3>
               </div>
-              <span class="small">Gere convites e opcionalmente envie por e-mail.</span>
+              <span class="small">Gere um link pronto para onboarding e envie por e-mail quando fizer sentido.</span>
             </div>
             <form id="inviteForm" class="form-grid settings-form-grid settings-form-grid-wide">
               <label>Role do convite</label>
@@ -75,7 +96,7 @@ Bem-vindo(a) ao sistema!</textarea>
                 <button type="submit">Gerar link de convite</button>
               </div>
             </form>
-            <div id="inviteOut" class="small settings-data-box invite-output-box">Nenhum convite gerado ainda.</div>
+            <div id="inviteOut" class="small settings-data-box invite-output-box">Nenhum convite gerado ainda. Quando um link for criado, ele aparecerá aqui com opção de cópia rápida.</div>
           </section>
         </div>
 

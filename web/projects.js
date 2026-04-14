@@ -30,6 +30,8 @@ const feedback = document.getElementById('feedback');
 const projectsList = document.getElementById('projectsList');
 const projectCardsList = document.getElementById('projectCardsList');
 const templateFilter = document.getElementById('templateFilter');
+const projectsCount = document.getElementById('projectsCount');
+const templatesCount = document.getElementById('templatesCount');
 
 const newBtn = document.getElementById('newBtn');
 const saveBtn = document.getElementById('saveBtn');
@@ -41,6 +43,13 @@ let projects = [];
 let selectedProjectId = null;
 let allowedModules = new Set();
 let projectRolesCatalog = [];
+
+function setFeedback(message, tone = 'neutral') {
+  if (!feedback) return;
+  const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
+  feedback.className = `settings-inline-feedback status-${safeTone} projects-feedback`;
+  feedback.innerHTML = `<strong>Status</strong><span>${esc(message || 'Sem atualizações no momento.')}</span>`;
+}
 
 // ---------------------------------------------------------------------------
 // Normalização de catálogo de roles para uso na UI
@@ -219,8 +228,10 @@ function filteredProjects() {
 // ---------------------------------------------------------------------------
 function renderList() {
   const shown = filteredProjects();
+  if (projectsCount) projectsCount.textContent = String(shown.length);
+  if (templatesCount) templatesCount.textContent = String(projects.filter((p) => !!p.is_template).length);
   if (!shown.length) {
-    projectsList.textContent = 'Nenhum projeto para o filtro selecionado.';
+    projectsList.innerHTML = '<div class="empty-state">Nenhum projeto encontrado neste filtro. Ajuste o recorte ou crie um novo projeto para começar.</div>';
     return;
   }
   projectsList.innerHTML = `<table>
@@ -242,14 +253,15 @@ function renderList() {
 // ---------------------------------------------------------------------------
 async function loadCardsForSelectedProject() {
   if (!selectedProjectId) {
-    projectCardsList.textContent = 'Selecione um projeto para listar os cards.';
+    projectCardsList.innerHTML = '<div class="empty-state">Selecione um projeto no catálogo para revisar os cards vinculados, responsáveis e últimas atualizações.</div>';
     return;
   }
   try {
+    projectCardsList.innerHTML = '<div class="loading-state">Carregando cards do projeto selecionado...</div>';
     const d = await api(`/api/documents?project_id=${encodeURIComponent(String(selectedProjectId))}`);
     const docs = d.documents || [];
     if (!docs.length) {
-      projectCardsList.textContent = 'Nenhum card neste projeto.';
+      projectCardsList.innerHTML = '<div class="empty-state">Este projeto ainda não possui cards vinculados. Crie itens no Kanban para começar o acompanhamento operacional.</div>';
       return;
     }
 
@@ -273,15 +285,15 @@ async function loadCardsForSelectedProject() {
         if (!confirm(`Apagar o card "${slug}" deste projeto?`)) return;
         try {
           await api(`/api/documents/${encodeURIComponent(slug)}?project_id=${encodeURIComponent(String(selectedProjectId))}`, { method: 'DELETE' });
-          feedback.textContent = `Card ${slug} apagado ✅`;
+          setFeedback(`Card ${slug} apagado com sucesso.`, 'success');
           await loadCardsForSelectedProject();
         } catch (e) {
-          feedback.textContent = e.message;
+          setFeedback(e.message, 'danger');
         }
       });
     });
   } catch (e) {
-    projectCardsList.textContent = `Falha ao carregar cards: ${e.message || e}`;
+    projectCardsList.innerHTML = `<div class="error-state">Falha ao carregar cards do projeto. ${esc(e.message || e)}</div>`;
   }
 }
 
@@ -310,13 +322,13 @@ async function refresh(preferredId = null, fallbackToLast = false) {
 
 newBtn.onclick = () => {
   if (!hasModule('projects.create_edit')) return;
-  feedback.textContent = '';
+  setFeedback('Formulário limpo. Você pode cadastrar um novo projeto ou revisar outro item do catálogo.', 'neutral');
   setForm(null);
 };
 
 saveBtn.onclick = async () => {
   if (!hasModule('projects.create_edit')) return;
-  feedback.textContent = '';
+  setFeedback('Salvando dados do projeto...', 'neutral');
   try {
     const payload = {
       project_name: projectName.value,
@@ -332,7 +344,7 @@ saveBtn.onclick = async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      feedback.textContent = 'Projeto atualizado ✅';
+      setFeedback('Projeto atualizado com sucesso.', 'success');
     } else {
       const created = await api('/api/admin/projects', {
         method: 'POST',
@@ -342,11 +354,11 @@ saveBtn.onclick = async () => {
       if (Number(created?.project_id) > 0) {
         selectedProjectId = Number(created.project_id);
       }
-      feedback.textContent = 'Projeto criado ✅';
+      setFeedback('Projeto criado com sucesso e já selecionado no catálogo.', 'success');
     }
     await refresh(Number(projectId.value || selectedProjectId || preserveId || 0) || null, !projectId.value);
   } catch (e) {
-    feedback.textContent = e.message;
+    setFeedback(e.message, 'danger');
   }
 };
 
@@ -367,16 +379,16 @@ deleteBtn.onclick = async () => {
 
     if (!confirm(msg)) return;
 
-    feedback.textContent = '';
+    setFeedback('Apagando projeto selecionado...', 'warning');
     const del = await api(`/api/admin/projects/${pid}`, { method: 'DELETE' });
     const deletedCards = Number(del?.deleted_cards || 0);
-    feedback.textContent = deletedCards > 0
-      ? `Projeto apagado ✅ (${deletedCards} card(s) excluído(s))`
-      : 'Projeto apagado ✅';
+    setFeedback(deletedCards > 0
+      ? `Projeto apagado com sucesso. ${deletedCards} card(s) também foram removidos.`
+      : 'Projeto apagado com sucesso.', 'success');
     setForm(null);
     await refresh();
   } catch (e) {
-    feedback.textContent = e.message;
+    setFeedback(e.message, 'danger');
   }
 };
 
@@ -386,14 +398,14 @@ if (cloneBtn) {
     if (!pid) return;
     const selected = projects.find((p) => Number(p.project_id) === pid);
     if (!selected?.is_template) {
-      feedback.textContent = 'Selecione um projeto template para clonar.';
+      setFeedback('Selecione um projeto template para clonar.', 'warning');
       return;
     }
     const suggested = `${selected.project_name} - Cópia`;
     const newName = window.prompt('Nome do novo projeto criado a partir do template:', suggested);
     if (!newName || !String(newName).trim()) return;
 
-    feedback.textContent = '';
+    setFeedback('Criando novo projeto a partir do template...', 'neutral');
     try {
       const created = await api(`/api/admin/projects/${pid}/clone`, {
         method: 'POST',
@@ -401,10 +413,10 @@ if (cloneBtn) {
         body: JSON.stringify({ project_name: String(newName).trim() }),
       });
       const newProjectId = Number(created?.project_id || 0) || null;
-      feedback.textContent = 'Projeto criado a partir do template ✅';
+      setFeedback('Projeto criado a partir do template e carregado para revisão.', 'success');
       await refresh(newProjectId, true);
     } catch (e) {
-      feedback.textContent = e.message;
+      setFeedback(e.message, 'danger');
     }
   };
 }
@@ -422,6 +434,7 @@ logoutBtn.onclick = async () => {
   try {
     await loadMe();
     await loadProjectRolesCatalog();
+    setFeedback('Tela pronta. Selecione um projeto para revisar ou use o formulário para cadastrar um novo.', 'neutral');
     await refresh();
   } catch {
     window.location.href = '/login.html';

@@ -24,7 +24,7 @@
 
       <section class="edit-wrap projects-page-wrap">
         <div class="projects-shell-grid">
-          <form id="projectForm" class="edit-form project-form-card" data-module-id="projects.create_edit">
+          <form id="projectForm" class="edit-form panel project-form-card" data-module-id="projects.create_edit">
             <div class="section-head">
               <div>
                 <p class="eyebrow">Cadastro</p>
@@ -64,15 +64,30 @@
             </div>
 
             <div class="dialog-actions actions-left actions-wrap projects-form-actions">
-              <button type="button" id="newBtn" class="secondary">Novo</button>
-              <button type="button" id="saveBtn">Salvar</button>
+              <button type="button" id="newBtn" class="secondary">Limpar formulário</button>
+              <button type="button" id="saveBtn">Salvar projeto</button>
               <button type="button" id="cloneBtn" class="secondary">Criar a partir do template</button>
-              <button type="button" id="deleteBtn" class="danger">Apagar</button>
+              <button type="button" id="deleteBtn" class="danger">Apagar projeto</button>
             </div>
-            <p id="feedback" class="small"></p>
+            <div id="feedback" class="settings-inline-feedback status-neutral projects-feedback" role="status" aria-live="polite">
+              <strong>Status</strong>
+              <span>Preencha os dados do projeto e selecione quem pode acessá-lo além de admin.</span>
+            </div>
           </form>
 
           <section class="review-panel projects-list-card" data-module-id="projects.list">
+            <div class="projects-insight-strip" aria-label="Resumo do catálogo de projetos">
+              <article class="projects-insight-card">
+                <span class="kanban-summary-label">Catálogo</span>
+                <strong id="projectsCount">0</strong>
+                <p class="small">projetos disponíveis no filtro atual</p>
+              </article>
+              <article class="projects-insight-card">
+                <span class="kanban-summary-label">Templates</span>
+                <strong id="templatesCount">0</strong>
+                <p class="small">bases prontas para replicar estrutura</p>
+              </article>
+            </div>
             <div class="section-head">
               <div>
                 <p class="eyebrow">Catálogo</p>
@@ -104,7 +119,7 @@
             </div>
             <span class="small">Use esta área para inspecionar rapidamente os itens associados.</span>
           </div>
-          <div id="projectCardsList" class="small projects-table-wrap">Selecione um projeto para listar os cards.</div>
+          <div id="projectCardsList" class="small projects-table-wrap">Selecione um projeto para listar cards, responsáveis e últimas atualizações.</div>
         </section>
       </section>
     </main>

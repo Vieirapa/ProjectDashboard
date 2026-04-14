@@ -1605,6 +1605,51 @@ dialog form {
   min-height: 100%;
 }
 
+.projects-feedback,
+.admin-users-feedback,
+.project-package-status {
+  margin-top: var(--space-3);
+}
+
+.projects-insight-strip,
+.admin-users-insight-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.projects-insight-card {
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  padding: 16px 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.projects-insight-card strong {
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.project-package-panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.project-package-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.project-package-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .project-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
