@@ -18,6 +18,8 @@ const priorityColorStatus = document.getElementById('priorityColorStatus');
 const exportProjectBtn = document.getElementById('exportProjectBtn');
 const archiveProjectBtn = document.getElementById('archiveProjectBtn');
 const projectPackageStatus = document.getElementById('projectPackageStatus');
+const boardResultsSummary = document.getElementById('boardResultsSummary');
+const boardFilterSummary = document.getElementById('boardFilterSummary');
 
 const dialog = document.getElementById('documentDialog');
 const form = document.getElementById('documentForm');
@@ -186,10 +188,30 @@ function compareDocuments(a, b, sortBy, sortDir) {
   return dir * left.localeCompare(right, 'pt-BR');
 }
 
+function statusAccent(status) {
+  const map = {
+    'Backlog': { icon: '🕓', tone: 'backlog', helper: 'Itens ainda não iniciados' },
+    'Em andamento': { icon: '⚙️', tone: 'progress', helper: 'Cards em execução' },
+    'Em revisão': { icon: '🔎', tone: 'review', helper: 'Aguardando validação' },
+    'Concluído': { icon: '✅', tone: 'done', helper: 'Entregas finalizadas' },
+  };
+  return map[status] || { icon: '📌', tone: 'neutral', helper: 'Cards do fluxo' };
+}
+
 function makeColumn(status) {
   const col = document.createElement('div');
-  col.className = 'column';
-  col.innerHTML = `<h2>${status}</h2><div class="small">0 documentos</div>`;
+  const accent = statusAccent(status);
+  col.className = `column column-${accent.tone}`;
+  col.innerHTML = `
+    <div class="column-head">
+      <div>
+        <span class="column-kicker">${accent.icon} ${accent.helper}</span>
+        <h2>${status}</h2>
+      </div>
+      <div class="small column-count">0 documentos</div>
+    </div>
+    <div class="column-cards"></div>
+  `;
   col.dataset.status = status;
   return col;
 }
@@ -241,15 +263,26 @@ function makeCard(p, statuses, priorities) {
   const blockedDeps = Array.isArray(p.dependencies)
     ? p.dependencies.filter((d) => String(d.status || '') !== 'Concluído')
     : [];
-  const depBadge = blockedDeps.length
-    ? `<div class="dep-alert" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Aguardando pendências (${blockedDeps.length})</div>`
-    : (Array.isArray(p.dependencies) && p.dependencies.length ? '<div class="dep-ok">✅ Dependências resolvidas</div>' : '');
+  const isOverdue = !!p.dueDate && toTimestamp(p.dueDate) < Date.now() && String(p.status || '') !== 'Concluído';
+  const badges = [
+    `<span class="card-chip card-chip-priority">${p.priority || 'Sem prioridade'}</span>`,
+    p.owner ? `<span class="card-chip">👤 ${p.owner}</span>` : '<span class="card-chip card-chip-muted">Sem responsável</span>',
+    p.hasDocument ? '<span class="card-chip">📎 Com anexo</span>' : '<span class="card-chip card-chip-muted">Sem anexo</span>',
+    blockedDeps.length ? `<span class="card-chip card-chip-danger" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 ${blockedDeps.length} dependência(s)</span>` : '',
+    isOverdue ? '<span class="card-chip card-chip-warning">Prazo vencido</span>' : '',
+  ].filter(Boolean).join('');
 
   card.innerHTML = `
-    <h3>${p.name}</h3>
-    ${depBadge}
-    <p>${p.description || 'Sem descrição'}</p>
-    <div class="meta">Prioridade: <b>${p.priority}</b><br/>Responsável: <b>${p.owner || '-'}</b><br/>Prazo: <b>${p.dueDate || '-'}</b><br/>${ageLabel}: <b>${p.ageDays ?? '-'}</b><br/>Doc: <b>${docMeta.label}</b></div>
+    <div class="card-head">
+      <h3>${p.name}</h3>
+      <span class="card-doc-state">${docMeta.icon} ${docMeta.label}</span>
+    </div>
+    <div class="card-chip-row">${badges}</div>
+    <p>${p.description || 'Sem descrição cadastrada para este card.'}</p>
+    <dl class="meta meta-grid">
+      <div><dt>Prazo</dt><dd>${p.dueDate || '-'}</dd></div>
+      <div><dt>${ageLabel}</dt><dd>${p.ageDays ?? '-'}</dd></div>
+    </dl>
   `;
 
   if (behavior.priorityColorEnabled) {
@@ -503,8 +536,21 @@ async function render() {
       if (cmp !== 0) return cmp;
       return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
     });
-    filtered.forEach(p => (cols.get(p.status) || cols.get('Backlog')).appendChild(makeCard(p, state.statuses, state.priorities)));
-    cols.forEach(c => c.querySelector('.small').textContent = `${c.querySelectorAll('.card').length} documento(s)`);
+    updateBoardToolbar(filtered, filters, state.documents.length);
+    filtered.forEach((p) => {
+      const targetCol = cols.get(p.status) || cols.get('Backlog');
+      const cardsWrap = targetCol?.querySelector('.column-cards') || targetCol;
+      cardsWrap.appendChild(makeCard(p, state.statuses, state.priorities));
+    });
+    cols.forEach((c) => {
+      const count = c.querySelectorAll('.card').length;
+      const countEl = c.querySelector('.column-count');
+      if (countEl) countEl.textContent = `${count} documento(s)`;
+      const cardsWrap = c.querySelector('.column-cards');
+      if (cardsWrap && !count) {
+        cardsWrap.innerHTML = '<div class="kanban-empty-column">Nenhum card nesta etapa com os filtros atuais.</div>';
+      }
+    });
   } catch (e) {
     if (e?.status === 401) {
       window.location.href = '/login.html';
@@ -512,6 +558,20 @@ async function render() {
     }
     const msg = String(e?.message || 'Falha ao carregar dados do kanban.');
     board.innerHTML = `<div class="panel"><b>Não foi possível carregar este projeto.</b><br/><span class="small">${msg}</span></div>`;
+  }
+}
+
+function updateBoardToolbar(filtered, filters, total) {
+  if (boardResultsSummary) {
+    boardResultsSummary.textContent = `${filtered.length} card(s) visíveis de ${total}`;
+  }
+  if (boardFilterSummary) {
+    const active = [];
+    if (filters.q) active.push(`Busca: "${filters.q}"`);
+    if (filters.status) active.push(`Status: ${filters.status}`);
+    if (filters.priority) active.push(`Prioridade: ${filters.priority}`);
+    if (filters.owner) active.push(`Responsável: ${filters.owner}`);
+    boardFilterSummary.textContent = active.length ? active.join(' • ') : 'Sem filtros ativos';
   }
 }
 
