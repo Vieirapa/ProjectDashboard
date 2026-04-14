@@ -3362,6 +3362,30 @@ def get_document_version(slug: str, version: int | None = None) -> dict | None:
     return dict(row) if row else None
 
 
+def resolve_document_file_path(document: dict, version: int | None = None) -> tuple[Path | None, dict | None]:
+    slug = str(document.get("slug") or "").strip()
+    if not slug:
+        return None, None
+
+    ver = get_document_version(slug, version)
+    if not ver:
+        return None, None
+
+    legacy_raw = str(document.get("documentPath") or document.get("document_path") or "").strip()
+    legacy_doc_path = Path(legacy_raw) if legacy_raw else None
+
+    rel_path = str(ver.get("file_rel_path") or "").strip()
+    if rel_path:
+        version_path = DOCS_REPO_DIR / rel_path
+        if version_path.exists() and version_path.is_file():
+            return version_path, ver
+
+    if legacy_doc_path and legacy_doc_path.exists() and legacy_doc_path.is_file():
+        return legacy_doc_path, ver
+
+    return None, ver
+
+
 def save_document_file(slug: str, filename: str, mime_type: str, b64_content: str, actor: str) -> tuple[bool, str]:
     p = get_document(slug)
     if not p:
@@ -4034,22 +4058,10 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     return self._json(400, {"ok": False, "error": "Parâmetro version inválido"})
 
-            ver = get_document_version(slug, version)
+            doc_path, ver = resolve_document_file_path(proj, version)
             if not ver:
                 return self._json(404, {"ok": False, "error": "Versão de documento não encontrada"})
-
-            latest_ver = ver if version is None else get_document_version(slug, None)
-            legacy_doc_path = Path(str(proj.get("documentPath") or "").strip())
-
-            if version is None:
-                doc_path = legacy_doc_path
-            else:
-                doc_path = DOCS_REPO_DIR / ver["file_rel_path"]
-                if (not doc_path.exists()) and latest_ver and int(ver.get("version") or 0) == int(latest_ver.get("version") or 0):
-                    if legacy_doc_path.exists() and legacy_doc_path.is_file():
-                        doc_path = legacy_doc_path
-
-            if not doc_path.exists() or not doc_path.is_file():
+            if not doc_path or not doc_path.exists() or not doc_path.is_file():
                 return self._json(404, {"ok": False, "error": "Arquivo da versão não encontrado"})
             content = doc_path.read_bytes()
 

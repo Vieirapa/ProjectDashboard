@@ -79,6 +79,16 @@ class ProjectExportArchiveTest(unittest.TestCase):
         self.assertEqual(result['repaired'], 0)
         self.assertEqual(result['missing'], 1)
 
+    def test_resolve_document_file_path_prefers_versioned_file_over_stale_document_path(self):
+        doc = app.get_document('doc-export')
+        stale_path = app.DATA_DIR / 'stale.pdf'
+        with app.db() as conn:
+            conn.execute("UPDATE documents SET document_path=? WHERE slug=?", (str(stale_path), 'doc-export'))
+        doc = app.get_document('doc-export')
+        resolved, ver = app.resolve_document_file_path(doc, None)
+        self.assertIsNotNone(ver)
+        self.assertEqual(resolved, app.DOCS_REPO_DIR / 'documents' / 'doc-export' / 'v0001_sample.pdf')
+
 
 if __name__ == '__main__':
     unittest.main()
