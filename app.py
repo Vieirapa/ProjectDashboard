@@ -2549,6 +2549,42 @@ def reconcile_document_storage(actor: str = "system") -> dict:
     return {"ok": True, "checked": checked, "repaired": repaired, "missing": missing, "details": details}
 
 
+def document_storage_health() -> dict:
+    checked = 0
+    broken_documents = 0
+    broken_versions = 0
+    details: list[dict] = []
+
+    with db() as conn:
+        docs = [dict(r) for r in conn.execute(
+            "SELECT slug, document_name, document_path FROM documents ORDER BY id"
+        ).fetchall()]
+        for doc in docs:
+            checked += 1
+            slug = str(doc.get("slug") or "").strip()
+            path_raw = str(doc.get("document_path") or "").strip()
+            if path_raw and not Path(path_raw).exists():
+                broken_documents += 1
+                details.append({"type": "document", "slug": slug, "path": path_raw})
+
+        versions = [dict(r) for r in conn.execute(
+            "SELECT document_slug, version, file_rel_path FROM document_versions ORDER BY id"
+        ).fetchall()]
+        for ver in versions:
+            rel_path = str(ver.get("file_rel_path") or "").strip()
+            if rel_path and not (DOCS_REPO_DIR / rel_path).exists():
+                broken_versions += 1
+                details.append({"type": "version", "slug": str(ver.get("document_slug") or ""), "version": int(ver.get("version") or 0), "path": rel_path})
+
+    return {
+        "ok": True,
+        "checked_documents": checked,
+        "broken_documents": broken_documents,
+        "broken_versions": broken_versions,
+        "details": details,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Leitura consolidada de configurações administrativas
 # ---------------------------------------------------------------------------
@@ -4535,6 +4571,12 @@ class Handler(BaseHTTPRequestHandler):
             admin = self._require_module("projects.create_edit")
             if not admin: return
             result = reconcile_document_storage(admin["username"])
+            return self._json(200 if result.get("ok") else 400, result)
+
+        if p == "/api/admin/storage/health":
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            result = document_storage_health()
             return self._json(200 if result.get("ok") else 400, result)
 
         if p == "/api/admin/roles":

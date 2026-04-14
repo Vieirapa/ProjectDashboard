@@ -61,5 +61,32 @@ echo "[redeploy] local HTTP GET check"
 curl -fsS "http://127.0.0.1:${PORT}/login.html" >/dev/null && echo "OK: local login page reachable"
 
 echo
+echo "[redeploy] storage health snapshot"
+sudo python3 - <<'PY'
+import sqlite3
+from pathlib import Path
+
+DB = Path('/opt/projectdashboard/data/projectdashboard.db')
+DOCS = Path('/opt/projectdashboard/data/docs_repo')
+if not DB.exists():
+    print('WARN: database not found at', DB)
+    raise SystemExit(0)
+
+conn = sqlite3.connect(DB)
+conn.row_factory = sqlite3.Row
+broken_documents = 0
+broken_versions = 0
+for r in conn.execute("SELECT slug, document_path FROM documents ORDER BY id"):
+    p = str(r['document_path'] or '').strip()
+    if p and not Path(p).exists():
+        broken_documents += 1
+for r in conn.execute("SELECT document_slug, version, file_rel_path FROM document_versions ORDER BY id"):
+    rel = str(r['file_rel_path'] or '').strip()
+    if rel and not (DOCS / rel).exists():
+        broken_versions += 1
+print(f"storage-health: broken_documents={broken_documents} broken_versions={broken_versions}")
+PY
+
+echo
 echo "[redeploy] host access URL"
 echo "http://${HOST_ACCESS_IP}:${PORT}/login.html"

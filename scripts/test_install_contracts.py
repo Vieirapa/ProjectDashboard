@@ -34,6 +34,12 @@ class InstallContractsTest(unittest.TestCase):
         self.assertIn("--exclude 'projects/'", content)
         self.assertIn("--exclude 'documents/'", content)
 
+    def test_redeploy_reports_storage_health_snapshot(self):
+        content = (ROOT / 'scripts' / 'redeploy_dev_vm.sh').read_text(encoding='utf-8')
+        self.assertIn('[redeploy] storage health snapshot', content)
+        self.assertIn('broken_documents', content)
+        self.assertIn('broken_versions', content)
+
 
 if __name__ == '__main__':
     unittest.main()
