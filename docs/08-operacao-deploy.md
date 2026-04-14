@@ -42,7 +42,7 @@ The installer configures:
 - optional Let's Encrypt HTTPS
 - daily backup timer (`projectdashboard-backup.timer`)
 - optional Ubuntu firewall setup via UFW (`ENABLE_UFW=yes`, default)
-- bootstrap admin account: `admin` with password defined by `PDASH_INITIAL_PASSWORD`
+- bootstrap admin account: `admin` with password defined by `PDASH_INITIAL_PASSWORD` or generated automatically when not provided
 
 After first login as admin, change the admin password immediately, then configure `/settings.html` (SMTP, defaults, backup policy, diagnostics, recoverable documents and periodic reports).
 
@@ -60,7 +60,7 @@ After first login as admin, change the admin password immediately, then configur
 - `INSTALL_SMOKE_TEST=yes|no` (default: `no`)
 - `DOMAIN` (optional)
 - `LE_EMAIL` (required for automatic cert issuance)
-- `PDASH_INITIAL_PASSWORD` (recommended: set explicitly during first install)
+- `PDASH_INITIAL_PASSWORD` (optional, recommended to set explicitly when you do not want an auto-generated password)
 - `PDASH_FORCE_SECURE_COOKIE=true|false` (recommended: `true` behind HTTPS)
 
 ## Upgrade from GitHub

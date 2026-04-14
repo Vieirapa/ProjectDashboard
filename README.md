@@ -64,7 +64,7 @@ See detailed note: `docs/RUNTIME_DATA_POLICY.md`
 On first boot, the app creates an admin account:
 
 - username: `admin`
-- password: value from `PDASH_INITIAL_PASSWORD` (installer default: `admin` unless overridden)
+- password: value from `PDASH_INITIAL_PASSWORD` (installer generates a strong password automatically unless explicitly provided)
 
 > Change this password immediately after first login.
 > Upgrades should preserve the existing admin password and must not reset it.
@@ -103,7 +103,7 @@ Installer v2 includes (Ubuntu Server or Desktop):
 - optional Nginx reverse proxy
 - optional Let's Encrypt HTTPS
 - daily backup timer
-- enforced bootstrap admin user: `admin` / `admin`
+- enforced bootstrap admin user: `admin` with explicit or auto-generated initial password
 
 ### Example with domain + HTTPS
 

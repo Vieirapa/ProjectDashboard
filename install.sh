@@ -17,7 +17,7 @@ BACKUP_DIR="${BACKUP_DIR:-/var/backups/projectdashboard}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 INSTALL_SMOKE_TEST="${INSTALL_SMOKE_TEST:-no}"   # yes|no
 ADMIN_USER="admin"
-ADMIN_PASSWORD="admin"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "This installer must be run as root (sudo)."
@@ -143,6 +143,17 @@ if [[ -z "$APP_HOST" ]]; then
   APP_HOST="0.0.0.0"
 fi
 
+if [[ -z "${ADMIN_PASSWORD}" ]]; then
+  ADMIN_PASSWORD="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(18))
+PY
+)"
+  GENERATED_ADMIN_PASSWORD="yes"
+else
+  GENERATED_ADMIN_PASSWORD="no"
+fi
+
 BUILD_COMMIT="unknown"
 BUILD_BRANCH="unknown"
 BUILD_INSTALLED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -158,7 +169,11 @@ set_or_replace_env "$ENV_FILE" "PDASH_PORT" "${PORT}"
 set_or_replace_env "$ENV_FILE" "PDASH_PROJECTS_DIR" "${PROJECTS_DIR}"
 set_or_replace_env "$ENV_FILE" "PDASH_DOCUMENTS_DIR" "${DOCUMENTS_DIR}"
 set_or_replace_env "$ENV_FILE" "PDASH_INITIAL_PASSWORD" "${ADMIN_PASSWORD}"
-set_or_replace_env "$ENV_FILE" "PDASH_FORCE_SECURE_COOKIE" "${PDASH_FORCE_SECURE_COOKIE:-false}"
+if [[ "${ENABLE_HTTPS}" == "yes" ]]; then
+  set_or_replace_env "$ENV_FILE" "PDASH_FORCE_SECURE_COOKIE" "${PDASH_FORCE_SECURE_COOKIE:-true}"
+else
+  set_or_replace_env "$ENV_FILE" "PDASH_FORCE_SECURE_COOKIE" "${PDASH_FORCE_SECURE_COOKIE:-false}"
+fi
 set_or_replace_env "$ENV_FILE" "PDASH_BUILD_INFO_MODE" "dev"
 set_or_replace_env "$ENV_FILE" "PDASH_BUILD_COMMIT" "${BUILD_COMMIT}"
 set_or_replace_env "$ENV_FILE" "PDASH_BUILD_BRANCH" "${BUILD_BRANCH}"
@@ -436,6 +451,10 @@ else
   echo "Acesso: http://<IP_DO_SERVIDOR>:${PORT}/login.html"
 fi
 echo "Initial user: ${ADMIN_USER}"
-echo "Initial password: ${ADMIN_PASSWORD}"
+if [[ "${GENERATED_ADMIN_PASSWORD}" == "yes" ]]; then
+  echo "Initial password (generated): ${ADMIN_PASSWORD}"
+else
+  echo "Initial password: value supplied via ADMIN_PASSWORD / PDASH_INITIAL_PASSWORD"
+fi
 echo "Change the admin password on first login."
 echo "After login as admin, use /settings.html to configure SMTP and periodic reports."
