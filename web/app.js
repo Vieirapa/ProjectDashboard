@@ -263,23 +263,47 @@ function makeCard(p, statuses, priorities) {
   const blockedDeps = Array.isArray(p.dependencies)
     ? p.dependencies.filter((d) => String(d.status || '') !== 'Concluído')
     : [];
+  const resolvedDepsCount = Array.isArray(p.dependencies) ? Math.max(p.dependencies.length - blockedDeps.length, 0) : 0;
+  const visibleBlockedDeps = blockedDeps.slice(0, 2);
+  const moreBlockedDeps = Math.max(blockedDeps.length - visibleBlockedDeps.length, 0);
   const isOverdue = !!p.dueDate && toTimestamp(p.dueDate) < Date.now() && String(p.status || '') !== 'Concluído';
+  const stateBadges = [
+    blockedDeps.length ? `<span class="card-state-badge card-state-badge-danger" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Bloqueado</span>` : '<span class="card-state-badge card-state-badge-success">✅ Fluxo livre</span>',
+    isOverdue ? '<span class="card-state-badge card-state-badge-warning">Prazo vencido</span>' : '',
+    p.hasDocument ? '<span class="card-state-badge">📎 Anexo</span>' : '<span class="card-state-badge card-state-badge-muted">Sem anexo</span>',
+  ].filter(Boolean).join('');
   const badges = [
     `<span class="card-chip card-chip-priority">${p.priority || 'Sem prioridade'}</span>`,
     p.owner ? `<span class="card-chip">👤 ${p.owner}</span>` : '<span class="card-chip card-chip-muted">Sem responsável</span>',
-    p.hasDocument ? '<span class="card-chip">📎 Com anexo</span>' : '<span class="card-chip card-chip-muted">Sem anexo</span>',
-    blockedDeps.length ? `<span class="card-chip card-chip-danger" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 ${blockedDeps.length} dependência(s)</span>` : '',
-    isOverdue ? '<span class="card-chip card-chip-warning">Prazo vencido</span>' : '',
+    blockedDeps.length ? `<span class="card-chip card-chip-danger">${blockedDeps.length} dependência(s)</span>` : resolvedDepsCount ? `<span class="card-chip card-chip-success">${resolvedDepsCount} dependência(s) concluída(s)</span>` : '',
   ].filter(Boolean).join('');
+  const dependencySummary = blockedDeps.length
+    ? `
+      <div class="card-dependency-box" title="Dependências pendentes">
+        <div class="card-dependency-head">
+          <span>Dependências</span>
+          <strong>${blockedDeps.length} pendente(s)</strong>
+        </div>
+        <div class="card-dependency-list">
+          ${visibleBlockedDeps.map((dep) => `<span class="card-dependency-item">${dep.name}</span>`).join('')}
+          ${moreBlockedDeps ? `<span class="card-dependency-item card-dependency-item-more">+${moreBlockedDeps}</span>` : ''}
+        </div>
+      </div>
+    `
+    : '';
 
   card.innerHTML = `
     <div class="card-head">
-      <h3>${p.name}</h3>
+      <div class="card-title-wrap">
+        <h3>${p.name}</h3>
+        <div class="card-state-row">${stateBadges}</div>
+      </div>
       <span class="card-doc-state">${docMeta.icon} ${docMeta.label}</span>
     </div>
     <div class="card-chip-row">${badges}</div>
     <p>${p.description || 'Sem descrição cadastrada para este card.'}</p>
-    <dl class="meta meta-grid">
+    ${dependencySummary}
+    <dl class="meta meta-grid meta-grid-compact">
       <div><dt>Prazo</dt><dd>${p.dueDate || '-'}</dd></div>
       <div><dt>${ageLabel}</dt><dd>${p.ageDays ?? '-'}</dd></div>
     </dl>
