@@ -1681,6 +1681,139 @@ dialog form {
   gap: var(--space-3);
 }
 
+.card-detail-overview {
+  display: grid;
+  gap: var(--space-3);
+  padding: 18px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(232, 240, 255, 0.95) 0%, rgba(255, 255, 255, 0.98) 100%);
+}
+
+.detail-overview-copy {
+  margin-bottom: 0;
+  max-width: 720px;
+}
+
+.detail-meta-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.detail-pill-soft {
+  background: #f8fafc;
+  color: #334155;
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.detail-block {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.section-head-tight {
+  margin-bottom: 0;
+}
+
+.current-document-panel {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.current-document-title {
+  margin: 8px 0 6px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.current-document-hint {
+  margin-bottom: 0;
+}
+
+.current-document-actions {
+  align-items: center;
+}
+
+.detail-inline-box {
+  line-height: 1.5;
+}
+
+.detail-inline-hint {
+  color: var(--color-text-soft);
+  font-size: 13px;
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--color-primary-strong);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.button-link:hover {
+  background: #eff6ff;
+}
+
+.document-version-list {
+  display: grid;
+  gap: 10px;
+}
+
+.document-version-item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.document-version-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-version-head > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.document-version-meta {
+  color: var(--color-text-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .dialog-actions {
   display: flex;
   gap: var(--space-2);
@@ -1769,7 +1902,6 @@ dialog form {
 /* Responsive */
 @media (max-width: 1240px) {
   .home-kpi-grid,
-  #board,
   .edit-two-cols,
   .backup-grid,
   .dashboard-grid,
@@ -1801,7 +1933,10 @@ dialog form {
   }
 
   .page-hero,
-  .section-head {
+  .section-head,
+  .project-summary,
+  .column-head,
+  .card-head {
     flex-direction: column;
   }
 
@@ -1822,9 +1957,7 @@ dialog form {
     overflow: visible;
   }
 
-  .project-summary,
   .home-kpi-grid,
-  #board,
   .edit-two-cols,
   .backup-grid,
   .dashboard-grid,
@@ -1834,8 +1967,15 @@ dialog form {
   .kanban-summary-status-grid,
   .settings-section-grid,
   .settings-check-grid,
-  .review-note-meta-grid {
+  .review-note-meta-grid,
+  .card-controls,
+  .meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  #board {
+    min-width: 1020px;
+    grid-template-columns: repeat(4, minmax(240px, 1fr));
   }
 
   .content > header,
@@ -1844,11 +1984,19 @@ dialog form {
     position: static;
   }
 
-  .column-head,
-  .card-head,
-  .card-controls {
-    grid-template-columns: 1fr;
-    flex-direction: column;
+  .card-selects,
+  .doc-btn {
+    height: auto;
+  }
+
+  .doc-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 78px;
+  }
+
+  .doc-btn .doc-main {
+    font-size: 42px;
   }
 
   .meta-grid {
@@ -1871,6 +2019,11 @@ dialog form {
     padding-right: var(--space-4);
   }
 
+  #board {
+    min-width: 0;
+    grid-template-columns: 1fr;
+  }
+
   .header-actions,
   .dialog-actions,
   .kanban-board-toolbar-meta {
@@ -1878,12 +2031,29 @@ dialog form {
     justify-content: stretch;
   }
 
+  .detail-meta-summary,
+  .document-version-head,
+  .document-version-head > div,
+  .current-document-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .header-actions > *,
   .dialog-actions > * {
     flex: 1 1 100%;
   }
 
-  .project-name-row {
+  .project-name-row,
+  .project-summary-right-split,
+  .kanban-summary-status-grid,
+  #filters {
     grid-template-columns: 1fr;
+  }
+
+  .kanban-summary,
+  .column,
+  .card {
+    border-radius: 14px;
   }
 }

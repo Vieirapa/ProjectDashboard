@@ -47,6 +47,13 @@ const ownersList = document.getElementById('ownersList');
 const dependsOnSelect = document.getElementById('dependsOn');
 const dependsSearch = document.getElementById('dependsSearch');
 const dependencyInfo = document.getElementById('dependencyInfo');
+const detailMetaSummary = document.getElementById('detailMetaSummary');
+const currentDocumentState = document.getElementById('currentDocumentState');
+const currentDocumentTitle = document.getElementById('currentDocumentTitle');
+const currentDocumentHint = document.getElementById('currentDocumentHint');
+const currentDocumentActions = document.getElementById('currentDocumentActions');
+const documentVersionsSummary = document.getElementById('documentVersionsSummary');
+const reviewSummary = document.getElementById('reviewSummary');
 
 const f = {
   name: document.getElementById('name'),
@@ -155,8 +162,71 @@ function updateReviewNotesAvailability() {
   reviewNoteInput.disabled = !enabled;
   addReviewNoteBtn.disabled = !enabled;
   reviewNoteInput.placeholder = enabled
-    ? 'Descreva o ajuste solicitado na revisão...'
-    : 'Notas liberadas apenas quando o documento estiver em "em revisão"';
+    ? 'Descreva o ajuste solicitado, contexto e critério de aceite...'
+    : 'Notas liberadas apenas quando o card estiver em "Em revisão"';
+}
+
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+function fmtDateTime(value) {
+  if (!value) return 'sem registro';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'sem registro' : date.toLocaleString('pt-BR');
+}
+
+function fmtDate(value) {
+  if (!value) return 'sem prazo';
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? 'sem prazo' : date.toLocaleDateString('pt-BR');
+}
+
+function documentStateLabel(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'release') return 'Release';
+  if (normalized === 'em revisão') return 'Em revisão';
+  if (normalized === 'em andamento') return 'Em andamento';
+  if (normalized === 'sem anexo') return 'Sem anexo';
+  return 'Aguardando edição';
+}
+
+function mapCardStatusToDocumentState(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'concluído') return 'release';
+  if (normalized === 'em revisão') return 'em revisão';
+  if (normalized === 'em andamento') return 'em andamento';
+  return 'aguardando edição';
+}
+
+function renderDetailMeta(document) {
+  if (!detailMetaSummary || !document) return;
+  const chips = [
+    `<span class="detail-pill detail-pill-soft">Status: ${esc(document.status || '-')}</span>`,
+    `<span class="detail-pill detail-pill-soft">Prioridade: ${esc(document.priority || '-')}</span>`,
+    `<span class="detail-pill detail-pill-soft">Responsável: ${esc(document.owner || 'Não definido')}</span>`,
+    `<span class="detail-pill detail-pill-soft">Prazo: ${esc(fmtDate(document.dueDate))}</span>`,
+  ];
+  detailMetaSummary.innerHTML = chips.join('');
+}
+
+function renderCurrentDocumentPanel(document) {
+  if (!currentDocumentState || !currentDocumentTitle || !currentDocumentHint || !currentDocumentActions) return;
+  const hasDocument = !!String(document?.documentName || '').trim();
+  currentDocumentState.textContent = hasDocument ? documentStateLabel(document?.documentStatus) : 'Sem anexo';
+  currentDocumentTitle.textContent = hasDocument ? String(document.documentName) : 'Nenhum documento anexado';
+  currentDocumentHint.textContent = hasDocument
+    ? `Arquivo atual vinculado ao card. Última atualização: ${fmtDateTime(document?.updatedAt)}.`
+    : 'Envie um arquivo para iniciar o histórico de versões deste card e deixar a operação rastreável.';
+
+  const actions = [];
+  if (hasDocument) {
+    actions.push(`<a class="button-link" href="${withProjectId(`/api/documents/${encodeURIComponent(slug)}/document`)}" target="_blank" rel="noopener">Abrir arquivo atual</a>`);
+  }
+  if (canUploadDocument()) {
+    actions.push('<span class="detail-inline-hint">Novo upload cria uma nova versão no histórico.</span>');
+  }
+  currentDocumentActions.innerHTML = actions.join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -164,13 +234,23 @@ function updateReviewNotesAvailability() {
 // ---------------------------------------------------------------------------
 async function loadReviewNotes() {
   const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/review-notes`));
-  if (!d.notes?.length) {
-    reviewNotesHistory.textContent = 'Sem notas registradas.';
+  const notes = d.notes || [];
+  if (!notes.length) {
+    reviewNotesHistory.textContent = 'Sem notas registradas. Quando o card entrar em revisão, registre aqui os ajustes combinados.';
+    if (reviewSummary) reviewSummary.textContent = 'Nenhuma pendência de revisão registrada.';
     return;
   }
 
+  const pendingCount = notes.filter((n) => Number(n.is_resolved || 0) !== 1).length;
+  const resolvedCount = notes.length - pendingCount;
+  if (reviewSummary) {
+    reviewSummary.textContent = pendingCount
+      ? `${pendingCount} pendência(s) aberta(s) e ${resolvedCount} resolvida(s). Use esta trilha para acompanhar retorno e aceite.`
+      : `Todas as ${resolvedCount} nota(s) já foram resolvidas. Histórico pronto para auditoria rápida.`;
+  }
+
   const canResolve = canResolveReviewNotes();
-  reviewNotesHistory.innerHTML = d.notes.map((n) => {
+  reviewNotesHistory.innerHTML = notes.map((n) => {
     const resolved = Number(n.is_resolved || 0) === 1;
     const createdAt = n.created_at ? new Date(n.created_at).toLocaleString('pt-BR') : '-';
     const resolvedAt = n.resolved_at ? new Date(n.resolved_at).toLocaleString('pt-BR') : '-';
@@ -223,14 +303,34 @@ async function loadReviewNotes() {
 async function loadVersions() {
   try {
     const d = await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}/document/versions`));
-    if (!d.versions?.length) {
-      f.documentVersions.textContent = 'Sem revisões ainda.';
+    const versions = d.versions || [];
+    if (!versions.length) {
+      if (documentVersionsSummary) {
+        documentVersionsSummary.textContent = 'Histórico de versões ainda não iniciado. O primeiro upload aparecerá aqui com data, autor e status do documento.';
+      }
+      f.documentVersions.textContent = 'Sem revisões ainda. Quando houver nova entrega, a linha do tempo será exibida nesta área.';
       return;
     }
-    const items = d.versions.map(v => `<li><a href="/api/documents/${encodeURIComponent(slug)}/document?version=${v.version}&project_id=${encodeURIComponent(String(currentProjectId()))}" target="_blank">r${v.version}</a> · ${v.document_status} · ${v.document_name} · usuário: ${v.created_by || '-'} · ${new Date(v.created_at).toLocaleString('pt-BR')}</li>`).join('');
-    f.documentVersions.innerHTML = `<ul>${items}</ul>`;
+    const latest = versions[0];
+    if (documentVersionsSummary) {
+      documentVersionsSummary.textContent = `${versions.length} versão(ões) registrada(s). Última entrega: r${latest.version} em ${fmtDateTime(latest.created_at)} por ${latest.created_by || '-'}.`;
+    }
+    const items = versions.map((v) => `
+      <article class="document-version-item">
+        <div class="document-version-head">
+          <div>
+            <strong>r${v.version}</strong>
+            <span class="detail-pill detail-pill-soft">${esc(documentStateLabel(v.document_status))}</span>
+          </div>
+          <a class="button-link" href="/api/documents/${encodeURIComponent(slug)}/document?version=${v.version}&project_id=${encodeURIComponent(String(currentProjectId()))}" target="_blank" rel="noopener">Abrir versão</a>
+        </div>
+        <div class="document-version-meta">${esc(v.document_name || 'arquivo sem nome')} · enviado por ${esc(v.created_by || '-')} · ${esc(fmtDateTime(v.created_at))}</div>
+      </article>
+    `).join('');
+    f.documentVersions.innerHTML = items;
   } catch (e) {
     if (e?.status === 404) {
+      if (documentVersionsSummary) documentVersionsSummary.textContent = 'Histórico indisponível no backend atual.';
       f.documentVersions.textContent = 'Histórico indisponível (reinicie o backend para ativar controle de revisões).';
       return;
     }
@@ -251,7 +351,7 @@ function renderDependencyChecklist() {
   });
 
   if (!shown.length) {
-    dependsOnSelect.innerHTML = '<div class="deps-empty">Nenhum card encontrado.</div>';
+    dependsOnSelect.innerHTML = '<div class="deps-empty">Nenhum card encontrado para este filtro. Limpe a busca para ver todas as opções.</div>';
     return;
   }
 
@@ -293,15 +393,15 @@ function renderDependencyInfo(document) {
   if (!dependencyInfo) return;
   const deps = Array.isArray(document?.dependencies) ? document.dependencies : [];
   if (!deps.length) {
-    dependencyInfo.textContent = 'Sem dependências.';
+    dependencyInfo.textContent = 'Sem dependências. Este card pode avançar sem bloqueios externos registrados.';
     return;
   }
   const pending = deps.filter((d) => String(d.status || '') !== 'Concluído');
   if (!pending.length) {
-    dependencyInfo.textContent = `Dependências: ${deps.length} (todas concluídas ✅)`;
+    dependencyInfo.textContent = `Dependências mapeadas: ${deps.length}. Todas já foram concluídas ✅`;
     return;
   }
-  dependencyInfo.textContent = `Dependências pendentes: ${pending.map((d) => d.name).join(', ')}`;
+  dependencyInfo.textContent = `Dependências pendentes (${pending.length}): ${pending.map((d) => d.name).join(', ')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +417,8 @@ async function loadDocument() {
   }
   f.name.value = p.name; f.description.value = p.description; f.owner.value = p.owner; f.dueDate.value = p.dueDate;
   f.documentName.value = p.documentName || 'Sem anexo';
+  renderDetailMeta(p);
+  renderCurrentDocumentPanel(p);
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
   d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
   ownersList.innerHTML = '';
@@ -405,7 +507,7 @@ addReviewNoteBtn.onclick = async () => {
     });
     reviewNoteInput.value = '';
     await loadReviewNotes();
-    feedback.textContent = 'Nota adicionada ✅';
+    feedback.textContent = 'Nota adicionada ✅ Histórico de revisão atualizado.';
   } catch (e) {
     feedback.textContent = e.message;
   }
@@ -427,7 +529,7 @@ async function handleSave() {
     const owner = (f.owner.value || '').trim();
     const validOwners = Array.from(ownersList.options).map(o => o.value);
     if (owner && !validOwners.includes(owner)) {
-      feedback.textContent = 'Responsável inválido. Selecione um usuário existente.';
+      feedback.textContent = 'Responsável inválido. Selecione um usuário existente da lista para manter o card consistente.';
       isSaving = false;
       saveBtn.disabled = !isDirty;
       return;
@@ -455,9 +557,24 @@ async function handleSave() {
       f.documentFile.value = '';
     }
 
+    doc = {
+      ...doc,
+      name: f.name.value,
+      description: f.description.value,
+      status: f.status.value,
+      priority: f.priority.value,
+      owner,
+      dueDate: f.dueDate.value,
+      documentName: f.documentName.value === 'Sem anexo' ? '' : f.documentName.value,
+      documentStatus: mapCardStatusToDocumentState(f.status.value),
+      updatedAt: new Date().toISOString(),
+    };
+    renderDetailMeta(doc);
+    renderCurrentDocumentPanel(doc);
     await loadVersions();
+    await loadReviewNotes();
     setDirty(false);
-    feedback.textContent = 'Salvo com sucesso ✅';
+    feedback.textContent = 'Salvo com sucesso ✅ Detalhe, anexo e histórico foram atualizados.';
     location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
   } catch (e) {
     feedback.textContent = e.message;

@@ -27,36 +27,74 @@
       <section class="edit-wrap">
         <div class="edit-two-cols">
           <form id="editForm" class="edit-form panel">
+            <div class="card-detail-overview">
+              <div>
+                <p class="eyebrow">Card em foco</p>
+                <h3 class="mt-0">Leitura rápida do detalhe</h3>
+                <p class="small muted-text detail-overview-copy">Revise contexto, anexo atual e pendências antes de salvar uma nova versão.</p>
+              </div>
+              <div id="detailMetaSummary" class="detail-meta-summary"></div>
+            </div>
+
             <div class="section-head">
               <div>
                 <p class="eyebrow">Documento</p>
                 <h3 class="mt-0">Dados principais</h3>
               </div>
-              <span class="small">Edite os dados essenciais do card.</span>
+              <span class="small">Edite o card e mantenha o anexo sincronizado com o status atual.</span>
             </div>
 
-            <label>Nome</label><input id="name" required />
-            <label>Descrição</label><textarea id="description" rows="4"></textarea>
-            <label>Anexo do documento (1 arquivo)</label><input id="documentFile" type="file" />
-            <label>Documento atual</label><input id="documentName" readonly />
+            <label>Nome do card</label><input id="name" required />
+            <label>Descrição operacional</label><textarea id="description" rows="4" placeholder="Descreva objetivo, contexto e próximos passos do card."></textarea>
             <div class="project-form-grid">
               <div>
-                <label>Status</label><select id="status"></select>
+                <label>Status do fluxo</label><select id="status"></select>
               </div>
               <div>
                 <label>Prioridade</label><select id="priority"></select>
               </div>
             </div>
-            <label>Responsável</label><input id="owner" list="ownersList" />
+            <label>Responsável atual</label><input id="owner" list="ownersList" />
             <datalist id="ownersList"></datalist>
-            <label>Prazo</label><input id="dueDate" type="date" />
-            <label>Depende de (opcional)</label>
-            <input id="dependsSearch" type="text" placeholder="Filtrar cards..." />
-            <div id="dependsOn" class="deps-checklist deps-checklist-scroll settings-data-box"></div>
-            <small class="small">Marque os cards pré-requisito.</small>
-            <div id="dependencyInfo" class="small settings-data-box"></div>
-            <label>Histórico da revisão</label>
-            <div id="documentVersions" class="small settings-data-box">Sem revisões ainda.</div>
+            <label>Prazo combinado</label><input id="dueDate" type="date" />
+
+            <section class="detail-block detail-attachment-block">
+              <div class="section-head section-head-tight">
+                <div>
+                  <p class="eyebrow">Anexo e documento</p>
+                  <h3 class="mt-0">Versão atual do arquivo</h3>
+                </div>
+                <span class="small">Troque o arquivo apenas quando quiser registrar uma nova versão do documento.</span>
+              </div>
+              <div id="currentDocumentPanel" class="current-document-panel">
+                <div>
+                  <span id="currentDocumentState" class="detail-pill">Sem anexo</span>
+                  <h4 id="currentDocumentTitle" class="current-document-title">Nenhum documento anexado</h4>
+                  <p id="currentDocumentHint" class="small muted-text current-document-hint">Envie um arquivo para iniciar o histórico de versões deste card.</p>
+                </div>
+                <div id="currentDocumentActions" class="dialog-actions actions-left actions-wrap current-document-actions"></div>
+              </div>
+              <label>Enviar novo arquivo (1 por vez)</label><input id="documentFile" type="file" />
+              <label>Arquivo vinculado agora</label><input id="documentName" readonly />
+              <div id="documentVersionsSummary" class="small settings-data-box detail-inline-box">Histórico de versões ainda não iniciado.</div>
+              <div id="documentVersions" class="small settings-data-box document-version-list empty-state">Sem revisões ainda.</div>
+            </section>
+
+            <section class="detail-block">
+              <div class="section-head section-head-tight">
+                <div>
+                  <p class="eyebrow">Dependências</p>
+                  <h3 class="mt-0">Pré-requisitos do card</h3>
+                </div>
+                <span class="small">Use esta lista para deixar claro o que ainda bloqueia avanço ou revisão.</span>
+              </div>
+              <label>Filtrar cards relacionados</label>
+              <input id="dependsSearch" type="text" placeholder="Buscar por nome ou status..." />
+              <div id="dependsOn" class="deps-checklist deps-checklist-scroll settings-data-box"></div>
+              <small class="small">Marque os cards que precisam ser concluídos antes deste item.</small>
+              <div id="dependencyInfo" class="small settings-data-box detail-inline-box"></div>
+            </section>
+
             <div class="dialog-actions"><button id="saveBtn" type="button">Salvar alterações</button></div>
             <p id="feedback" class="small"></p>
           </form>
@@ -67,13 +105,14 @@
                 <p class="eyebrow">Revisão</p>
                 <h3>Notas de revisão</h3>
               </div>
-              <span class="small">Registre e acompanhe histórico de solicitações.</span>
+              <span class="small">Concentre aqui pedidos de ajuste, resolução e rastreio de retorno.</span>
             </div>
-            <textarea id="reviewNoteInput" rows="6" placeholder="Descreva o ajuste solicitado na revisão..."></textarea>
+            <div id="reviewSummary" class="small settings-data-box detail-inline-box">Nenhuma pendência de revisão registrada.</div>
+            <textarea id="reviewNoteInput" rows="6" placeholder="Descreva o ajuste solicitado, contexto e critério de aceite..."></textarea>
             <div class="dialog-actions actions-left mt-2">
               <button type="button" id="addReviewNoteBtn">Adicionar nota</button>
             </div>
-            <div class="small" style="margin-top:10px;">Histórico</div>
+            <div class="small" style="margin-top:10px;">Histórico de revisão</div>
             <div id="reviewNotesHistory" class="small settings-data-box empty-state">Sem notas registradas.</div>
           </section>
         </div>
