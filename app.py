@@ -2058,10 +2058,6 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
     requested_start = str(payload.get("start_date") or payload.get("startDate") or "").strip()
     new_start_date = requested_start or now_iso()
 
-    def _safe_filename(name: str, fallback: str = "documento.bin") -> str:
-        clean = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(name or "")).strip("._")
-        return clean or fallback
-
     with db() as conn:
         template = conn.execute(
             "SELECT project_id, project_name, notes, allowed_roles, is_template FROM projects WHERE project_id=?",
@@ -2160,6 +2156,8 @@ def clone_project_from_template(template_project_id: int, payload: dict, actor: 
 
             if not latest_abs_path:
                 source_doc_path = Path(str(d.get("document_path") or "").strip())
+                if str(d.get("document_name") or "").strip() and (not source_doc_path.exists() or not source_doc_path.is_file()):
+                    return False, f"Template inconsistente: arquivo físico ausente para o card '{name}'", None
                 if source_doc_path.exists() and source_doc_path.is_file():
                     fallback_name = _safe_filename(d.get("document_name") or source_doc_path.name)
                     rel_path = Path("documents") / doc_slug / f"v0001_{fallback_name}"
@@ -2462,6 +2460,77 @@ def ensure_docs_repo() -> tuple[bool, str]:
         if not ok:
             return False, out
     return True, "ok"
+
+
+def _safe_filename(name: str, fallback: str = "documento.bin") -> str:
+    clean = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(name or "")).strip("._")
+    return clean or fallback
+
+
+def reconcile_document_storage(actor: str = "system") -> dict:
+    ok_repo, repo_msg = ensure_docs_repo()
+    if not ok_repo:
+        return {"ok": False, "error": repo_msg, "checked": 0, "repaired": 0, "missing": 0, "details": []}
+
+    checked = 0
+    repaired = 0
+    missing = 0
+    details: list[dict] = []
+
+    with db() as conn:
+        docs = [dict(r) for r in conn.execute(
+            "SELECT slug, name, document_name, document_mime, document_status, document_path, path FROM documents ORDER BY id"
+        ).fetchall()]
+
+        for doc in docs:
+            checked += 1
+            slug = str(doc.get("slug") or "").strip()
+            if not slug:
+                continue
+
+            raw_current = str(doc.get("document_path") or "").strip()
+            current_path = Path(raw_current) if raw_current else None
+            if current_path and current_path.exists() and current_path.is_file():
+                continue
+
+            legacy_dir_raw = str(doc.get("path") or "").strip()
+            legacy_dir = Path(legacy_dir_raw) if legacy_dir_raw else None
+            legacy_files = []
+            if legacy_dir and legacy_dir.exists() and legacy_dir.is_dir():
+                legacy_files = sorted([p for p in legacy_dir.rglob("*") if p.is_file()])
+
+            if not legacy_files:
+                missing += 1
+                details.append({"slug": slug, "status": "missing", "document_path": raw_current, "legacy_path": legacy_dir_raw})
+                continue
+
+            source_file = legacy_files[0]
+            row = conn.execute("SELECT COALESCE(MAX(version), 0) AS last FROM document_versions WHERE document_slug=?", (slug,)).fetchone()
+            next_version = int((row["last"] if row else 0) or 0) + 1
+            safe_name = _safe_filename(doc.get("document_name") or source_file.name)
+            rel_path = Path("documents") / slug / f"v{next_version:04d}_{safe_name}"
+            dst_abs = DOCS_REPO_DIR / rel_path
+            dst_abs.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_file, dst_abs)
+            checksum = hashlib.sha256(dst_abs.read_bytes()).hexdigest()
+            mime = str(doc.get("document_mime") or "application/octet-stream").strip() or "application/octet-stream"
+            status = str(doc.get("document_status") or "aguardando edição").strip() or "aguardando edição"
+            now = now_iso()
+
+            conn.execute(
+                "INSERT INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (slug, next_version, safe_name, mime, status, str(rel_path), "", checksum, actor, now),
+            )
+            conn.execute(
+                "UPDATE documents SET document_name=?, document_mime=?, document_path=?, updated_at=? WHERE slug=?",
+                (safe_name, mime, str(dst_abs), now, slug),
+            )
+            repaired += 1
+            details.append({"slug": slug, "status": "repaired", "from": str(source_file), "to": str(dst_abs)})
+
+    if repaired or missing:
+        audit(actor, "document.storage.reconcile", "all", json.dumps({"checked": checked, "repaired": repaired, "missing": missing}, ensure_ascii=False))
+    return {"ok": True, "checked": checked, "repaired": repaired, "missing": missing, "details": details}
 
 
 # ---------------------------------------------------------------------------
@@ -4433,6 +4502,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "Invalid ID"})
             done, msg, package_path = archive_project(project_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
+
+        if p == "/api/admin/storage/reconcile":
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            result = reconcile_document_storage(admin["username"])
+            return self._json(200 if result.get("ok") else 400, result)
 
         if p == "/api/admin/roles":
             admin = self._require_root_admin()

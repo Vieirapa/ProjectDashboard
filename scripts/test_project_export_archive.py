@@ -69,6 +69,16 @@ class ProjectExportArchiveTest(unittest.TestCase):
         self.assertTrue(proj['archived'])
         self.assertEqual(proj['archive_package_path'], package_path)
 
+    def test_reconcile_document_storage_reports_missing_files(self):
+        current_doc = Path(app.DATA_DIR / 'sample.pdf')
+        current_doc.unlink(missing_ok=True)
+        revision_doc = app.DOCS_REPO_DIR / 'documents' / 'doc-export' / 'v0001_sample.pdf'
+        revision_doc.unlink(missing_ok=True)
+        result = app.reconcile_document_storage('admin')
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['repaired'], 0)
+        self.assertEqual(result['missing'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()
