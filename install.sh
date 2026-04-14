@@ -103,8 +103,9 @@ rsync -a --delete \
   --exclude '.git' \
   --exclude '.venv' \
   --exclude '__pycache__' \
-  --exclude 'data/server.log' \
-  --exclude 'data/projectdashboard.db' \
+  --exclude 'data/' \
+  --exclude 'projects/' \
+  --exclude 'documents/' \
   "${SCRIPT_DIR}/" "${INSTALL_DIR}/"
 
 # Past correction: keep runtime folders anchored under INSTALL_DIR.

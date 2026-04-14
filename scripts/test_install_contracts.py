@@ -28,6 +28,12 @@ class InstallContractsTest(unittest.TestCase):
             self.assertNotIn('`admin` / `admin`', content)
             self.assertNotIn('installer default: `admin`', content)
 
+    def test_installer_preserves_runtime_data_directories_during_rsync(self):
+        content = INSTALL_SH.read_text(encoding='utf-8')
+        self.assertIn("--exclude 'data/'", content)
+        self.assertIn("--exclude 'projects/'", content)
+        self.assertIn("--exclude 'documents/'", content)
+
 
 if __name__ == '__main__':
     unittest.main()
