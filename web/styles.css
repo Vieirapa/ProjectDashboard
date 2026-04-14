@@ -728,11 +728,12 @@ dialog form {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
+  min-width: 0;
 }
 
 .project-summary-action-buttons {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .muted-text {
@@ -741,6 +742,18 @@ dialog form {
 
 .project-summary-action-buttons button {
   width: 100%;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+  min-height: 44px;
+}
+
+.project-package-status {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .project-summary-action-buttons .danger {

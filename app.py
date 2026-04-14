@@ -1897,18 +1897,35 @@ def export_project_package(project_id: int, actor: str) -> tuple[bool, str, str 
 
     project_data = dict(project_row) if project_row else project
     files_to_pack: list[tuple[Path, str]] = []
+    seen_arc_paths: set[str] = set()
+
+    def _add_file(src_path: Path | None, arcname: str):
+        if not src_path:
+            return
+        try:
+            src = Path(src_path)
+        except Exception:
+            return
+        normalized = str(arcname).replace('\\', '/').lstrip('/')
+        if not normalized or normalized in seen_arc_paths:
+            return
+        if not src.exists() or not src.is_file():
+            return
+        seen_arc_paths.add(normalized)
+        files_to_pack.append((src, normalized))
+
     for doc in documents:
-        doc_path = Path(str(doc.get("document_path") or "").strip()) if str(doc.get("document_path") or "").strip() else None
-        if doc_path and doc_path.exists() and doc_path.is_file():
-            files_to_pack.append((doc_path, f"files/documents/{doc_path.name}"))
-    project_docs_repo = DOCS_REPO_DIR / "cards"
-    if project_docs_repo.exists():
-        for slug in doc_slugs:
-            slug_dir = project_docs_repo / slug
-            if slug_dir.exists() and slug_dir.is_dir():
-                for path in slug_dir.rglob("*"):
-                    if path.is_file():
-                        files_to_pack.append((path, f"files/docs_repo/cards/{slug}/{path.relative_to(slug_dir)}"))
+        raw_doc_path = str(doc.get("document_path") or "").strip()
+        if raw_doc_path:
+            doc_path = Path(raw_doc_path)
+            _add_file(doc_path, f"files/current_documents/{doc.get('slug')}/{doc_path.name}")
+
+    for ver in document_versions:
+        rel_path = str(ver.get("file_rel_path") or "").strip()
+        if not rel_path:
+            continue
+        abs_path = DOCS_REPO_DIR / rel_path
+        _add_file(abs_path, f"files/docs_repo/{rel_path}")
 
     manifest = {
         "format": "projectdashboard.project-export.v1",
@@ -1944,6 +1961,8 @@ def export_project_package(project_id: int, actor: str) -> tuple[bool, str, str 
             except Exception:
                 continue
 
+    with db() as conn:
+        conn.execute("UPDATE projects SET archive_package_path=? WHERE project_id=?", (str(package_path), project_id))
     audit(actor, "project.export", str(project_id), str(package_path))
     return True, "ok", str(package_path)
 
@@ -3964,6 +3983,31 @@ class Handler(BaseHTTPRequestHandler):
             doc = self._get_document_in_scope(slug, qs, user)
             if not doc: return self._reply_document_scope_error(slug, qs, user)
             return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames(), "dependencyMaxStatus": dependency_max_status()})
+
+        if p.startswith("/api/admin/projects/") and p.endswith("/export/download"):
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 6:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                project_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
+            project = next((p for p in list_projects_registry() if int(p.get("project_id") or 0) == project_id), None)
+            if not project:
+                return self._json(404, {"ok": False, "error": "Projeto não encontrado"})
+            package_path = Path(str(project.get("archive_package_path") or "").strip())
+            if not package_path.exists() or not package_path.is_file():
+                return self._json(404, {"ok": False, "error": "Pacote não encontrado"})
+            content = package_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f"attachment; filename=\"{package_path.name}\"")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
 
         if p == "/api/projects-registry":
             user = self._require_auth()

@@ -29,6 +29,15 @@ class ProjectExportArchiveTest(unittest.TestCase):
                     'sample.pdf', 'application/pdf', str(file_path), 'admin', app.now_iso(), '', project_id,
                 ),
             )
+            conn.execute(
+                "INSERT INTO document_versions (document_slug, version, document_name, document_mime, document_status, file_rel_path, git_commit, checksum, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    'doc-export', 1, 'sample.pdf', 'application/pdf', 'Backlog', 'documents/doc-export/v0001_sample.pdf', 'commit1', 'checksum1', 'admin', app.now_iso(),
+                ),
+            )
+            docs_repo_file = app.DOCS_REPO_DIR / 'documents' / 'doc-export' / 'v0001_sample.pdf'
+            docs_repo_file.parent.mkdir(parents=True, exist_ok=True)
+            docs_repo_file.write_text('fake-revision', encoding='utf-8')
             self.project_id = int(project_id)
 
     def tearDown(self):
@@ -45,6 +54,8 @@ class ProjectExportArchiveTest(unittest.TestCase):
             self.assertIn('manifest.json', names)
             self.assertIn('project/project.json', names)
             self.assertIn('project/documents.json', names)
+            self.assertIn('files/current_documents/doc-export/sample.pdf', names)
+            self.assertIn('files/docs_repo/documents/doc-export/v0001_sample.pdf', names)
             manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
             self.assertEqual(manifest['project']['id'], self.project_id)
             self.assertEqual(manifest['counts']['documents'], 1)

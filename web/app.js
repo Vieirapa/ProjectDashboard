@@ -413,12 +413,16 @@ function setProjectPackageStatus(message, isError = false) {
 async function exportCurrentProject() {
   const pid = currentProjectIdFromUrl();
   setProjectPackageStatus('Gerando pacote do projeto...');
+  if (exportProjectBtn) exportProjectBtn.disabled = true;
   try {
     const data = await api(`/api/admin/projects/${encodeURIComponent(String(pid))}/export`, { method: 'POST' });
-    setProjectPackageStatus(`Pacote gerado com sucesso em: ${data.package_path || 'caminho não informado'}`);
+    setProjectPackageStatus(`Pacote gerado com sucesso. Download iniciado. Arquivo: ${data.package_path || 'caminho não informado'}`);
+    window.open(`/api/admin/projects/${encodeURIComponent(String(pid))}/export/download`, '_blank');
   } catch (e) {
     setProjectPackageStatus(e.message || 'Falha ao exportar pacote do projeto.', true);
     alert(e.message || 'Falha ao exportar pacote do projeto.');
+  } finally {
+    if (exportProjectBtn) exportProjectBtn.disabled = false;
   }
 }
 
@@ -426,6 +430,7 @@ async function archiveCurrentProject() {
   const pid = currentProjectIdFromUrl();
   if (!confirm('Arquivar este projeto vai gerar um pacote e retirar o acesso operacional de usuários não-admin. Deseja continuar?')) return;
   setProjectPackageStatus('Arquivando projeto...');
+  if (archiveProjectBtn) archiveProjectBtn.disabled = true;
   try {
     const data = await api(`/api/admin/projects/${encodeURIComponent(String(pid))}/archive`, { method: 'POST' });
     setProjectPackageStatus(`Projeto arquivado. Pacote salvo em: ${data.package_path || 'caminho não informado'}`);
@@ -433,6 +438,8 @@ async function archiveCurrentProject() {
   } catch (e) {
     setProjectPackageStatus(e.message || 'Falha ao arquivar projeto.', true);
     alert(e.message || 'Falha ao arquivar projeto.');
+  } finally {
+    if (archiveProjectBtn) archiveProjectBtn.disabled = false;
   }
 }
 
@@ -461,9 +468,9 @@ function updateProjectSummary() {
   if (sumReviewEl) sumReviewEl.textContent = `${review} (${pct(review, total)})`;
   if (sumDoneEl) sumDoneEl.textContent = `${done} (${pct(done, total)})`;
   if (project && project.archived) {
-    setProjectPackageStatus(`Projeto arquivado em ${formatPtDate(project.archived_at || '')}. Pacote: ${project.archive_package_path || 'não informado'}`);
+    setProjectPackageStatus(`Projeto arquivado em ${formatPtDate(project.archived_at || '')}. Pacote disponível para admin.`);
   } else {
-    setProjectPackageStatus('Exporte um snapshot do projeto ou arquive o acesso operacional para não-admin.');
+    setProjectPackageStatus('Gere um pacote ZIP completo do projeto ou arquive o acesso operacional para não-admin.');
   }
   if (archiveProjectBtn) archiveProjectBtn.disabled = !!(project && project.archived);
 }
