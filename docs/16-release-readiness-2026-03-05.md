@@ -14,7 +14,7 @@ Status snapshot for **ProjectDashboard** before first install-and-use presentati
 - UI polish for presentation:
   - title row + right-aligned action buttons in Kanban area
   - branding updates in sidebar and login screen
-- Base reset procedure validated for demo start (`admin/admin` only).
+- Base reset procedure validated for demo start with explicit bootstrap credential configured for the environment in use.
 
 ## ⚠️ Open known issue
 

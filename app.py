@@ -43,7 +43,7 @@ import threading
 import time
 from email.message import EmailMessage
 from datetime import UTC, datetime, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -87,6 +87,12 @@ from backend.reports.service import (
     update_periodic_report as reports_update_periodic_report,
 )
 from backend.admin.recovery import list_deleted_documents as recovery_list_deleted_documents
+from backend.admin.recovery_actions import (
+    delete_deleted_document_permanently as recovery_delete_deleted_document_permanently,
+    delete_document as recovery_delete_document,
+    purge_expired_deleted_documents as recovery_purge_expired_deleted_documents,
+    restore_deleted_document as recovery_restore_deleted_document,
+)
 from backend.rbac.roles import (
     list_role_catalog as list_rbac_role_catalog,
     resolve_fallback_role as resolve_rbac_fallback_role,
@@ -454,10 +460,18 @@ def migrate_projects_to_documents(conn: sqlite3.Connection) -> None:
                     "SELECT id, slug, name, deleted_at, deleted_by, trash_path, document_json, review_notes_json, document_versions_json FROM deleted_documents"
                 )
 
-        # swap tables
-        if table_exists(conn, 'deleted_documents'):
-            conn.execute("DROP TABLE deleted_documents")
-        conn.execute("ALTER TABLE deleted_documents_new RENAME TO deleted_documents")
+        # swap tables only when we actually built a new compatible table from legacy input
+        if table_exists(conn, 'deleted_projects'):
+            if table_exists(conn, 'deleted_documents'):
+                conn.execute("DROP TABLE deleted_documents")
+            conn.execute("ALTER TABLE deleted_documents_new RENAME TO deleted_documents")
+        elif table_exists(conn, 'deleted_documents'):
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(deleted_documents)").fetchall()]
+            if 'project_json' in cols:
+                conn.execute("DROP TABLE deleted_documents")
+                conn.execute("ALTER TABLE deleted_documents_new RENAME TO deleted_documents")
+            else:
+                conn.execute("DROP TABLE IF EXISTS deleted_documents_new")
 
     # Migrate review_notes.project_slug -> document_slug
     if table_exists(conn, 'review_notes') and column_exists(conn, 'review_notes', 'project_slug') and not column_exists(conn, 'review_notes', 'document_slug'):
@@ -886,6 +900,10 @@ def init_db():
                 updated_at TEXT NOT NULL
             )
         """)
+        ensure_column(conn, "periodic_reports", "statuses", "statuses TEXT NOT NULL DEFAULT '[]'")
+        ensure_column(conn, "periodic_reports", "priorities", "priorities TEXT NOT NULL DEFAULT '[]'")
+        ensure_column(conn, "periodic_reports", "roles", "roles TEXT NOT NULL DEFAULT '[]'")
+        ensure_column(conn, "periodic_reports", "weekdays", "weekdays TEXT NOT NULL DEFAULT '[]'")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS deleted_documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -899,6 +917,25 @@ def init_db():
                 document_versions_json TEXT NOT NULL DEFAULT '[]'
             )
         """)
+        ensure_column(conn, "deleted_documents", "status", "status TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "priority", "priority TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "owner", "owner TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "project_id", "project_id INTEGER")
+        ensure_column(conn, "deleted_documents", "project_name", "project_name TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "createdBy", "createdBy TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "openedAt", "openedAt TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "releasedAt", "releasedAt TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "dueDate", "dueDate TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "retention_days", "retention_days INTEGER NOT NULL DEFAULT 30")
+        ensure_column(conn, "deleted_documents", "file_name", "file_name TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "file_path", "file_path TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "note", "note TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "description", "description TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "deleted_documents", "ageDays", "ageDays INTEGER NOT NULL DEFAULT 0")
+        conn.execute("UPDATE periodic_reports SET statuses=statuses_json WHERE TRIM(COALESCE(statuses,''))=''")
+        conn.execute("UPDATE periodic_reports SET priorities=priorities_json WHERE TRIM(COALESCE(priorities,''))=''")
+        conn.execute("UPDATE periodic_reports SET roles=roles_json WHERE TRIM(COALESCE(roles,''))=''")
+        conn.execute("UPDATE periodic_reports SET weekdays=weekdays_json WHERE TRIM(COALESCE(weekdays,''))=''")
         ensure_column(conn, "users", "role", "role TEXT NOT NULL DEFAULT 'member'")
         ensure_column(conn, "documents", "document_status", "document_status TEXT NOT NULL DEFAULT 'aguardando edição'")
         ensure_column(conn, "documents", "document_name", "document_name TEXT NOT NULL DEFAULT ''")
@@ -924,7 +961,7 @@ def init_db():
         ensure_column(conn, "users", "priority_colors_json", "priority_colors_json TEXT NOT NULL DEFAULT ''")
 
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
-            pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin123")
+            pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin")
             conn.execute(
                 "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)",
                 ("admin", hash_password(pwd), now_iso()),
@@ -3221,7 +3258,13 @@ def delete_deleted_document_permanently(deleted_id: int, actor: str) -> tuple[bo
 # Exclusão lógica de documento para área recuperável
 # ---------------------------------------------------------------------------
 def delete_document(slug: str, actor: str) -> tuple[bool, str]:
-    return recovery_delete_document(db, audit, document_file_path, slug, actor)
+    def _document_file_path(current_slug: str) -> Path:
+        with db() as conn:
+            row = conn.execute("SELECT document_path FROM documents WHERE slug=?", (current_slug,)).fetchone()
+        raw = str((row["document_path"] if row else "") or "").strip()
+        return Path(raw) if raw else Path(UPLOADS_DIR / f"{current_slug}")
+
+    return recovery_delete_document(db, audit, _document_file_path, slug, actor)
 
 
 
@@ -3960,7 +4003,10 @@ class Handler(BaseHTTPRequestHandler):
             if not row or not verify_password(password, row["password_hash"]):
                 return self._json(401, {"ok": False, "error": "Invalid credentials"})
             tok = create_auth_session(SESSIONS, SESSION_TTL_SECONDS, row["username"], row["role"])
-            cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
+            cookie_flags = [f"{SESSION_COOKIE}={tok}", "HttpOnly", "SameSite=Lax", "Path=/", f"Max-Age={SESSION_TTL_SECONDS}"]
+            if os.getenv("PDASH_FORCE_SECURE_COOKIE", "").strip().lower() in {"1", "true", "yes", "on"}:
+                cookie_flags.append("Secure")
+            cookie = "; ".join(cookie_flags)
             role_active = role_is_active(row["role"])
             return self._json(200, {
                 "ok": True,
@@ -3976,7 +4022,10 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/logout":
             u = self._user()
             if u: SESSIONS.pop(u["token"], None)
-            return self._json(200, {"ok": True}, set_cookie=f"{SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
+            logout_cookie_parts = [f"{SESSION_COOKIE}=", "HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=0"]
+            if os.getenv("PDASH_FORCE_SECURE_COOKIE", "").strip().lower() in {"1", "true", "yes", "on"}:
+                logout_cookie_parts.append("Secure")
+            return self._json(200, {"ok": True}, set_cookie="; ".join(logout_cookie_parts))
 
         if p == "/api/me/change-password":
             user = self._require_auth()
@@ -4626,7 +4675,7 @@ def main():
     ok_repo, repo_msg = ensure_docs_repo()
     if not ok_repo:
         print("[ProjectDashboard] Aviso: falha ao inicializar docs_repo:", repo_msg)
-    server = HTTPServer((HOST, PORT), Handler)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
     t = threading.Thread(target=report_scheduler_loop, daemon=True)
     t.start()
     print(f"ProjectDashboard online em http://{HOST}:{PORT}")

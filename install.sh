@@ -158,6 +158,7 @@ set_or_replace_env "$ENV_FILE" "PDASH_PORT" "${PORT}"
 set_or_replace_env "$ENV_FILE" "PDASH_PROJECTS_DIR" "${PROJECTS_DIR}"
 set_or_replace_env "$ENV_FILE" "PDASH_DOCUMENTS_DIR" "${DOCUMENTS_DIR}"
 set_or_replace_env "$ENV_FILE" "PDASH_INITIAL_PASSWORD" "${ADMIN_PASSWORD}"
+set_or_replace_env "$ENV_FILE" "PDASH_FORCE_SECURE_COOKIE" "${PDASH_FORCE_SECURE_COOKIE:-false}"
 set_or_replace_env "$ENV_FILE" "PDASH_BUILD_INFO_MODE" "dev"
 set_or_replace_env "$ENV_FILE" "PDASH_BUILD_COMMIT" "${BUILD_COMMIT}"
 set_or_replace_env "$ENV_FILE" "PDASH_BUILD_BRANCH" "${BUILD_BRANCH}"
@@ -174,16 +175,18 @@ set_or_replace_env "$ENV_FILE" "PDASH_SMTP_TLS" "$(grep -E '^PDASH_SMTP_TLS=' "$
 chmod 640 "$ENV_FILE"
 chown root:"${APP_GROUP}" "$ENV_FILE"
 
-echo "[5/9] Inicializando banco e garantindo admin/admin..."
+echo "[5/9] Inicializando banco e garantindo conta admin sem resetar senha existente..."
 sudo -u "${APP_USER}" bash -lc "cd '${INSTALL_DIR}' && '${INSTALL_DIR}/.venv/bin/python' - <<'PY'
+import os
 import app
 app.init_db()
 with app.db() as conn:
     row = conn.execute(\"SELECT username FROM users WHERE username=?\", (\"admin\",)).fetchone()
     if row:
-        conn.execute(\"UPDATE users SET password_hash=?, role='admin' WHERE username=?\", (app.hash_password(\"admin\"), \"admin\"))
+        conn.execute(\"UPDATE users SET role='admin' WHERE username=?\", (\"admin\",))
     else:
-        conn.execute(\"INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)\", (\"admin\", app.hash_password(\"admin\"), app.now_iso()))
+        pwd = os.getenv(\"PDASH_INITIAL_PASSWORD\", \"admin\")
+        conn.execute(\"INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)\", (\"admin\", app.hash_password(pwd), app.now_iso()))
 PY"
 
 echo "[6/9] Configuring application systemd service..."

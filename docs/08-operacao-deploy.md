@@ -37,13 +37,14 @@ The installer configures:
   - `PDASH_PROJECTS_DIR`
   - `PDASH_DOCUMENTS_DIR`
   - `PDASH_INITIAL_PASSWORD`
+  - `PDASH_FORCE_SECURE_COOKIE` (recommended `true` when HTTPS is enabled)
 - optional Nginx reverse proxy
 - optional Let's Encrypt HTTPS
 - daily backup timer (`projectdashboard-backup.timer`)
 - optional Ubuntu firewall setup via UFW (`ENABLE_UFW=yes`, default)
-- bootstrap admin account: `admin` / `admin`
+- bootstrap admin account: `admin` with password defined by `PDASH_INITIAL_PASSWORD`
 
-After first login as admin, configure `/settings.html` (SMTP, defaults, backup policy, diagnostics, recoverable documents and periodic reports).
+After first login as admin, change the admin password immediately, then configure `/settings.html` (SMTP, defaults, backup policy, diagnostics, recoverable documents and periodic reports).
 
 ## Installer Variables
 
@@ -59,6 +60,8 @@ After first login as admin, configure `/settings.html` (SMTP, defaults, backup p
 - `INSTALL_SMOKE_TEST=yes|no` (default: `no`)
 - `DOMAIN` (optional)
 - `LE_EMAIL` (required for automatic cert issuance)
+- `PDASH_INITIAL_PASSWORD` (recommended: set explicitly during first install)
+- `PDASH_FORCE_SECURE_COOKIE=true|false` (recommended: `true` behind HTTPS)
 
 ## Upgrade from GitHub
 

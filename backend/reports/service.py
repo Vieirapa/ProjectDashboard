@@ -15,7 +15,7 @@ from collections.abc import Callable
 def list_periodic_reports(db_factory: Callable[[], sqlite3.Connection]) -> list[dict]:
     with db_factory() as conn:
         rows = conn.execute(
-            "SELECT id, name, statuses, priorities, roles, weekdays, run_time, message, active, created_by, created_at, updated_by, updated_at FROM periodic_reports ORDER BY id DESC"
+            "SELECT id, name, statuses_json AS statuses, priorities_json AS priorities, roles_json AS roles, weekdays_json AS weekdays, run_time, message, active, created_by, created_at, updated_by, updated_at FROM periodic_reports ORDER BY id DESC"
         ).fetchall()
     out = []
     for r in rows:
@@ -65,7 +65,7 @@ def create_periodic_report(db_factory: Callable[[], sqlite3.Connection], now_iso
     with db_factory() as conn:
         conn.execute(
             """
-            INSERT INTO periodic_reports(name, statuses, priorities, roles, weekdays, run_time, message, active, created_by, created_at, updated_by, updated_at)
+            INSERT INTO periodic_reports(name, statuses_json, priorities_json, roles_json, weekdays_json, run_time, message, active, created_by, created_at, updated_by, updated_at)
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -110,7 +110,7 @@ def update_periodic_report(db_factory: Callable[[], sqlite3.Connection], now_iso
         conn.execute(
             """
             UPDATE periodic_reports
-               SET name=?, statuses=?, priorities=?, roles=?, weekdays=?, run_time=?, message=?, active=?, updated_by=?, updated_at=?
+               SET name=?, statuses_json=?, priorities_json=?, roles_json=?, weekdays_json=?, run_time=?, message=?, active=?, updated_by=?, updated_at=?
              WHERE id=?
             """,
             (

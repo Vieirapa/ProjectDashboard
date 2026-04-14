@@ -61,7 +61,7 @@ sudo DOMAIN=dashboard.example.com LE_EMAIL=admin@example.com ./install.sh
 
 ## 4) Functional Acceptance
 
-- [ ] Login with `admin/admin`
+- [ ] Login with `admin` and the password configured in `PDASH_INITIAL_PASSWORD`
 - [ ] Admin password changed
 - [ ] Project created in `projects.html`
 - [ ] Kanban card created

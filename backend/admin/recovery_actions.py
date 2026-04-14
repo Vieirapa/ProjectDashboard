@@ -25,20 +25,22 @@ def delete_document(db_factory: Callable[[], sqlite3.Connection], audit_fn, docu
             INSERT INTO deleted_documents(
                 slug, name, status, priority, owner, note, description,
                 project_id, project_name, createdBy, openedAt, releasedAt, dueDate,
-                deleted_by, deleted_at, retention_days, file_name, file_path, ageDays
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                deleted_by, deleted_at, retention_days, file_name, file_path, ageDays,
+                trash_path, document_json, review_notes_json, document_versions_json
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 d.get('slug'), d.get('name'), d.get('status'), d.get('priority'), d.get('owner'),
-                d.get('note'), d.get('description'), d.get('project_id'), d.get('project_name'),
-                d.get('createdBy'), d.get('openedAt'), d.get('releasedAt'), d.get('dueDate'),
-                actor, d.get('updatedAt') or d.get('openedAt'), 30, d.get('documentName'),
-                str(document_file_path_fn(slug)) if d.get('documentName') else '', d.get('ageDays'),
+                d.get('note') or '', d.get('description') or '', d.get('project_id'), d.get('project_name') or '',
+                d.get('created_by') or '', d.get('opened_at') or '', d.get('released_at') or '', d.get('due_date') or '',
+                actor, d.get('updated_at') or d.get('opened_at') or '', 30, d.get('document_name') or '',
+                str(document_file_path_fn(slug)) if d.get('document_name') else '', 0,
+                '', '{}', '[]', '[]',
             ),
         )
-        conn.execute('DELETE FROM document_dependencies WHERE slug=? OR depends_on_slug=?', (slug, slug))
-        conn.execute('DELETE FROM review_notes WHERE slug=?', (slug,))
-        conn.execute('DELETE FROM document_versions WHERE slug=?', (slug,))
+        conn.execute('DELETE FROM document_dependencies WHERE document_slug=? OR depends_on_slug=?', (slug, slug))
+        conn.execute('DELETE FROM review_notes WHERE document_slug=?', (slug,))
+        conn.execute('DELETE FROM document_versions WHERE document_slug=?', (slug,))
         conn.execute('DELETE FROM documents WHERE slug=?', (slug,))
     audit_fn(actor, 'document.delete', slug, 'logical delete to recovery area')
     return True, 'ok'
@@ -55,13 +57,13 @@ def restore_deleted_document(db_factory: Callable[[], sqlite3.Connection], audit
             return False, 'Já existe documento ativo com este slug'
         conn.execute(
             """
-            INSERT INTO documents(slug, name, status, priority, owner, note, description, project_id, project_name, createdBy, openedAt, releasedAt, updatedAt, dueDate, ageDays, documentName)
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO documents(slug, name, status, priority, owner, due_date, description, path, updated_at, document_status, document_name, document_mime, document_path, created_by, opened_at, released_at, project_id)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                d.get('slug'), d.get('name'), d.get('status'), d.get('priority'), d.get('owner'), d.get('note'), d.get('description'),
-                d.get('project_id'), d.get('project_name'), d.get('createdBy'), d.get('openedAt'), d.get('releasedAt'), d.get('deleted_at'),
-                d.get('dueDate'), d.get('ageDays'), d.get('file_name'),
+                d.get('slug'), d.get('name'), d.get('status'), d.get('priority'), d.get('owner'), d.get('dueDate') or '', d.get('description') or '', '',
+                d.get('deleted_at') or '', d.get('status') or '', d.get('file_name') or '', '', d.get('file_path') or '',
+                d.get('createdBy') or '', d.get('openedAt') or '', d.get('releasedAt') or '', d.get('project_id'),
             ),
         )
         conn.execute('DELETE FROM deleted_documents WHERE id=?', (deleted_id,))

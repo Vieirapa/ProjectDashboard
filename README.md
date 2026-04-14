@@ -64,9 +64,10 @@ See detailed note: `docs/RUNTIME_DATA_POLICY.md`
 On first boot, the app creates an admin account:
 
 - username: `admin`
-- password: `admin123` (or value from `PDASH_INITIAL_PASSWORD`)
+- password: value from `PDASH_INITIAL_PASSWORD` (installer default: `admin` unless overridden)
 
 > Change this password immediately after first login.
+> Upgrades should preserve the existing admin password and must not reset it.
 
 ## Run locally
 
@@ -183,7 +184,7 @@ sudo ufw enable
 ### 8) First login
 
 - username: `admin`
-- password: `admin`
+- password: the value configured in `PDASH_INITIAL_PASSWORD` during install
 
 Then immediately change the admin password.
 
