@@ -1914,18 +1914,34 @@ def export_project_package(project_id: int, actor: str) -> tuple[bool, str, str 
         seen_arc_paths.add(normalized)
         files_to_pack.append((src, normalized))
 
+    versions_by_slug: dict[str, list[dict]] = {}
+    for ver in document_versions:
+        slug = str(ver.get("document_slug") or "").strip()
+        if slug:
+            versions_by_slug.setdefault(slug, []).append(ver)
+
     for doc in documents:
+        slug = str(doc.get("slug") or "documento").strip() or "documento"
         raw_doc_path = str(doc.get("document_path") or "").strip()
         if raw_doc_path:
             doc_path = Path(raw_doc_path)
-            _add_file(doc_path, f"files/current_documents/{doc.get('slug')}/{doc_path.name}")
+            doc_name = _safe_filename(doc.get("document_name") or doc_path.name)
+            current_version = 0
+            if versions_by_slug.get(slug):
+                current_version = max(int(v.get("version") or 0) for v in versions_by_slug.get(slug, []))
+            version_tag = f"v{current_version:04d}" if current_version > 0 else "current"
+            _add_file(doc_path, f"files/current_documents/{slug}_{version_tag}__{doc_name}")
 
     for ver in document_versions:
+        slug = str(ver.get("document_slug") or "documento").strip() or "documento"
         rel_path = str(ver.get("file_rel_path") or "").strip()
         if not rel_path:
             continue
         abs_path = DOCS_REPO_DIR / rel_path
-        _add_file(abs_path, f"files/docs_repo/{rel_path}")
+        version_num = int(ver.get("version") or 0)
+        ver_name = _safe_filename(ver.get("document_name") or abs_path.name)
+        version_tag = f"v{version_num:04d}" if version_num > 0 else "v0000"
+        _add_file(abs_path, f"files/docs_repo/{slug}_{version_tag}__{ver_name}")
 
     manifest = {
         "format": "projectdashboard.project-export.v1",
