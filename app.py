@@ -46,6 +46,7 @@ from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from backend.auth.session import (
     create_session as create_auth_session,
@@ -110,6 +111,7 @@ WEB_DIR = APP_DIR / "web"
 DATA_DIR = Path(__file__).parent / "data"
 UPLOADS_DIR = DATA_DIR / "uploads"
 DOCS_REPO_DIR = DATA_DIR / "docs_repo"
+EXPORTS_DIR = DATA_DIR / "exports"
 DB_PATH = DATA_DIR / "projectdashboard.db"
 HOST = os.getenv("PDASH_HOST", "0.0.0.0")
 PORT = int(os.getenv("PDASH_PORT", "8765"))
@@ -787,7 +789,11 @@ def init_db():
                 notes TEXT NOT NULL DEFAULT '',
                 allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,colaborador,revisor,cliente',
                 is_template INTEGER NOT NULL DEFAULT 0,
-                template_source_project_id INTEGER
+                template_source_project_id INTEGER,
+                archived INTEGER NOT NULL DEFAULT 0,
+                archived_at TEXT NOT NULL DEFAULT '',
+                archived_by TEXT NOT NULL DEFAULT '',
+                archive_package_path TEXT NOT NULL DEFAULT ''
             )
         """)
         conn.execute("""
@@ -948,6 +954,10 @@ def init_db():
         ensure_column(conn, "projects", "allowed_roles", "allowed_roles TEXT NOT NULL DEFAULT 'member,desenhista,colaborador,revisor,cliente'")
         ensure_column(conn, "projects", "is_template", "is_template INTEGER NOT NULL DEFAULT 0")
         ensure_column(conn, "projects", "template_source_project_id", "template_source_project_id INTEGER")
+        ensure_column(conn, "projects", "archived", "archived INTEGER NOT NULL DEFAULT 0")
+        ensure_column(conn, "projects", "archived_at", "archived_at TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "projects", "archived_by", "archived_by TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "projects", "archive_package_path", "archive_package_path TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_by", "resolved_by TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "resolved_at", "resolved_at TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "review_notes", "is_resolved", "is_resolved INTEGER NOT NULL DEFAULT 0")
@@ -961,12 +971,14 @@ def init_db():
         ensure_column(conn, "users", "priority_colors_json", "priority_colors_json TEXT NOT NULL DEFAULT ''")
 
         if conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
-            pwd = os.getenv("PDASH_INITIAL_PASSWORD", "admin")
+            pwd = os.getenv("PDASH_INITIAL_PASSWORD", "")
+            if not str(pwd).strip():
+                pwd = secrets.token_urlsafe(18)
             conn.execute(
                 "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)",
                 ("admin", hash_password(pwd), now_iso()),
             )
-            print("[ProjectDashboard] Initial user: admin / password:", pwd)
+            print("[ProjectDashboard] Initial user created: admin")
 
         if conn.execute("SELECT COUNT(*) AS c FROM projects").fetchone()["c"] == 0:
             conn.execute(
@@ -1738,12 +1750,13 @@ def list_projects_registry() -> list[dict]:
     precisem conhecer o catálogo atual de projetos.
     """
     with db() as conn:
-        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles, is_template, template_source_project_id FROM projects ORDER BY project_id").fetchall()
+        rows = conn.execute("SELECT project_id, project_name, start_date, notes, allowed_roles, is_template, template_source_project_id, archived, archived_at, archived_by, archive_package_path FROM projects ORDER BY project_id").fetchall()
     out = []
     for r in rows:
         d = dict(r)
         d['allowed_roles'] = _normalize_allowed_roles(d.get('allowed_roles'))
         d['is_template'] = bool(int(d.get('is_template') or 0))
+        d['archived'] = bool(int(d.get('archived') or 0))
         out.append(d)
     return out
 
@@ -1836,6 +1849,121 @@ def update_project_registry(project_id: int, payload: dict) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 # Remoção de projeto e limpeza associada
 # ---------------------------------------------------------------------------
+def _safe_export_name(name: str) -> str:
+    base = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(name or "project").strip()).strip("-_.")
+    return base or "project"
+
+
+def export_project_package(project_id: int, actor: str) -> tuple[bool, str, str | None]:
+    project = next((p for p in list_projects_registry() if int(p.get("project_id") or 0) == int(project_id)), None)
+    if not project:
+        return False, "Projeto não encontrado", None
+
+    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    export_stamp = now_iso().replace(":", "-")
+    package_name = f"projectdashboard-project-{int(project_id)}-{_safe_export_name(project.get('project_name') or '')}-{export_stamp}.zip"
+    package_path = EXPORTS_DIR / package_name
+
+    with db() as conn:
+        project_row = conn.execute(
+            "SELECT project_id, project_name, start_date, notes, allowed_roles, is_template, template_source_project_id, archived, archived_at, archived_by, archive_package_path FROM projects WHERE project_id=?",
+            (project_id,),
+        ).fetchone()
+        documents = [dict(r) for r in conn.execute(
+            "SELECT * FROM documents WHERE project_id=? ORDER BY id",
+            (project_id,),
+        ).fetchall()]
+        dependencies = [dict(r) for r in conn.execute(
+            "SELECT * FROM document_dependencies WHERE project_id=? ORDER BY id",
+            (project_id,),
+        ).fetchall()]
+        doc_slugs = [str(d.get("slug") or "") for d in documents if str(d.get("slug") or "")]
+        review_notes = []
+        document_versions = []
+        if doc_slugs:
+            placeholders = ",".join(["?"] * len(doc_slugs))
+            review_notes = [dict(r) for r in conn.execute(
+                f"SELECT * FROM review_notes WHERE document_slug IN ({placeholders}) ORDER BY id",
+                tuple(doc_slugs),
+            ).fetchall()]
+            document_versions = [dict(r) for r in conn.execute(
+                f"SELECT * FROM document_versions WHERE document_slug IN ({placeholders}) ORDER BY id",
+                tuple(doc_slugs),
+            ).fetchall()]
+        audit_logs = [dict(r) for r in conn.execute(
+            "SELECT * FROM audit_logs WHERE target=? OR details LIKE ? ORDER BY id",
+            (str(project_id), f"%project_id={project_id}%"),
+        ).fetchall()]
+
+    project_data = dict(project_row) if project_row else project
+    files_to_pack: list[tuple[Path, str]] = []
+    for doc in documents:
+        doc_path = Path(str(doc.get("document_path") or "").strip()) if str(doc.get("document_path") or "").strip() else None
+        if doc_path and doc_path.exists() and doc_path.is_file():
+            files_to_pack.append((doc_path, f"files/documents/{doc_path.name}"))
+    project_docs_repo = DOCS_REPO_DIR / "cards"
+    if project_docs_repo.exists():
+        for slug in doc_slugs:
+            slug_dir = project_docs_repo / slug
+            if slug_dir.exists() and slug_dir.is_dir():
+                for path in slug_dir.rglob("*"):
+                    if path.is_file():
+                        files_to_pack.append((path, f"files/docs_repo/cards/{slug}/{path.relative_to(slug_dir)}"))
+
+    manifest = {
+        "format": "projectdashboard.project-export.v1",
+        "exported_at": now_iso(),
+        "project": {
+            "id": int(project_id),
+            "name": project.get("project_name"),
+            "archived": bool(project.get("archived")),
+        },
+        "source": {
+            "app_version": os.getenv("PDASH_BUILD_COMMIT", "unknown"),
+        },
+        "counts": {
+            "documents": len(documents),
+            "document_versions": len(document_versions),
+            "review_notes": len(review_notes),
+            "audit_logs": len(audit_logs),
+            "files": len(files_to_pack),
+        },
+    }
+
+    with ZipFile(package_path, "w", compression=ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        zf.writestr("project/project.json", json.dumps(project_data, ensure_ascii=False, indent=2))
+        zf.writestr("project/documents.json", json.dumps(documents, ensure_ascii=False, indent=2))
+        zf.writestr("project/dependencies.json", json.dumps(dependencies, ensure_ascii=False, indent=2))
+        zf.writestr("project/review_notes.json", json.dumps(review_notes, ensure_ascii=False, indent=2))
+        zf.writestr("project/document_versions.json", json.dumps(document_versions, ensure_ascii=False, indent=2))
+        zf.writestr("project/audit_logs.json", json.dumps(audit_logs, ensure_ascii=False, indent=2))
+        for src, arcname in files_to_pack:
+            try:
+                zf.write(src, arcname)
+            except Exception:
+                continue
+
+    audit(actor, "project.export", str(project_id), str(package_path))
+    return True, "ok", str(package_path)
+
+
+def archive_project(project_id: int, actor: str) -> tuple[bool, str, str | None]:
+    ok, msg, package_path = export_project_package(project_id, actor)
+    if not ok:
+        return ok, msg, package_path
+    with db() as conn:
+        row = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (project_id,)).fetchone()
+        if not row:
+            return False, "Projeto não encontrado", None
+        conn.execute(
+            "UPDATE projects SET archived=1, archived_at=?, archived_by=?, archive_package_path=? WHERE project_id=?",
+            (now_iso(), actor, str(package_path or ""), project_id),
+        )
+    audit(actor, "project.archive", str(project_id), str(package_path or ""))
+    return True, "ok", package_path
+
+
 def delete_project_registry(project_id: int) -> tuple[bool, str, int]:
     """
     Removes um projeto do registro e apaga seus artefatos associados quando aplicável.
@@ -3590,6 +3718,8 @@ class Handler(BaseHTTPRequestHandler):
             return "Projeto não encontrado."
         if bool(proj.get("is_template")):
             return "Projeto template disponível apenas para administradores."
+        if bool(proj.get("archived")):
+            return "Projeto arquivado disponível apenas para administradores."
         return "Sem acesso ao projeto selecionado para seu role."
 
     def _can_access_project(self, project_id: int, user: dict | None) -> bool:
@@ -3598,6 +3728,10 @@ class Handler(BaseHTTPRequestHandler):
         if (user.get("role") or "").strip().lower() in ADMIN_EQUIV_ROLES:
             return True
         proj = self._project_by_id(project_id)
+        if not proj:
+            return False
+        if bool(proj.get("archived")):
+            return False
         return project_role_allowed(proj, user.get("role") or "")
 
     def _selected_project_id(self, qs: dict | None = None, user: dict | None = None) -> int:
@@ -4507,6 +4641,32 @@ class Handler(BaseHTTPRequestHandler):
             if done:
                 audit(admin["username"], "report.periodic.update", str(rid))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
+
+        if p.startswith("/api/admin/projects/") and p.endswith("/export"):
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                project_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
+            done, msg, package_path = export_project_package(project_id, admin["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
+
+        if p.startswith("/api/admin/projects/") and p.endswith("/archive"):
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                project_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
+            done, msg, package_path = archive_project(project_id, admin["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
 
         if p.startswith("/api/admin/projects/"):
             admin = self._require_module("projects.create_edit")

@@ -15,6 +15,9 @@ const sumProgressEl = document.getElementById('sumProgress');
 const sumReviewEl = document.getElementById('sumReview');
 const sumDoneEl = document.getElementById('sumDone');
 const priorityColorStatus = document.getElementById('priorityColorStatus');
+const exportProjectBtn = document.getElementById('exportProjectBtn');
+const archiveProjectBtn = document.getElementById('archiveProjectBtn');
+const projectPackageStatus = document.getElementById('projectPackageStatus');
 
 const dialog = document.getElementById('documentDialog');
 const form = document.getElementById('documentForm');
@@ -401,6 +404,38 @@ function pct(part, total) {
   return `${Math.round((part / total) * 100)}%`;
 }
 
+function setProjectPackageStatus(message, isError = false) {
+  if (!projectPackageStatus) return;
+  projectPackageStatus.textContent = message;
+  projectPackageStatus.style.color = isError ? '#fecaca' : '#cdd9ee';
+}
+
+async function exportCurrentProject() {
+  const pid = currentProjectIdFromUrl();
+  setProjectPackageStatus('Gerando pacote do projeto...');
+  try {
+    const data = await api(`/api/admin/projects/${encodeURIComponent(String(pid))}/export`, { method: 'POST' });
+    setProjectPackageStatus(`Pacote gerado com sucesso em: ${data.package_path || 'caminho não informado'}`);
+  } catch (e) {
+    setProjectPackageStatus(e.message || 'Falha ao exportar pacote do projeto.', true);
+    alert(e.message || 'Falha ao exportar pacote do projeto.');
+  }
+}
+
+async function archiveCurrentProject() {
+  const pid = currentProjectIdFromUrl();
+  if (!confirm('Arquivar este projeto vai gerar um pacote e retirar o acesso operacional de usuários não-admin. Deseja continuar?')) return;
+  setProjectPackageStatus('Arquivando projeto...');
+  try {
+    const data = await api(`/api/admin/projects/${encodeURIComponent(String(pid))}/archive`, { method: 'POST' });
+    setProjectPackageStatus(`Projeto arquivado. Pacote salvo em: ${data.package_path || 'caminho não informado'}`);
+    await render();
+  } catch (e) {
+    setProjectPackageStatus(e.message || 'Falha ao arquivar projeto.', true);
+    alert(e.message || 'Falha ao arquivar projeto.');
+  }
+}
+
 function updateProjectSummary() {
   const selected = Number(state.selectedProjectId || 1);
   const project = (state.projects || []).find((p) => Number(p.project_id) === selected);
@@ -425,6 +460,12 @@ function updateProjectSummary() {
   if (sumProgressEl) sumProgressEl.textContent = `${progress} (${pct(progress, total)})`;
   if (sumReviewEl) sumReviewEl.textContent = `${review} (${pct(review, total)})`;
   if (sumDoneEl) sumDoneEl.textContent = `${done} (${pct(done, total)})`;
+  if (project && project.archived) {
+    setProjectPackageStatus(`Projeto arquivado em ${formatPtDate(project.archived_at || '')}. Pacote: ${project.archive_package_path || 'não informado'}`);
+  } else {
+    setProjectPackageStatus('Exporte um snapshot do projeto ou arquive o acesso operacional para não-admin.');
+  }
+  if (archiveProjectBtn) archiveProjectBtn.disabled = !!(project && project.archived);
 }
 
 async function render() {
@@ -468,6 +509,9 @@ async function render() {
 }
 
 [newBtn, refreshBtn, searchInput, statusFilter, priorityFilter, ownerFilter, sortOrderFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => render()));
+
+if (exportProjectBtn) exportProjectBtn.addEventListener('click', () => exportCurrentProject());
+if (archiveProjectBtn) archiveProjectBtn.addEventListener('click', () => archiveCurrentProject());
 
 if (projectSelect) {
   projectSelect.onchange = () => {

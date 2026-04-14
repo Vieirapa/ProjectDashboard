@@ -711,6 +711,52 @@ dialog form {
   align-content: start;
 }
 
+.project-summary-right-split {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
+  gap: var(--space-4);
+}
+
+.project-summary-status-panel,
+.project-summary-actions-panel {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+}
+
+.project-summary-actions-panel {
+  padding: var(--space-3);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+}
+
+.project-summary-action-buttons {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.muted-text {
+  color: #cdd9ee;
+}
+
+.project-summary-action-buttons button {
+  width: 100%;
+}
+
+.project-summary-action-buttons .danger {
+  background: #ef2222;
+}
+
+.project-summary-action-buttons .danger:hover {
+  box-shadow: 0 10px 24px rgba(239, 34, 34, 0.22);
+}
+
+@media (max-width: 1180px) {
+  .project-summary-right-split {
+    grid-template-columns: 1fr;
+  }
+}
+
 .project-summary-head {
   display: flex;
   align-items: center;
