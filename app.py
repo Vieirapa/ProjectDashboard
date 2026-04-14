@@ -4364,6 +4364,32 @@ class Handler(BaseHTTPRequestHandler):
                 audit(admin["username"], "project.registry.clone_from_template", str(template_project_id), f"new_project_id={new_project_id}")
             return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
+        if p.startswith("/api/admin/projects/") and p.endswith("/export"):
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                project_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
+            done, msg, package_path = export_project_package(project_id, admin["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
+
+        if p.startswith("/api/admin/projects/") and p.endswith("/archive"):
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                project_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
+            done, msg, package_path = archive_project(project_id, admin["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
+
         if p == "/api/admin/roles":
             admin = self._require_root_admin()
             if not admin: return
@@ -4641,32 +4667,6 @@ class Handler(BaseHTTPRequestHandler):
             if done:
                 audit(admin["username"], "report.periodic.update", str(rid))
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
-
-        if p.startswith("/api/admin/projects/") and p.endswith("/export"):
-            admin = self._require_module("projects.create_edit")
-            if not admin: return
-            parts = p.strip("/").split("/")
-            if len(parts) != 5:
-                return self._json(404, {"ok": False, "error": "not found"})
-            try:
-                project_id = int(parts[3])
-            except Exception:
-                return self._json(400, {"ok": False, "error": "Invalid ID"})
-            done, msg, package_path = export_project_package(project_id, admin["username"])
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
-
-        if p.startswith("/api/admin/projects/") and p.endswith("/archive"):
-            admin = self._require_module("projects.create_edit")
-            if not admin: return
-            parts = p.strip("/").split("/")
-            if len(parts) != 5:
-                return self._json(404, {"ok": False, "error": "not found"})
-            try:
-                project_id = int(parts[3])
-            except Exception:
-                return self._json(400, {"ok": False, "error": "Invalid ID"})
-            done, msg, package_path = archive_project(project_id, admin["username"])
-            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
 
         if p.startswith("/api/admin/projects/"):
             admin = self._require_module("projects.create_edit")
