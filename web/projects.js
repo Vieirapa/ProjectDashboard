@@ -192,7 +192,7 @@ function renderAllowedRolesChecks(roles) {
   }
 
   allowedRolesBox.innerHTML = projectRolesCatalog.map((role) => (
-    `<label class="inline-check"><input type="checkbox" class="allowed-role" value="${esc(role.role_key)}" /> ${esc(role.display_name)} <span class="small">(${esc(role.role_key)})</span></label>`
+    `<label class="inline-check"><input type="checkbox" class="allowed-role" value="${esc(role.role_key)}" /><span class="role-chip-label">${esc(role.display_name)}</span></label>`
   )).join('');
 }
 

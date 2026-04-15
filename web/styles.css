@@ -1951,22 +1951,35 @@ dialog form {
 
 .project-name-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-3);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 72px minmax(220px, 0.45fr);
+  gap: 12px;
+  align-items: stretch;
 }
 
 .project-template-check {
-  min-height: 44px;
-  padding: 0 var(--space-3);
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 12px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: #fbfdff;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.project-template-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 .role-chip-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--space-2);
 }
 
@@ -1974,8 +1987,8 @@ dialog form {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
-  min-height: 48px;
+  gap: 10px;
+  min-height: 44px;
   padding: 10px 14px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -1984,14 +1997,15 @@ dialog form {
 }
 
 .role-chip-grid .inline-check input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   margin: 0;
   flex: 0 0 auto;
 }
 
-.role-chip-grid .inline-check .small {
-  margin-left: 4px;
+.role-chip-label {
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .projects-filter-bar {
