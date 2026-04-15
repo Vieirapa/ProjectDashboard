@@ -38,9 +38,13 @@ const templatesCount = document.getElementById('templatesCount');
 
 const newBtn = document.getElementById('newBtn');
 const saveBtn = document.getElementById('saveBtn');
-const unarchiveBtn = document.getElementById('unarchiveBtn');
 const cloneBtn = document.getElementById('cloneBtn');
 const deleteBtn = document.getElementById('deleteBtn');
+const unarchiveBtn = document.getElementById('unarchiveBtn');
+const projectLifecyclePanel = document.getElementById('projectLifecyclePanel');
+const projectLifecycleTitle = document.getElementById('projectLifecycleTitle');
+const projectLifecycleBadge = document.getElementById('projectLifecycleBadge');
+const projectLifecycleMessage = document.getElementById('projectLifecycleMessage');
 
 let me = null;
 let projects = [];
@@ -243,6 +247,34 @@ function hasModule(moduleId) {
   return allowedModules.has(moduleId);
 }
 
+function canUnarchiveProject() {
+  return hasModule('projects.archive');
+}
+
+function syncProjectLifecycle(project) {
+  if (!projectLifecyclePanel || !projectLifecycleTitle || !projectLifecycleBadge || !projectLifecycleMessage || !unarchiveBtn) return;
+  if (!project) {
+    projectLifecyclePanel.classList.add('hidden');
+    unarchiveBtn.classList.add('hidden');
+    unarchiveBtn.disabled = true;
+    return;
+  }
+
+  const archived = !!project.archived;
+  projectLifecyclePanel.classList.remove('hidden');
+  projectLifecyclePanel.classList.toggle('is-archived', archived);
+  projectLifecycleTitle.textContent = archived ? 'Projeto arquivado' : 'Projeto ativo';
+  projectLifecycleBadge.textContent = archived ? 'Arquivado' : 'Ativo';
+  projectLifecycleBadge.classList.toggle('is-archived', archived);
+  projectLifecycleMessage.textContent = archived
+    ? `Arquivado em ${fmtDate(project.archived_at)} por ${project.archived_by || 'admin'}. Revise o pacote final antes de liberar o projeto novamente.`
+    : 'Projeto disponível para operação normal. Use o catálogo ao lado para localizar itens arquivados quando precisar revisar histórico.';
+
+  const showUnarchive = archived && canUnarchiveProject();
+  unarchiveBtn.classList.toggle('hidden', !showUnarchive);
+  unarchiveBtn.disabled = !showUnarchive;
+}
+
 function applyModuleVisibility() {
   document.querySelectorAll('[data-module-id]').forEach((el) => {
     const moduleId = String(el.dataset.moduleId || '').trim();
@@ -286,8 +318,8 @@ function setForm(p = null) {
   saveBtn.disabled = !canEditProjectModule;
 
   deleteBtn.disabled = !p || !canEditProjectModule;
-  if (unarchiveBtn) unarchiveBtn.disabled = !(p && p.archived && canEditProjectModule);
   if (cloneBtn) cloneBtn.disabled = !(p && p.is_template && canEditProjectModule);
+  syncProjectLifecycle(p);
 
   if (selectedProjectId) {
     const u = new URL(window.location.href);
@@ -302,7 +334,11 @@ function filteredProjects() {
   const mode = String(templateFilter?.value || 'all');
   const search = getProjectSearchTerm();
   return projects.filter((p) => {
-    const modeOk = mode === 'template' ? !!p.is_template : mode === 'non-template' ? !p.is_template : true;
+    const modeOk = mode === 'template' ? !!p.is_template
+      : mode === 'non-template' ? !p.is_template
+      : mode === 'archived' ? !!p.archived
+      : mode === 'active' ? !p.archived
+      : true;
     if (!modeOk) return false;
     if (!search) return true;
     const hay = `${p.project_id || ''} ${p.project_name || ''} ${p.allowed_roles || ''}`.toLowerCase();
@@ -322,8 +358,8 @@ function renderList() {
     return;
   }
   projectsList.innerHTML = wrapTable(`<table>
-    <thead><tr><th class="template-flag-col"></th><th>ID</th><th>Nome</th><th>Status</th><th>Início</th><th>Roles</th></tr></thead>
-    <tbody>${shown.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${p.archived ? '<span class="template-chip">Arquivado</span>' : '<span class="small">Ativo</span>'}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}</tbody>
+    <thead><tr><th class="template-flag-col"></th><th>ID</th><th>Nome</th><th>Início</th><th>Roles</th></tr></thead>
+    <tbody>${shown.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}${p.archived ? '<span class="project-state-chip is-archived">Arquivado</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}</tbody>
   </table>`);
   projectsList.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.style.cursor = 'pointer';
@@ -458,21 +494,28 @@ deleteBtn.onclick = async () => {
 
 if (unarchiveBtn) {
   unarchiveBtn.onclick = async () => {
-    if (!hasModule('projects.create_edit')) return;
     const pid = Number(projectId.value || selectedProjectId || 0);
-    if (!pid) return;
     const selected = projects.find((p) => Number(p.project_id) === pid);
-    if (!selected?.archived) {
-      setFeedback('Selecione um projeto arquivado para desarquivar.', 'warning');
+    if (!pid || !selected?.archived) return;
+
+    const answer = await askProjectAction({
+      eyebrow: 'Projeto arquivado',
+      title: 'Desarquivar projeto com segurança',
+      message: `Para confirmar, digite <strong>DESARQUIVAR</strong>. O projeto <strong>${esc(selected.project_name || `ID ${pid}`)}</strong> voltará a aparecer no fluxo operacional.`,
+      inputLabel: 'Digite DESARQUIVAR para confirmar',
+      inputValue: '',
+      confirmLabel: 'Desarquivar projeto',
+    });
+    if (!answer.confirmed) return;
+    if (String(answer.value || '').trim().toUpperCase() !== 'DESARQUIVAR') {
+      setFeedback('Confirmação inválida. Digite DESARQUIVAR para liberar o projeto novamente.', 'warning');
       return;
     }
-    const answer = await askProjectAction({ eyebrow: 'Projeto', title: 'Desarquivar projeto', message: `O projeto <strong>${esc(selected.project_name || `ID ${pid}`)}</strong> voltará ao catálogo ativo e poderá ser acessado novamente por usuários autorizados.`, confirmLabel: 'Desarquivar projeto' });
-    if (!answer.confirmed) return;
 
-    setFeedback('Desarquivando projeto selecionado...', 'warning');
+    setFeedback('Desarquivando projeto e atualizando catálogo...', 'neutral');
     try {
-      await api(`/api/admin/projects/${pid}/unarchive`, { method: 'POST' });
-      setFeedback('Projeto desarquivado com sucesso.', 'success');
+      await api(`/api/admin/projects/${encodeURIComponent(String(pid))}/unarchive`, { method: 'POST' });
+      setFeedback('Projeto desarquivado com sucesso. O histórico do pacote foi preservado para consulta.', 'success');
       await refresh(pid);
     } catch (e) {
       setFeedback(e.message, 'danger');

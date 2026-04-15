@@ -2071,6 +2071,58 @@ dialog form {
   margin-top: var(--space-2);
 }
 
+.project-lifecycle-panel {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.project-lifecycle-panel.is-archived {
+  border-color: rgba(180, 83, 9, 0.2);
+  background: linear-gradient(180deg, #fff9ed 0%, #ffffff 100%);
+}
+
+.project-lifecycle-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-state-badge,
+.project-state-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--color-primary-strong);
+}
+
+.project-state-badge.is-archived,
+.project-state-chip.is-archived {
+  background: rgba(180, 83, 9, 0.12);
+  color: #9a3412;
+}
+
+.template-flag-col {
+  width: 132px;
+}
+
+.template-flag-col .project-state-chip {
+  margin-top: 6px;
+}
+
 .edit-two-cols,
 .backup-grid {
   display: grid;

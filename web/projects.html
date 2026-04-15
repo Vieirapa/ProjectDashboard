@@ -71,10 +71,20 @@
             <div class="dialog-actions actions-left actions-wrap projects-form-actions">
               <button type="button" id="newBtn" class="secondary">Limpar formulário</button>
               <button type="button" id="saveBtn">Salvar projeto</button>
-              <button type="button" id="unarchiveBtn" class="secondary">Desarquivar projeto</button>
+              <button type="button" id="unarchiveBtn" class="secondary hidden">Desarquivar projeto</button>
               <button type="button" id="cloneBtn" class="secondary">Criar a partir do template</button>
               <button type="button" id="deleteBtn" class="danger">Apagar projeto</button>
             </div>
+            <section id="projectLifecyclePanel" class="project-lifecycle-panel hidden" aria-live="polite">
+              <div class="project-lifecycle-head">
+                <div>
+                  <p class="eyebrow">Status do projeto</p>
+                  <h4 id="projectLifecycleTitle" class="mt-0">Projeto ativo</h4>
+                </div>
+                <span id="projectLifecycleBadge" class="project-state-badge">Ativo</span>
+              </div>
+              <p id="projectLifecycleMessage" class="mb-0 small">Projetos arquivados continuam disponíveis para consulta administrativa e podem ser desarquivados com confirmação.</p>
+            </section>
             <div id="feedback" class="settings-inline-feedback status-neutral projects-feedback" role="status" aria-live="polite">
               <strong>Status</strong>
               <span>Preencha os dados do projeto e selecione quem pode acessá-lo além de admin.</span>
