@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
 
 import app
 
@@ -82,6 +83,16 @@ class RecoveryAndReportsTest(unittest.TestCase):
         self._insert_document('doc-purge')
         ok, msg = app.delete_document('doc-purge', 'admin')
         self.assertTrue(ok, msg)
+
+        purged, failed = app.purge_expired_deleted_documents('system')
+        self.assertEqual(purged, 0)
+        self.assertEqual(failed, 0)
+        deleted = app.list_deleted_documents()
+        self.assertEqual(len(deleted['items']), 1)
+
+        with app.db() as conn:
+            expired_at = (datetime.now(UTC) - timedelta(days=31)).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+            conn.execute("UPDATE deleted_documents SET deleted_at=?, retention_days=30 WHERE slug=?", (expired_at, 'doc-purge'))
 
         purged, failed = app.purge_expired_deleted_documents('system')
         self.assertEqual(purged, 1)

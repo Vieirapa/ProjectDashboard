@@ -39,9 +39,12 @@ def delete_document(db_factory: Callable[[], sqlite3.Connection], audit_fn, docu
         if d.get('project_id'):
             prow = conn.execute('SELECT project_name FROM projects WHERE project_id=?', (d.get('project_id'),)).fetchone()
             project_name = str((prow['project_name'] if prow else '') or '')
-        settings_row = conn.execute("SELECT value FROM admin_settings WHERE key='deleted.retention_days'").fetchone()
+        retention_days = 30
         try:
-            retention_days = max(1, int((settings_row['value'] if settings_row else '30') or '30'))
+            table_row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_settings'").fetchone()
+            if table_row:
+                settings_row = conn.execute("SELECT value FROM admin_settings WHERE key='deleted.retention_days'").fetchone()
+                retention_days = max(1, int((settings_row['value'] if settings_row else '30') or '30'))
         except Exception:
             retention_days = 30
         deleted_at = _now_iso()
