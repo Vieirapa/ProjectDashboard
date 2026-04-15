@@ -302,7 +302,6 @@ function makeCard(p, statuses, priorities) {
     p.hasDocument ? '<span class="card-state-badge">📎 Anexo</span>' : '',
     `<span class="card-chip card-chip-priority">${p.priority || 'Sem prioridade'}</span>`,
     isOverdue ? '<span class="card-state-badge card-state-badge-warning">Prazo vencido</span>' : '',
-    blockedDeps.length ? `<span class="card-chip card-chip-danger">${blockedDeps.length} dependência(s)</span>` : resolvedDepsCount ? `<span class="card-chip card-chip-success">${resolvedDepsCount} dependência(s) ok</span>` : '',
   ].filter(Boolean).join('');
   const dependencySummary = blockedDeps.length
     ? `
