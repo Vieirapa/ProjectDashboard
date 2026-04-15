@@ -1951,19 +1951,18 @@ dialog form {
 
 .project-name-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px minmax(220px, 0.45fr);
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.45fr);
   gap: 12px;
   align-items: stretch;
 }
 
 .project-template-check {
-  display: grid;
-  grid-template-columns: 18px 1fr;
+  display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
-  min-height: 38px;
-  padding: 0 12px;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 14px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: #fbfdff;
@@ -1975,6 +1974,7 @@ dialog form {
   width: 16px;
   height: 16px;
   margin: 0;
+  flex: 0 0 auto;
 }
 
 .role-chip-grid {
