@@ -10,8 +10,23 @@ registros recuperáveis.
 
 import shutil
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from collections.abc import Callable
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace('Z', '+00:00'))
+    except Exception:
+        return None
 
 
 def delete_document(db_factory: Callable[[], sqlite3.Connection], audit_fn, document_file_path_fn, slug: str, actor: str) -> tuple[bool, str]:
@@ -20,6 +35,20 @@ def delete_document(db_factory: Callable[[], sqlite3.Connection], audit_fn, docu
         if not row:
             return False, 'Document not found'
         d = dict(row)
+        project_name = ''
+        if d.get('project_id'):
+            prow = conn.execute('SELECT project_name FROM projects WHERE project_id=?', (d.get('project_id'),)).fetchone()
+            project_name = str((prow['project_name'] if prow else '') or '')
+        settings_row = conn.execute("SELECT value FROM admin_settings WHERE key='deleted.retention_days'").fetchone()
+        try:
+            retention_days = max(1, int((settings_row['value'] if settings_row else '30') or '30'))
+        except Exception:
+            retention_days = 30
+        deleted_at = _now_iso()
+        age_days = 0
+        opened = _parse_iso(d.get('opened_at'))
+        if opened:
+            age_days = max(0, (datetime.now(UTC).date() - opened.date()).days)
         conn.execute(
             """
             INSERT INTO deleted_documents(
@@ -31,10 +60,10 @@ def delete_document(db_factory: Callable[[], sqlite3.Connection], audit_fn, docu
             """,
             (
                 d.get('slug'), d.get('name'), d.get('status'), d.get('priority'), d.get('owner'),
-                d.get('note') or '', d.get('description') or '', d.get('project_id'), d.get('project_name') or '',
+                d.get('note') or '', d.get('description') or '', d.get('project_id'), project_name,
                 d.get('created_by') or '', d.get('opened_at') or '', d.get('released_at') or '', d.get('due_date') or '',
-                actor, d.get('updated_at') or d.get('opened_at') or '', 30, d.get('document_name') or '',
-                str(document_file_path_fn(slug)) if d.get('document_name') else '', 0,
+                actor, deleted_at, retention_days, d.get('document_name') or '',
+                str(document_file_path_fn(slug)) if d.get('document_name') else '', age_days,
                 '', '{}', '[]', '[]',
             ),
         )
@@ -91,10 +120,18 @@ def delete_deleted_document_permanently(db_factory: Callable[[], sqlite3.Connect
 def purge_expired_deleted_documents(db_factory: Callable[[], sqlite3.Connection], audit_fn, actor: str = 'system') -> tuple[int, int]:
     purged = 0
     failed = 0
+    now = datetime.now(UTC)
     with db_factory() as conn:
-        rows = conn.execute('SELECT id, file_path, slug FROM deleted_documents').fetchall()
+        rows = conn.execute('SELECT id, file_path, slug, deleted_at, retention_days FROM deleted_documents').fetchall()
         for r in rows:
             try:
+                deleted_at = _parse_iso(r['deleted_at'])
+                retention_days = max(1, int(r['retention_days'] or 30))
+                if not deleted_at:
+                    continue
+                expires_at = deleted_at + timedelta(days=retention_days)
+                if now < expires_at:
+                    continue
                 file_path = str(r['file_path'] or '').strip()
                 if file_path:
                     Path(file_path).unlink(missing_ok=True)

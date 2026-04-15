@@ -4283,7 +4283,7 @@ class Handler(BaseHTTPRequestHandler):
                 "total": data["total"],
                 "page": data["page"],
                 "page_size": data["page_size"],
-                "total_pages": data["total_pages"],
+                "total_pages": data["pages"],
             })
 
         if p == "/api/admin/system/diagnostics":
