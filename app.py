@@ -1155,7 +1155,7 @@ def list_documents(project_id: int | None = None) -> list[dict]:
             "path": r["path"], "updatedAt": r["updated_at"],
             "documentStatus": ("aguardando edição" if r["status"] == "Backlog" else "em andamento" if r["status"] == "Em andamento" else "em revisão" if r["status"] == "Em revisão" else "release"), "documentName": r["document_name"],
             "documentMime": r["document_mime"], "hasDocument": bool(r["document_path"]),
-            "createdBy": r["created_by"], "projectId": pid,
+            "createdBy": r["created_by"], "projectId": pid, "project_id": pid,
             "openedAt": r["opened_at"], "releasedAt": r["released_at"],
             "ageLabel": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[0],
             "ageDays": _project_age_fields(r["opened_at"], r["status"], r["released_at"])[1],

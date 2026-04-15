@@ -64,6 +64,8 @@ class RecoveryAndReportsTest(unittest.TestCase):
 
     def test_delete_and_restore_document(self):
         self._insert_document('doc-restore')
+        with app.db() as conn:
+            conn.execute("UPDATE documents SET project_id=? WHERE slug=?", (3, 'doc-restore'))
         ok, msg = app.delete_document('doc-restore', 'admin')
         self.assertTrue(ok, msg)
 
@@ -71,13 +73,15 @@ class RecoveryAndReportsTest(unittest.TestCase):
         self.assertEqual(len(deleted['items']), 1)
         deleted_id = deleted['items'][0]['id']
         self.assertEqual(deleted['items'][0]['slug'], 'doc-restore')
+        self.assertEqual(int(deleted['items'][0]['project_id'] or 0), 3)
 
         ok, msg = app.restore_deleted_document(deleted_id, 'admin')
         self.assertTrue(ok, msg)
 
-        docs = app.list_documents()
+        docs = app.list_documents(project_id=3)
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0]['slug'], 'doc-restore')
+        self.assertEqual(int(docs[0]['project_id'] or 0), 3)
 
     def test_delete_then_purge_deleted_document(self):
         self._insert_document('doc-purge')

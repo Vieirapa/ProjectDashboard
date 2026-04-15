@@ -555,8 +555,10 @@ async function loadDeletedDocuments() {
     btn.onclick = async () => {
       try {
         await api(`/api/admin/deleted-documents/${btn.dataset.restore}/restore`, { method: 'POST' });
+        deletedPager.page = 1;
         setInlineFeedback(deletedPolicyFeedback, 'Documento restaurado ✅', 'success');
-        await Promise.all([loadDeletedDocuments(), loadReports()]);
+        await loadDeletedDocuments();
+        await loadReports();
       } catch (err) {
         setInlineFeedback(deletedPolicyFeedback, err.message, 'danger');
       }
