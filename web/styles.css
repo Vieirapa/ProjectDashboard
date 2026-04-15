@@ -829,6 +829,10 @@ dialog form {
     grid-template-columns: 1fr;
   }
 
+  .kanban-summary-side-stack {
+    grid-template-columns: 1fr;
+  }
+
   .project-summary-topline,
   .kanban-summary-topline-refined {
     grid-template-columns: 1fr;
@@ -960,10 +964,19 @@ dialog form {
   gap: 10px;
 }
 
+.kanban-summary-side-stack {
+  display: grid;
+  gap: 12px;
+}
+
 .kanban-summary-actions-refined {
   align-self: stretch;
   display: grid;
   gap: 14px;
+}
+
+.kanban-summary-actions-secondary {
+  gap: 12px;
 }
 
 .kanban-status-pill {

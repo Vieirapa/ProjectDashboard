@@ -22,10 +22,6 @@
           </div>
           <p class="page-subtitle">Gerencie prioridades, evolução dos cards e gargalos do projeto atual com leitura rápida e contexto operacional.</p>
         </div>
-        <div class="header-actions hero-actions">
-          <button id="newBtn">+ Novo documento</button>
-          <button id="refreshBtn" class="secondary">Atualizar board</button>
-        </div>
       </section>
 
       <section id="projectSummary" class="project-summary kanban-summary kanban-summary-refined">
@@ -72,22 +68,36 @@
             </div>
           </div>
         </div>
-        <aside class="project-summary-actions-panel project-package-panel project-package-panel-compact kanban-summary-actions-refined">
-          <div class="project-summary-head">
-            <div>
-              <span class="kanban-summary-label">Ações do projeto</span>
-              <h2>Exportar ou encerrar</h2>
+        <div class="kanban-summary-side-stack">
+          <aside class="project-summary-actions-panel project-package-panel project-package-panel-compact kanban-summary-actions-refined">
+            <div class="project-summary-head">
+              <div>
+                <span class="kanban-summary-label">Ações do projeto</span>
+                <h2>Exportar ou encerrar</h2>
+              </div>
             </div>
-          </div>
-          <div class="project-summary-action-buttons project-summary-action-buttons-inline">
-            <button id="exportProjectBtn" type="button">Exportar pacote ZIP</button>
-            <button id="archiveProjectBtn" type="button" class="danger">Arquivar projeto</button>
-          </div>
-          <div id="projectPackageStatus" class="settings-inline-feedback status-neutral project-package-status" role="status" aria-live="polite">
-            <strong>Status</strong>
-            <span>Pronto para exportar um pacote ou concluir o arquivamento deste projeto.</span>
-          </div>
-        </aside>
+            <div class="project-summary-action-buttons project-summary-action-buttons-inline">
+              <button id="exportProjectBtn" type="button">Exportar pacote ZIP</button>
+              <button id="archiveProjectBtn" type="button" class="danger">Arquivar projeto</button>
+            </div>
+            <div id="projectPackageStatus" class="settings-inline-feedback status-neutral project-package-status" role="status" aria-live="polite">
+              <strong>Status</strong>
+              <span>Pronto para exportar um pacote ou concluir o arquivamento deste projeto.</span>
+            </div>
+          </aside>
+          <aside class="project-summary-actions-panel project-package-panel project-package-panel-compact kanban-summary-actions-refined kanban-summary-actions-secondary">
+            <div class="project-summary-head">
+              <div>
+                <span class="kanban-summary-label">Ações no Kanban</span>
+                <h2>Criar card e recarregar board</h2>
+              </div>
+            </div>
+            <div class="project-summary-action-buttons project-summary-action-buttons-inline">
+              <button id="newBtn" type="button">+ Novo documento</button>
+              <button id="refreshBtn" type="button" class="secondary">Atualizar board</button>
+            </div>
+          </aside>
+        </div>
       </section>
 
       <dialog id="projectPackageDialog">
