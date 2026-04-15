@@ -498,17 +498,13 @@ if (unarchiveBtn) {
     const selected = projects.find((p) => Number(p.project_id) === pid);
     if (!pid || !selected?.archived) return;
 
-    const answer = await askProjectAction({
-      eyebrow: 'Projeto arquivado',
-      title: 'Desarquivar projeto com segurança',
-      message: `Para confirmar, digite <strong>DESARQUIVAR</strong>. O projeto <strong>${esc(selected.project_name || `ID ${pid}`)}</strong> voltará a aparecer no fluxo operacional.`,
-      inputLabel: 'Digite DESARQUIVAR para confirmar',
-      inputValue: '',
-      confirmLabel: 'Desarquivar projeto',
-    });
-    if (!answer.confirmed) return;
-    if (String(answer.value || '').trim().toUpperCase() !== 'DESARQUIVAR') {
-      setFeedback('Confirmação inválida. Digite DESARQUIVAR para liberar o projeto novamente.', 'warning');
+    const confirmation = window.prompt(
+      `Digite DESARQUIVAR para confirmar a liberação do projeto "${selected.project_name || `ID ${pid}`}".`,
+      ''
+    );
+    if (confirmation === null) return;
+    if (String(confirmation || '').trim().toUpperCase() !== 'DESARQUIVAR') {
+      setFeedback('Confirmação inválida. Digite DESARQUIVAR exatamente para liberar o projeto novamente.', 'warning');
       return;
     }
 
