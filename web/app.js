@@ -18,6 +18,12 @@ const priorityColorStatus = document.getElementById('priorityColorStatus');
 const exportProjectBtn = document.getElementById('exportProjectBtn');
 const archiveProjectBtn = document.getElementById('archiveProjectBtn');
 const projectPackageStatus = document.getElementById('projectPackageStatus');
+const projectPackageDialog = document.getElementById('projectPackageDialog');
+const projectPackageDialogTitle = document.getElementById('projectPackageDialogTitle');
+const projectPackageDialogMessage = document.getElementById('projectPackageDialogMessage');
+const projectPackageDialogEyebrow = document.getElementById('projectPackageDialogEyebrow');
+const projectPackageDialogCancel = document.getElementById('projectPackageDialogCancel');
+const projectPackageDialogConfirm = document.getElementById('projectPackageDialogConfirm');
 const boardResultsSummary = document.getElementById('boardResultsSummary');
 const boardFilterSummary = document.getElementById('boardFilterSummary');
 
@@ -468,6 +474,30 @@ function setProjectPackageStatus(message, tone = 'neutral') {
   projectPackageStatus.innerHTML = `<strong>Status</strong><span>${message}</span>`;
 }
 
+function askProjectPackageAction({ title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', eyebrow = 'Confirmação', danger = false }) {
+  if (!projectPackageDialog) return Promise.resolve({ confirmed: true });
+  projectPackageDialogTitle.textContent = title || 'Confirmar ação';
+  projectPackageDialogMessage.innerHTML = message || 'Revise a ação antes de continuar.';
+  projectPackageDialogEyebrow.textContent = eyebrow || 'Confirmação';
+  projectPackageDialogCancel.textContent = cancelLabel;
+  projectPackageDialogConfirm.textContent = confirmLabel;
+  projectPackageDialogConfirm.className = danger ? 'danger' : '';
+  return new Promise((resolve) => {
+    const cleanup = (payload) => {
+      projectPackageDialogConfirm.onclick = null;
+      projectPackageDialogCancel.onclick = null;
+      projectPackageDialog.oncancel = null;
+      if (projectPackageDialog.open) projectPackageDialog.close();
+      resolve(payload);
+    };
+    projectPackageDialogConfirm.onclick = () => cleanup({ confirmed: true });
+    projectPackageDialogCancel.onclick = () => cleanup({ confirmed: false });
+    projectPackageDialog.oncancel = () => cleanup({ confirmed: false });
+    projectPackageDialog.showModal();
+    projectPackageDialogConfirm.focus();
+  });
+}
+
 async function exportCurrentProject() {
   const pid = currentProjectIdFromUrl();
   setProjectPackageStatus('Gerando pacote ZIP do projeto. Isso pode levar alguns instantes.', 'neutral');
@@ -478,7 +508,6 @@ async function exportCurrentProject() {
     window.open(`/api/admin/projects/${encodeURIComponent(String(pid))}/export/download`, '_blank');
   } catch (e) {
     setProjectPackageStatus(e.message || 'Falha ao exportar pacote do projeto.', 'danger');
-    alert(e.message || 'Falha ao exportar pacote do projeto.');
   } finally {
     if (exportProjectBtn) exportProjectBtn.disabled = false;
   }
@@ -486,7 +515,8 @@ async function exportCurrentProject() {
 
 async function archiveCurrentProject() {
   const pid = currentProjectIdFromUrl();
-  if (!confirm('Arquivar este projeto vai gerar um pacote e retirar o acesso operacional de usuários não-admin. Deseja continuar?')) return;
+  const answer = await askProjectPackageAction({ eyebrow: 'Arquivamento', title: 'Arquivar projeto atual', message: 'Isso vai gerar um pacote final e retirar o acesso operacional de usuários não admin.', confirmLabel: 'Arquivar projeto', danger: true });
+  if (!answer.confirmed) { setProjectPackageStatus('Arquivamento cancelado pelo usuário.', 'neutral'); return; }
   setProjectPackageStatus('Arquivando projeto e removendo o acesso operacional de usuários não admin...', 'warning');
   if (archiveProjectBtn) archiveProjectBtn.disabled = true;
   try {
@@ -495,7 +525,6 @@ async function archiveCurrentProject() {
     await render();
   } catch (e) {
     setProjectPackageStatus(e.message || 'Falha ao arquivar projeto.', 'danger');
-    alert(e.message || 'Falha ao arquivar projeto.');
   } finally {
     if (archiveProjectBtn) archiveProjectBtn.disabled = false;
   }

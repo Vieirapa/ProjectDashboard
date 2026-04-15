@@ -6,6 +6,10 @@ const adminUsersFeedback = document.getElementById('adminUsersFeedback');
 const adminUsersCount = document.getElementById('adminUsersCount');
 const adminAdminsCount = document.getElementById('adminAdminsCount');
 const adminAuditCount = document.getElementById('adminAuditCount');
+const usersSearchInput = document.getElementById('usersSearchInput');
+const usersFilteredCount = document.getElementById('usersFilteredCount');
+const auditSearchInput = document.getElementById('auditSearchInput');
+const auditFilteredCount = document.getElementById('auditFilteredCount');
 
 function escHtml(s) {
   return String(s ?? '')
@@ -51,6 +55,124 @@ function setAdminFeedback(message, tone = 'neutral') {
   adminUsersFeedback.innerHTML = `<strong>Status</strong><span>${escHtml(message || 'Sem atualizações no momento.')}</span>`;
 }
 
+const adminUsersDialog = document.getElementById('adminUsersDialog');
+const adminUsersDialogTitle = document.getElementById('adminUsersDialogTitle');
+const adminUsersDialogMessage = document.getElementById('adminUsersDialogMessage');
+const adminUsersDialogEyebrow = document.getElementById('adminUsersDialogEyebrow');
+const adminUsersDialogInputWrap = document.getElementById('adminUsersDialogInputWrap');
+const adminUsersDialogInputLabel = document.getElementById('adminUsersDialogInputLabel');
+const adminUsersDialogInput = document.getElementById('adminUsersDialogInput');
+const adminUsersDialogCancel = document.getElementById('adminUsersDialogCancel');
+const adminUsersDialogConfirm = document.getElementById('adminUsersDialogConfirm');
+
+function wrapTable(html) {
+  return `<div class="table-shell">${html}</div>`;
+}
+
+function setCountLabel(el, count, singular, plural) {
+  if (el) el.textContent = `${count} ${count === 1 ? singular : plural}`;
+}
+
+function askAdminAction({ title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', eyebrow = 'Ação administrativa', inputLabel = '', inputValue = '', inputType = 'text', danger = false }) {
+  if (!adminUsersDialog) return Promise.resolve({ confirmed: true, value: String(inputValue || '') });
+  adminUsersDialogTitle.textContent = title || 'Confirmar ação';
+  adminUsersDialogMessage.innerHTML = message || 'Revise a ação antes de continuar.';
+  adminUsersDialogEyebrow.textContent = eyebrow || 'Ação administrativa';
+  adminUsersDialogCancel.textContent = cancelLabel;
+  adminUsersDialogConfirm.textContent = confirmLabel;
+  adminUsersDialogConfirm.className = danger ? 'danger' : '';
+  const needsInput = !!String(inputLabel || '').trim();
+  adminUsersDialogInputWrap.classList.toggle('hidden', !needsInput);
+  adminUsersDialogInputLabel.textContent = inputLabel || 'Valor';
+  adminUsersDialogInput.type = inputType || 'text';
+  adminUsersDialogInput.value = String(inputValue || '');
+  return new Promise((resolve) => {
+    const cleanup = (payload) => {
+      adminUsersDialogConfirm.onclick = null;
+      adminUsersDialogCancel.onclick = null;
+      adminUsersDialog.oncancel = null;
+      if (adminUsersDialog.open) adminUsersDialog.close();
+      resolve(payload);
+    };
+    adminUsersDialogConfirm.onclick = () => cleanup({ confirmed: true, value: adminUsersDialogInput.value });
+    adminUsersDialogCancel.onclick = () => cleanup({ confirmed: false, value: adminUsersDialogInput.value });
+    adminUsersDialog.oncancel = () => cleanup({ confirmed: false, value: adminUsersDialogInput.value });
+    adminUsersDialog.showModal();
+    if (needsInput) adminUsersDialogInput.focus();
+    else adminUsersDialogConfirm.focus();
+  });
+}
+
+function renderUsersTable() {
+  const term = String(usersSearchInput?.value || '').trim().toLowerCase();
+  const filtered = usersCache.filter((u) => {
+    if (!term) return true;
+    const hay = `${u.username || ''} ${u.role || ''}`.toLowerCase();
+    return hay.includes(term);
+  });
+  setCountLabel(usersFilteredCount, filtered.length, 'usuário', 'usuários');
+  if (!filtered.length) {
+    usersList.innerHTML = '<div class="empty-state">Nenhum usuário encontrado para o filtro informado.</div>';
+    return;
+  }
+  usersList.innerHTML = wrapTable(`
+    <table>
+      <thead><tr><th>Usuário</th><th>Role</th><th>Tarefas associadas</th><th>Criado em</th><th>Ações</th></tr></thead>
+      <tbody>${filtered.map(u => `
+        <tr>
+          <td>${u.username}</td>
+          <td><select data-role-user="${u.username}" ${u.username === 'admin' || !hasModule('admin_users.create') ? 'disabled' : ''}>${roleOptions(u.role)}</select></td>
+          <td>${u.associated_tasks ?? 0}</td>
+          <td>${u.created_at}</td>
+          <td>
+            <button class="secondary" data-pass-user="${u.username}" ${!hasModule('admin_users.create') ? 'disabled' : ''}>Trocar senha</button>
+            <button class="danger" data-del-user="${u.username}" data-task-count="${u.associated_tasks ?? 0}" ${u.username === me.username || u.role === 'admin' || !hasModule('admin_users.create') ? 'disabled' : ''}>Excluir</button>
+          </td>
+        </tr>`).join('')}</tbody>
+    </table>`);
+
+  usersList.querySelectorAll('[data-role-user]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      try { await updateRole(sel.dataset.roleUser, sel.value); setAdminFeedback(`Role de ${sel.dataset.roleUser} atualizada para ${sel.value}.`, 'success'); await loadUsers(); await loadAudit(); }
+      catch (e) { setAdminFeedback(e.message, 'danger'); }
+    });
+  });
+
+  usersList.querySelectorAll('[data-pass-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try { await changePassword(btn.dataset.passUser); await loadAudit(); }
+      catch (e) { setAdminFeedback(e.message, 'danger'); }
+    });
+  });
+
+  usersList.querySelectorAll('[data-del-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try { await deleteUser(btn.dataset.delUser, Number(btn.dataset.taskCount || 0)); await loadUsers(); await loadAudit(); }
+      catch (e) { setAdminFeedback(e.message, 'danger'); }
+    });
+  });
+}
+
+function renderAuditTable() {
+  const term = String(auditSearchInput?.value || '').trim().toLowerCase();
+  const filtered = auditCache.filter((l) => {
+    if (!term) return true;
+    const hay = `${l.created_at || ''} ${l.actor || ''} ${l.action || ''} ${l.target || ''} ${l.details || ''}`.toLowerCase();
+    return hay.includes(term);
+  });
+  setCountLabel(auditFilteredCount, filtered.length, 'evento', 'eventos');
+  if (!filtered.length) {
+    auditList.innerHTML = '<div class="empty-state">Nenhum evento de auditoria encontrado para o filtro informado.</div>';
+    return;
+  }
+  auditList.innerHTML = wrapTable(`
+    <table>
+      <thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Alvo</th><th>Detalhes</th></tr></thead>
+      <tbody>${filtered.map(l => `
+        <tr><td>${l.created_at}</td><td>${l.actor}</td><td>${l.action}</td><td>${l.target}</td><td>${l.details || '-'}</td></tr>`).join('')}</tbody>
+    </table>`);
+}
+
 function renderInviteOutput(message, link = '', copied = false) {
   if (!inviteOut) return;
   const safeMessage = escHtml(message || 'Nenhum convite gerado ainda.');
@@ -80,6 +202,8 @@ function renderInviteOutput(message, link = '', copied = false) {
 let me = null;
 let roles = ['member', 'admin'];
 let allowedModules = new Set();
+let usersCache = [];
+let auditCache = [];
 
 async function api(url, opts={}) {
   const r = await fetch(url, opts);
@@ -129,28 +253,33 @@ async function updateRole(username, role) {
 }
 
 async function changePassword(username) {
-  const pwd = prompt(`Nova senha para ${username}:`);
-  if (!pwd) return;
+  const answer = await askAdminAction({ title: `Trocar senha de ${username}`, message: 'Informe a nova senha temporária para este usuário.', confirmLabel: 'Salvar senha', eyebrow: 'Credenciais', inputLabel: 'Nova senha', inputType: 'password' });
+  const pwd = String(answer.value || '');
+  if (!answer.confirmed || !pwd) return;
   await api(`/api/admin/users/${encodeURIComponent(username)}`, {
     method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ password: pwd })
   });
-  alert('Senha alterada com sucesso');
+  setAdminFeedback(`Senha de ${username} alterada com sucesso.`, 'success');
 }
 
 async function deleteUser(username, associatedTasks) {
-  const taskInfo = associatedTasks > 0
-    ? `\n\n⚠️ Este usuário possui ${associatedTasks} tarefa(s) associada(s).`
-    : '';
-
-  if (!confirm(`Confirma exclusão do usuário ${username}?${taskInfo}`)) return;
-
-  const typed = prompt(`Para confirmar, digite EXCLUIR (${username}):`);
-  if (typed !== 'EXCLUIR') {
-    alert('Exclusão cancelada.');
+  const taskInfo = associatedTasks > 0 ? `<br><br><strong>⚠️ Este usuário possui ${associatedTasks} tarefa(s) associada(s).</strong>` : '';
+  const answer = await askAdminAction({
+    title: `Excluir usuário ${username}`,
+    message: `Para confirmar, digite <strong>EXCLUIR</strong>.${taskInfo}`,
+    confirmLabel: 'Excluir usuário',
+    eyebrow: 'Governança',
+    inputLabel: 'Digite EXCLUIR',
+    danger: true,
+  });
+  if (!answer.confirmed) return;
+  if (String(answer.value || '').trim().toUpperCase() !== 'EXCLUIR') {
+    setAdminFeedback('Exclusão cancelada. Texto de confirmação não corresponde.', 'warning');
     return;
   }
 
   await api(`/api/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+  setAdminFeedback(`Usuário ${username} removido com sucesso.`, 'success');
 }
 
 function roleOptions(currentRole) {
@@ -168,83 +297,30 @@ async function loadUsers() {
   const d = await api('/api/admin/users');
   roles = d.roles?.length ? d.roles : roles;
   refreshRoleSelectors();
+  usersCache = d.users || [];
 
-  if (adminUsersCount) adminUsersCount.textContent = String((d.users || []).length);
-  if (adminAdminsCount) adminAdminsCount.textContent = String((d.users || []).filter((u) => u.role === 'admin').length);
-  if (!(d.users || []).length) {
+  if (adminUsersCount) adminUsersCount.textContent = String(usersCache.length);
+  if (adminAdminsCount) adminAdminsCount.textContent = String(usersCache.filter((u) => u.role === 'admin').length);
+  if (!usersCache.length) {
+    setCountLabel(usersFilteredCount, 0, 'usuário', 'usuários');
     usersList.innerHTML = '<div class="empty-state">Nenhum usuário encontrado. Crie um acesso direto ou gere um convite para iniciar a base de pessoas.</div>';
     return;
   }
 
-  usersList.innerHTML = `
-    <table>
-      <tr><th>Usuário</th><th>Role</th><th>Tarefas associadas</th><th>Criado em</th><th>Ações</th></tr>
-      ${d.users.map(u => `
-        <tr>
-          <td>${u.username}</td>
-          <td>
-            <select data-role-user="${u.username}" ${u.username === 'admin' || !hasModule('admin_users.create') ? 'disabled' : ''}>
-              ${roleOptions(u.role)}
-            </select>
-          </td>
-          <td>${u.associated_tasks ?? 0}</td>
-          <td>${u.created_at}</td>
-          <td>
-            <button class="secondary" data-pass-user="${u.username}" ${!hasModule('admin_users.create') ? 'disabled' : ''}>Trocar senha</button>
-            <button class="danger" data-del-user="${u.username}" data-task-count="${u.associated_tasks ?? 0}" ${u.username === me.username || u.role === 'admin' || !hasModule('admin_users.create') ? 'disabled' : ''}>Excluir</button>
-          </td>
-        </tr>
-      `).join('')}
-    </table>
-  `;
-
-  usersList.querySelectorAll('[data-role-user]').forEach(sel => {
-    sel.addEventListener('change', async () => {
-      try { await updateRole(sel.dataset.roleUser, sel.value); await loadUsers(); await loadAudit(); }
-      catch (e) { alert(e.message); }
-    });
-  });
-
-  usersList.querySelectorAll('[data-pass-user]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      try { await changePassword(btn.dataset.passUser); await loadAudit(); }
-      catch (e) { alert(e.message); }
-    });
-  });
-
-  usersList.querySelectorAll('[data-del-user]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      try {
-        await deleteUser(btn.dataset.delUser, Number(btn.dataset.taskCount || 0));
-        await loadUsers();
-        await loadAudit();
-      } catch (e) { alert(e.message); }
-    });
-  });
+  renderUsersTable();
 }
 
 async function loadAudit() {
   const d = await api('/api/admin/audit');
-  if (adminAuditCount) adminAuditCount.textContent = String((d.logs || []).length);
-  if (!(d.logs || []).length) {
+  auditCache = d.logs || [];
+  if (adminAuditCount) adminAuditCount.textContent = String(auditCache.length);
+  if (!auditCache.length) {
+    setCountLabel(auditFilteredCount, 0, 'evento', 'eventos');
     auditList.innerHTML = '<div class="empty-state">Nenhum evento de auditoria encontrado ainda para este recorte.</div>';
     return;
   }
 
-  auditList.innerHTML = `
-    <table>
-      <tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Alvo</th><th>Detalhes</th></tr>
-      ${d.logs.map(l => `
-        <tr>
-          <td>${l.created_at}</td>
-          <td>${l.actor}</td>
-          <td>${l.action}</td>
-          <td>${l.target}</td>
-          <td>${l.details || '-'}</td>
-        </tr>
-      `).join('')}
-    </table>
-  `;
+  renderAuditTable();
 }
 
 document.getElementById('createUserForm').onsubmit = async (e) => {
@@ -310,3 +386,6 @@ setAdminFeedback('Tela pronta. Cadastre usuários imediatos ou use convites para
     location.href='/';
   }
 })();
+
+if (usersSearchInput) usersSearchInput.addEventListener('input', renderUsersTable);
+if (auditSearchInput) auditSearchInput.addEventListener('input', renderAuditTable);

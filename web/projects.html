@@ -105,6 +105,10 @@
                   <option value="non-template">Apenas não-templates</option>
                 </select>
               </div>
+              <div>
+                <label for="projectSearchInput" class="small">Busca no catálogo</label>
+                <input id="projectSearchInput" type="search" placeholder="Buscar por nome, ID ou role" />
+              </div>
             </div>
 
             <div id="projectsList" class="small projects-table-wrap">Carregando...</div>
@@ -119,11 +123,35 @@
             </div>
             <span class="small">Use esta área para inspecionar rapidamente os itens associados.</span>
           </div>
+          <div class="list-toolbar">
+            <span id="projectCardsCount" class="list-toolbar-count">0 cards</span>
+            <div class="list-toolbar-actions">
+              <input id="projectCardsSearchInput" type="search" placeholder="Buscar card por nome, responsável ou status" />
+            </div>
+          </div>
           <div id="projectCardsList" class="small projects-table-wrap">Selecione um projeto para listar cards, responsáveis e últimas atualizações.</div>
         </section>
       </section>
     </main>
   </div>
+
+  <dialog id="projectsActionDialog">
+    <form method="dialog" class="inline-dialog-form">
+      <div class="inline-dialog-head">
+        <p id="projectsActionDialogEyebrow" class="eyebrow">Confirmação</p>
+        <h3 id="projectsActionDialogTitle" class="mt-0">Confirmar ação</h3>
+      </div>
+      <p id="projectsActionDialogMessage" class="mb-0">Revise a ação antes de continuar.</p>
+      <div id="projectsActionDialogInputWrap" class="hidden">
+        <label id="projectsActionDialogInputLabel" for="projectsActionDialogInput">Valor</label>
+        <input id="projectsActionDialogInput" />
+      </div>
+      <div class="dialog-actions actions-left actions-wrap">
+        <button type="button" id="projectsActionDialogCancel" class="secondary">Cancelar</button>
+        <button type="button" id="projectsActionDialogConfirm">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/sidebar.js"></script>
   <script src="/projects.js"></script>

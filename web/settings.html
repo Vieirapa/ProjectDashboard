@@ -50,7 +50,7 @@
                 <button type="submit">Salvar configurações</button>
                 <button type="button" id="testSmtpBtn" class="secondary">Testar SMTP</button>
               </div>
-              <p id="feedback" class="small"></p>
+              <div id="feedback" class="settings-inline-feedback status-neutral" role="status" aria-live="polite"><strong>Status</strong><span>Ajuste os dados de SMTP e salve para persistir a configuração.</span></div>
             </form>
           </section>
 
@@ -78,7 +78,7 @@
               <div class="dialog-actions" style="justify-content:flex-start;">
                 <button type="submit">Salvar comportamento</button>
               </div>
-              <p id="workflowFeedback" class="small"></p>
+              <div id="workflowFeedback" class="settings-inline-feedback status-neutral" role="status" aria-live="polite"><strong>Status</strong><span>Defina prazo padrão e limite de avanço para cards com dependências abertas.</span></div>
             </form>
           </section>
         </div>
@@ -117,7 +117,7 @@
                 <button type="button" id="testBackupPathBtn" class="secondary">Testar permissões do caminho</button>
                 <button type="button" id="runBackupNowBtn" class="secondary">Executar backup agora</button>
               </div>
-              <p id="backupFeedback" class="small"></p>
+              <div id="backupFeedback" class="settings-inline-feedback status-neutral" role="status" aria-live="polite"><strong>Status</strong><span>Revise política, permissões e snapshots antes de restaurar.</span></div>
               <p id="backupNextRun" class="small"></p>
             </form>
 
@@ -156,7 +156,7 @@
               <button type="submit">Salvar fonte de versão</button>
               <button type="button" id="runDiagBtn" class="secondary">Rodar diagnóstico agora</button>
             </div>
-            <p id="diagFeedback" class="small"></p>
+            <div id="diagFeedback" class="settings-inline-feedback status-neutral" role="status" aria-live="polite"><strong>Status</strong><span>Salve a origem de versão ou rode o diagnóstico para atualizar este painel.</span></div>
             <textarea id="diagOutput" rows="12" readonly placeholder="Resultado do diagnóstico..."></textarea>
           </form>
         </section>
@@ -177,7 +177,7 @@
               <button type="submit">Salvar política de retenção</button>
               <button type="button" id="refreshDeletedBtn" class="secondary">Atualizar lista</button>
             </div>
-            <p id="deletedPolicyFeedback" class="small"></p>
+            <div id="deletedPolicyFeedback" class="settings-inline-feedback status-neutral" role="status" aria-live="polite"><strong>Status</strong><span>Controle retenção e recuperação sem sair desta área.</span></div>
           </form>
 
           <div class="settings-subsection">
@@ -203,6 +203,9 @@
               <p id="deletedFiltersState" class="small"></p>
             </div>
 
+            <div class="list-toolbar">
+              <span id="deletedDocumentsCount" class="list-toolbar-count">0 itens</span>
+            </div>
             <div id="deletedDocumentsList" class="small settings-data-box empty-state">Nenhum documento apagado.</div>
             <div id="deletedDocumentsPager" class="small" style="margin-top:8px;"></div>
           </div>
@@ -258,12 +261,15 @@
               <div class="dialog-actions" style="justify-content:flex-start;">
                 <button type="submit">Criar relatório periódico</button>
               </div>
-              <p id="reportFeedback" class="small"></p>
+              <div id="reportFeedback" class="settings-inline-feedback status-neutral" role="status" aria-live="polite"><strong>Status</strong><span>Crie relatórios, rode sob demanda e valide a prévia do texto enviado.</span></div>
             </form>
 
             <div class="settings-side-stack">
               <div class="panel settings-side-panel-inner">
                 <h4 class="mt-0">Relatórios cadastrados</h4>
+                <div class="list-toolbar">
+                  <span id="reportsCount" class="list-toolbar-count">0 relatórios</span>
+                </div>
                 <div id="reportsList" class="small settings-data-box">Nenhum relatório cadastrado.</div>
               </div>
 
@@ -304,8 +310,11 @@
             <button type="button" id="rolesSaveBtn">Salvar alterações</button>
             <button type="button" id="rolesSyncCatalogBtn" class="secondary">Sincronizar catálogo</button>
           </div>
-          <p id="rolesFeedback" class="small"></p>
+          <div id="rolesFeedback" class="settings-inline-feedback status-neutral" role="status" aria-live="polite"><strong>Status</strong><span>Gerencie catálogo e permissões das roles administrativas nesta área.</span></div>
 
+          <div class="list-toolbar">
+            <span id="rolesCount" class="list-toolbar-count">0 roles</span>
+          </div>
           <div id="rolesMatrixWrap" class="settings-data-box settings-matrix-wrap">
             <div class="small">Carregando matriz...</div>
           </div>
@@ -313,6 +322,24 @@
       </section>
     </main>
   </div>
+
+  <dialog id="settingsActionDialog">
+    <form method="dialog" class="inline-dialog-form">
+      <div class="inline-dialog-head">
+        <p id="settingsActionDialogEyebrow" class="eyebrow">Ação sensível</p>
+        <h3 id="settingsActionDialogTitle" class="mt-0">Confirmar ação</h3>
+      </div>
+      <p id="settingsActionDialogMessage" class="mb-0">Revise a ação antes de continuar.</p>
+      <div id="settingsActionDialogInputWrap" class="hidden">
+        <label id="settingsActionDialogInputLabel" for="settingsActionDialogInput">Valor</label>
+        <input id="settingsActionDialogInput" />
+      </div>
+      <div class="dialog-actions actions-left actions-wrap">
+        <button type="button" id="settingsActionDialogCancel" class="secondary">Cancelar</button>
+        <button type="button" id="settingsActionDialogConfirm">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/sidebar.js"></script>
   <script src="/settings.js"></script>

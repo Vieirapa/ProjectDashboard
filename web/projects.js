@@ -30,6 +30,9 @@ const feedback = document.getElementById('feedback');
 const projectsList = document.getElementById('projectsList');
 const projectCardsList = document.getElementById('projectCardsList');
 const templateFilter = document.getElementById('templateFilter');
+const projectSearchInput = document.getElementById('projectSearchInput');
+const projectCardsSearchInput = document.getElementById('projectCardsSearchInput');
+const projectCardsCount = document.getElementById('projectCardsCount');
 const projectsCount = document.getElementById('projectsCount');
 const templatesCount = document.getElementById('templatesCount');
 
@@ -43,12 +46,120 @@ let projects = [];
 let selectedProjectId = null;
 let allowedModules = new Set();
 let projectRolesCatalog = [];
+let currentProjectCards = [];
 
 function setFeedback(message, tone = 'neutral') {
   if (!feedback) return;
   const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
   feedback.className = `settings-inline-feedback status-${safeTone} projects-feedback`;
   feedback.innerHTML = `<strong>Status</strong><span>${esc(message || 'Sem atualizações no momento.')}</span>`;
+}
+
+const projectsActionDialog = document.getElementById('projectsActionDialog');
+const projectsActionDialogTitle = document.getElementById('projectsActionDialogTitle');
+const projectsActionDialogMessage = document.getElementById('projectsActionDialogMessage');
+const projectsActionDialogEyebrow = document.getElementById('projectsActionDialogEyebrow');
+const projectsActionDialogInputWrap = document.getElementById('projectsActionDialogInputWrap');
+const projectsActionDialogInputLabel = document.getElementById('projectsActionDialogInputLabel');
+const projectsActionDialogInput = document.getElementById('projectsActionDialogInput');
+const projectsActionDialogCancel = document.getElementById('projectsActionDialogCancel');
+const projectsActionDialogConfirm = document.getElementById('projectsActionDialogConfirm');
+
+function setCardsCountLabel(count) {
+  if (projectCardsCount) projectCardsCount.textContent = `${count} ${count === 1 ? 'card' : 'cards'}`;
+}
+
+function wrapTable(html) {
+  return `<div class="table-shell">${html}</div>`;
+}
+
+function getProjectSearchTerm() {
+  return String(projectSearchInput?.value || '').trim().toLowerCase();
+}
+
+function getProjectCardsSearchTerm() {
+  return String(projectCardsSearchInput?.value || '').trim().toLowerCase();
+}
+
+function askProjectAction({ title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', eyebrow = 'Confirmação', inputLabel = '', inputValue = '', inputType = 'text', danger = false }) {
+  if (!projectsActionDialog) return Promise.resolve({ confirmed: true, value: String(inputValue || '') });
+  projectsActionDialogTitle.textContent = title || 'Confirmar ação';
+  projectsActionDialogMessage.innerHTML = message || 'Revise a ação antes de continuar.';
+  projectsActionDialogEyebrow.textContent = eyebrow || 'Confirmação';
+  projectsActionDialogCancel.textContent = cancelLabel;
+  projectsActionDialogConfirm.textContent = confirmLabel;
+  projectsActionDialogConfirm.className = danger ? 'danger' : '';
+  const needsInput = !!String(inputLabel || '').trim();
+  projectsActionDialogInputWrap.classList.toggle('hidden', !needsInput);
+  projectsActionDialogInputLabel.textContent = inputLabel || 'Valor';
+  projectsActionDialogInput.type = inputType || 'text';
+  projectsActionDialogInput.value = String(inputValue || '');
+  return new Promise((resolve) => {
+    const cleanup = (payload) => {
+      projectsActionDialogConfirm.onclick = null;
+      projectsActionDialogCancel.onclick = null;
+      projectsActionDialog.oncancel = null;
+      if (projectsActionDialog.open) projectsActionDialog.close();
+      resolve(payload);
+    };
+    projectsActionDialogConfirm.onclick = () => cleanup({ confirmed: true, value: projectsActionDialogInput.value });
+    projectsActionDialogCancel.onclick = () => cleanup({ confirmed: false, value: projectsActionDialogInput.value });
+    projectsActionDialog.oncancel = () => cleanup({ confirmed: false, value: projectsActionDialogInput.value });
+    projectsActionDialog.showModal();
+    if (needsInput) projectsActionDialogInput.focus();
+    else projectsActionDialogConfirm.focus();
+  });
+}
+
+function renderProjectCardsTable(docs) {
+  const term = getProjectCardsSearchTerm();
+  const filteredDocs = (docs || []).filter((doc) => {
+    if (!term) return true;
+    const hay = `${doc.name || ''} ${doc.slug || ''} ${doc.owner || ''} ${doc.status || ''}`.toLowerCase();
+    return hay.includes(term);
+  });
+  setCardsCountLabel(filteredDocs.length);
+  if (!filteredDocs.length) {
+    projectCardsList.innerHTML = '<div class="empty-state">Nenhum card encontrado para o projeto e filtros atuais.</div>';
+    return;
+  }
+
+  projectCardsList.innerHTML = wrapTable(`<table>
+    <thead><tr><th>Nome</th><th>Criado em</th><th>Status</th><th>Responsável</th><th>Ações</th></tr></thead>
+    <tbody>
+      ${filteredDocs.map(doc => `
+        <tr data-slug="${esc(doc.slug)}">
+          <td>${esc(doc.name)}</td>
+          <td>${esc(fmtDate(doc.openedAt || doc.updatedAt))}</td>
+          <td>${esc(doc.status || '-')}</td>
+          <td>${esc(doc.owner || '-')}</td>
+          <td>${hasModule('projects.create_edit') ? `<button type="button" class="danger card-delete-btn" data-slug="${esc(doc.slug)}">Excluir</button>` : '-'}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>`);
+
+  projectCardsList.querySelectorAll('.card-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const slug = btn.dataset.slug;
+      if (!slug) return;
+      const answer = await askProjectAction({
+        eyebrow: 'Cards vinculados',
+        title: 'Excluir card do projeto',
+        message: `O card <strong>${esc(slug)}</strong> será removido deste projeto.`,
+        confirmLabel: 'Excluir card',
+        danger: true,
+      });
+      if (!answer.confirmed) return;
+      try {
+        await api(`/api/documents/${encodeURIComponent(slug)}?project_id=${encodeURIComponent(String(selectedProjectId))}`, { method: 'DELETE' });
+        setFeedback(`Card ${slug} apagado com sucesso.`, 'success');
+        await loadCardsForSelectedProject();
+      } catch (e) {
+        setFeedback(e.message, 'danger');
+      }
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -218,9 +329,14 @@ function setForm(p = null) {
 
 function filteredProjects() {
   const mode = String(templateFilter?.value || 'all');
-  if (mode === 'template') return projects.filter((p) => !!p.is_template);
-  if (mode === 'non-template') return projects.filter((p) => !p.is_template);
-  return projects;
+  const search = getProjectSearchTerm();
+  return projects.filter((p) => {
+    const modeOk = mode === 'template' ? !!p.is_template : mode === 'non-template' ? !p.is_template : true;
+    if (!modeOk) return false;
+    if (!search) return true;
+    const hay = `${p.project_id || ''} ${p.project_name || ''} ${p.allowed_roles || ''}`.toLowerCase();
+    return hay.includes(search);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -234,10 +350,10 @@ function renderList() {
     projectsList.innerHTML = '<div class="empty-state">Nenhum projeto encontrado neste filtro. Ajuste o recorte ou crie um novo projeto para começar.</div>';
     return;
   }
-  projectsList.innerHTML = `<table>
-    <tr><th class="template-flag-col"></th><th>ID</th><th>Nome</th><th>Início</th><th>Roles</th></tr>
-    ${shown.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}
-  </table>`;
+  projectsList.innerHTML = wrapTable(`<table>
+    <thead><tr><th class="template-flag-col"></th><th>ID</th><th>Nome</th><th>Início</th><th>Roles</th></tr></thead>
+    <tbody>${shown.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}</tbody>
+  </table>`);
   projectsList.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.style.cursor = 'pointer';
     tr.onclick = () => {
@@ -253,45 +369,21 @@ function renderList() {
 // ---------------------------------------------------------------------------
 async function loadCardsForSelectedProject() {
   if (!selectedProjectId) {
+    setCardsCountLabel(0);
     projectCardsList.innerHTML = '<div class="empty-state">Selecione um projeto no catálogo para revisar os cards vinculados, responsáveis e últimas atualizações.</div>';
     return;
   }
   try {
     projectCardsList.innerHTML = '<div class="loading-state">Carregando cards do projeto selecionado...</div>';
     const d = await api(`/api/documents?project_id=${encodeURIComponent(String(selectedProjectId))}`);
-    const docs = d.documents || [];
-    if (!docs.length) {
+    currentProjectCards = d.documents || [];
+    if (!currentProjectCards.length) {
+      setCardsCountLabel(0);
       projectCardsList.innerHTML = '<div class="empty-state">Este projeto ainda não possui cards vinculados. Crie itens no Kanban para começar o acompanhamento operacional.</div>';
       return;
     }
 
-    projectCardsList.innerHTML = `<table>
-      <tr><th>Nome</th><th>Criado em</th><th>Status</th><th>Responsável</th><th>Ações</th></tr>
-      ${docs.map(doc => `
-        <tr data-slug="${esc(doc.slug)}">
-          <td>${esc(doc.name)}</td>
-          <td>${esc(fmtDate(doc.openedAt || doc.updatedAt))}</td>
-          <td>${esc(doc.status || '-')}</td>
-          <td>${esc(doc.owner || '-')}</td>
-          <td>${hasModule('projects.create_edit') ? `<button type="button" class="danger card-delete-btn" data-slug="${esc(doc.slug)}">Excluir</button>` : '-'}</td>
-        </tr>
-      `).join('')}
-    </table>`;
-
-    projectCardsList.querySelectorAll('.card-delete-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const slug = btn.dataset.slug;
-        if (!slug) return;
-        if (!confirm(`Apagar o card "${slug}" deste projeto?`)) return;
-        try {
-          await api(`/api/documents/${encodeURIComponent(slug)}?project_id=${encodeURIComponent(String(selectedProjectId))}`, { method: 'DELETE' });
-          setFeedback(`Card ${slug} apagado com sucesso.`, 'success');
-          await loadCardsForSelectedProject();
-        } catch (e) {
-          setFeedback(e.message, 'danger');
-        }
-      });
-    });
+    renderProjectCardsTable(currentProjectCards);
   } catch (e) {
     projectCardsList.innerHTML = `<div class="error-state">Falha ao carregar cards do projeto. ${esc(e.message || e)}</div>`;
   }
@@ -377,7 +469,8 @@ deleteBtn.onclick = async () => {
       ? `ATENÇÃO: o projeto "${pname}" possui ${cardCount} card(s)/documento(s) anexado(s).\n\nSe você confirmar, todos esses cards serão excluídos permanentemente junto com o projeto, e não poderão ser restaurados.\n\nDeseja continuar?`
       : `Apagar o projeto "${pname}"?`;
 
-    if (!confirm(msg)) return;
+    const answer = await askProjectAction({ eyebrow: 'Projeto', title: 'Apagar projeto', message: msg.replaceAll('\n', '<br>'), confirmLabel: 'Apagar projeto', danger: true });
+    if (!answer.confirmed) return;
 
     setFeedback('Apagando projeto selecionado...', 'warning');
     const del = await api(`/api/admin/projects/${pid}`, { method: 'DELETE' });
@@ -402,8 +495,9 @@ if (cloneBtn) {
       return;
     }
     const suggested = `${selected.project_name} - Cópia`;
-    const newName = window.prompt('Nome do novo projeto criado a partir do template:', suggested);
-    if (!newName || !String(newName).trim()) return;
+    const answer = await askProjectAction({ eyebrow: 'Template', title: 'Criar projeto a partir do template', message: 'Informe o nome do novo projeto criado a partir do template selecionado.', confirmLabel: 'Criar projeto', inputLabel: 'Nome do novo projeto', inputValue: suggested });
+    const newName = String(answer.value || '').trim();
+    if (!answer.confirmed || !newName) return;
 
     setFeedback('Criando novo projeto a partir do template...', 'neutral');
     try {
@@ -424,6 +518,8 @@ if (cloneBtn) {
 if (templateFilter) {
   templateFilter.onchange = () => renderList();
 }
+if (projectSearchInput) projectSearchInput.addEventListener('input', () => renderList());
+if (projectCardsSearchInput) projectCardsSearchInput.addEventListener('input', () => renderProjectCardsTable(currentProjectCards));
 
 logoutBtn.onclick = async () => {
   await api('/api/logout', { method: 'POST' });

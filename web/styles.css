@@ -1702,7 +1702,72 @@ dialog form {
 }
 
 .projects-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.list-toolbar-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.list-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.list-toolbar-actions input,
+.list-toolbar input {
+  min-width: min(100%, 320px);
+}
+
+.table-shell {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.table-shell table {
+  margin: 0;
+}
+
+.table-shell thead {
+  background: #f8fbff;
+}
+
+.table-shell tbody tr:hover {
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.inline-dialog-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.inline-dialog-head {
+  display: grid;
+  gap: 4px;
 }
 
 .projects-table-wrap {

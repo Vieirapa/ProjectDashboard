@@ -108,6 +108,12 @@ Bem-vindo(a) ao sistema!</textarea>
             </div>
             <span class="small">Visualize papéis, faça manutenção e acompanhe o estado atual.</span>
           </div>
+          <div class="list-toolbar">
+            <span id="usersFilteredCount" class="list-toolbar-count">0 usuários</span>
+            <div class="list-toolbar-actions">
+              <input id="usersSearchInput" type="search" placeholder="Buscar por usuário ou role" />
+            </div>
+          </div>
           <div id="usersList" class="settings-data-box"></div>
         </section>
 
@@ -119,11 +125,34 @@ Bem-vindo(a) ao sistema!</textarea>
             </div>
             <span class="small">Acompanhe eventos sensíveis para rastreabilidade.</span>
           </div>
+          <div class="list-toolbar">
+            <span id="auditFilteredCount" class="list-toolbar-count">0 eventos</span>
+            <div class="list-toolbar-actions">
+              <input id="auditSearchInput" type="search" placeholder="Buscar por ator, ação, alvo ou detalhe" />
+            </div>
+          </div>
           <div id="auditList" class="settings-data-box"></div>
         </section>
       </section>
     </main>
   </div>
+  <dialog id="adminUsersDialog">
+    <form method="dialog" class="inline-dialog-form">
+      <div class="inline-dialog-head">
+        <p id="adminUsersDialogEyebrow" class="eyebrow">Ação administrativa</p>
+        <h3 id="adminUsersDialogTitle" class="mt-0">Confirmar ação</h3>
+      </div>
+      <p id="adminUsersDialogMessage" class="mb-0">Revise a ação antes de continuar.</p>
+      <div id="adminUsersDialogInputWrap" class="hidden">
+        <label id="adminUsersDialogInputLabel" for="adminUsersDialogInput">Valor</label>
+        <input id="adminUsersDialogInput" />
+      </div>
+      <div class="dialog-actions actions-left actions-wrap">
+        <button type="button" id="adminUsersDialogCancel" class="secondary">Cancelar</button>
+        <button type="button" id="adminUsersDialogConfirm">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
   <script src="/sidebar.js"></script>
   <script src="/admin-users.js"></script>
 </body>

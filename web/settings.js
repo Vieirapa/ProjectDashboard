@@ -59,6 +59,9 @@ const roleKeyInput = document.getElementById('roleKeyInput');
 const roleDisplayNameInput = document.getElementById('roleDisplayNameInput');
 const roleCreateBtn = document.getElementById('roleCreateBtn');
 const rolesCatalogWrap = document.getElementById('rolesCatalogWrap');
+const deletedDocumentsCount = document.getElementById('deletedDocumentsCount');
+const reportsCount = document.getElementById('reportsCount');
+const rolesCount = document.getElementById('rolesCount');
 
 const f = {
   host: document.getElementById('smtp_host'),
@@ -156,6 +159,61 @@ async function loadPermissions() {
 
 function getSetting(settings, key, fallback = '') {
   return settings?.[key]?.value ?? fallback;
+}
+
+const settingsActionDialog = document.getElementById('settingsActionDialog');
+const settingsActionDialogTitle = document.getElementById('settingsActionDialogTitle');
+const settingsActionDialogMessage = document.getElementById('settingsActionDialogMessage');
+const settingsActionDialogEyebrow = document.getElementById('settingsActionDialogEyebrow');
+const settingsActionDialogInputWrap = document.getElementById('settingsActionDialogInputWrap');
+const settingsActionDialogInputLabel = document.getElementById('settingsActionDialogInputLabel');
+const settingsActionDialogInput = document.getElementById('settingsActionDialogInput');
+const settingsActionDialogCancel = document.getElementById('settingsActionDialogCancel');
+const settingsActionDialogConfirm = document.getElementById('settingsActionDialogConfirm');
+
+function wrapTable(html) {
+  return `<div class="table-shell">${html}</div>`;
+}
+
+function setCountLabel(el, count, singular, plural) {
+  if (el) el.textContent = `${count} ${count === 1 ? singular : plural}`;
+}
+
+function setInlineFeedback(el, message, tone = 'neutral') {
+  if (!el) return;
+  const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
+  el.className = `settings-inline-feedback status-${safeTone}`;
+  el.innerHTML = `<strong>Status</strong><span>${escHtml(message || 'Sem atualizações no momento.')}</span>`;
+}
+
+function askSettingsAction({ title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', eyebrow = 'Ação sensível', inputLabel = '', inputValue = '', inputType = 'text', danger = false }) {
+  if (!settingsActionDialog) return Promise.resolve({ confirmed: true, value: String(inputValue || '') });
+  settingsActionDialogTitle.textContent = title || 'Confirmar ação';
+  settingsActionDialogMessage.innerHTML = message || 'Revise a ação antes de continuar.';
+  settingsActionDialogEyebrow.textContent = eyebrow || 'Ação sensível';
+  settingsActionDialogCancel.textContent = cancelLabel;
+  settingsActionDialogConfirm.textContent = confirmLabel;
+  settingsActionDialogConfirm.className = danger ? 'danger' : '';
+  const needsInput = !!String(inputLabel || '').trim();
+  settingsActionDialogInputWrap.classList.toggle('hidden', !needsInput);
+  settingsActionDialogInputLabel.textContent = inputLabel || 'Valor';
+  settingsActionDialogInput.type = inputType || 'text';
+  settingsActionDialogInput.value = String(inputValue || '');
+  return new Promise((resolve) => {
+    const cleanup = (payload) => {
+      settingsActionDialogConfirm.onclick = null;
+      settingsActionDialogCancel.onclick = null;
+      settingsActionDialog.oncancel = null;
+      if (settingsActionDialog.open) settingsActionDialog.close();
+      resolve(payload);
+    };
+    settingsActionDialogConfirm.onclick = () => cleanup({ confirmed: true, value: settingsActionDialogInput.value });
+    settingsActionDialogCancel.onclick = () => cleanup({ confirmed: false, value: settingsActionDialogInput.value });
+    settingsActionDialog.oncancel = () => cleanup({ confirmed: false, value: settingsActionDialogInput.value });
+    settingsActionDialog.showModal();
+    if (needsInput) settingsActionDialogInput.focus();
+    else settingsActionDialogConfirm.focus();
+  });
 }
 
 function checkedValues(container) {
@@ -382,15 +440,15 @@ async function loadBackupSnapshots() {
     return;
   }
 
-  backupRestoreList.innerHTML = `<table>
-    <tr><th></th><th>Data/Hora</th><th>DB</th><th>Docs</th></tr>
-    ${backupSnapshots.map((b, idx) => `<tr>
+  backupRestoreList.innerHTML = wrapTable(`<table>
+    <thead><tr><th></th><th>Data/Hora</th><th>DB</th><th>Docs</th></tr></thead>
+    <tbody>${backupSnapshots.map((b, idx) => `<tr>
       <td><input type="radio" name="backup_stamp" value="${b.stamp}" ${idx === 0 ? 'checked' : ''}></td>
       <td>${b.when || b.stamp}</td>
       <td>${b.db_backup ? '✅' : '—'}</td>
       <td>${b.docs_backup ? '✅' : '—'}</td>
-    </tr>`).join('')}
-  </table>`;
+    </tr>`).join('')}</tbody>
+  </table>`);
 }
 
 function getSelectedBackupStamp() {
@@ -508,9 +566,10 @@ async function loadDeletedDocuments() {
     return;
   }
 
-  deletedDocumentsList.innerHTML = `<table>
-    <tr><th>Nome</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr>
-    ${filteredRows.map((p) => `<tr>
+  setCountLabel(deletedDocumentsCount, filteredRows.length, 'item', 'itens');
+  deletedDocumentsList.innerHTML = wrapTable(`<table>
+    <thead><tr><th>Nome</th><th>Apagado em</th><th>Apagado por</th><th>Ações</th></tr></thead>
+    <tbody>${filteredRows.map((p) => `<tr>
       <td>${p.name || '-'}</td>
       <td>${p.deleted_at || '-'}</td>
       <td>${p.deleted_by || '-'}</td>
@@ -518,31 +577,32 @@ async function loadDeletedDocuments() {
         <button class="secondary" data-restore="${p.id}">Restaurar</button>
         <button class="danger" data-purge="${p.id}">Apagar permanentemente</button>
       </td>
-    </tr>`).join('')}
-  </table>`;
+    </tr>`).join('')}</tbody>
+  </table>`);
   renderDeletedPager();
 
   deletedDocumentsList.querySelectorAll('[data-restore]').forEach((btn) => {
     btn.onclick = async () => {
       try {
         await api(`/api/admin/deleted-documents/${btn.dataset.restore}/restore`, { method: 'POST' });
-        deletedPolicyFeedback.textContent = 'Documento restaurado ✅';
+        setInlineFeedback(deletedPolicyFeedback, 'Documento restaurado ✅', 'success');
         await Promise.all([loadDeletedDocuments(), loadReports()]);
       } catch (err) {
-        deletedPolicyFeedback.textContent = err.message;
+        setInlineFeedback(deletedPolicyFeedback, err.message, 'danger');
       }
     };
   });
 
   deletedDocumentsList.querySelectorAll('[data-purge]').forEach((btn) => {
     btn.onclick = async () => {
-      if (!confirm('Apagar permanentemente este item e os arquivos associados? Esta ação não poderá ser desfeita.')) return;
+      const answer = await askSettingsAction({ eyebrow: 'Recuperação', title: 'Apagar item permanentemente', message: 'Este item e seus arquivos associados serão removidos de forma definitiva.', confirmLabel: 'Apagar permanentemente', danger: true });
+      if (!answer.confirmed) return;
       try {
         await api(`/api/admin/deleted-documents/${btn.dataset.purge}`, { method: 'DELETE' });
-        deletedPolicyFeedback.textContent = 'Apagado permanentemente.';
+        setInlineFeedback(deletedPolicyFeedback, 'Apagado permanentemente.', 'success');
         await loadDeletedDocuments();
       } catch (err) {
-        deletedPolicyFeedback.textContent = err.message;
+        setInlineFeedback(deletedPolicyFeedback, err.message, 'danger');
       }
     };
   });
@@ -557,12 +617,13 @@ async function loadReports() {
   meta.roles = d.roles || [];
   renderReportMeta();
 
+  setCountLabel(reportsCount, (d.reports || []).length, 'relatório', 'relatórios');
   if (!d.reports?.length) {
     reportsList.textContent = 'Nenhum relatório cadastrado.';
     return;
   }
 
-  reportsList.innerHTML = `<table>
+  reportsList.innerHTML = wrapTable(`<table>
     <tr><th>Nome</th><th>Dias</th><th>Hora</th><th>Ativo</th><th>Ações</th></tr>
     ${d.reports.map((r) => `<tr>
       <td>
@@ -576,32 +637,33 @@ async function loadReports() {
         <button class="secondary" data-run="${r.id}">Rodar agora</button>
         <button class="danger" data-del="${r.id}">Excluir</button>
       </td>
-    </tr>`).join('')}
-  </table>`;
+    </tr>`).join('')}</tbody>
+  </table>`);
 
   reportsList.querySelectorAll('[data-run]').forEach((btn) => {
     btn.onclick = async () => {
       try {
         const d = await api(`/api/admin/reports/${btn.dataset.run}/run`, { method: 'POST' });
         reportPreview.value = d.previewText || '';
-        reportFeedback.textContent = `Relatório executado manualmente ✅ (destinatários: ${d.recipients ?? 0})`;
+        setInlineFeedback(reportFeedback, `Relatório executado manualmente ✅ (destinatários: ${d.recipients ?? 0})`, 'success');
       } catch (e) {
         const msg = String(e.message || 'Erro');
         if (e?.data?.previewText) reportPreview.value = e.data.previewText;
-        reportFeedback.textContent = msg;
+        setInlineFeedback(reportFeedback, msg, 'danger');
       }
     };
   });
 
   reportsList.querySelectorAll('[data-del]').forEach((btn) => {
     btn.onclick = async () => {
-      if (!confirm('Excluir este relatório periódico? O agendamento deixará de executar após esta ação.')) return;
+      const answer = await askSettingsAction({ eyebrow: 'Automação', title: 'Excluir relatório periódico', message: 'O agendamento deixará de executar após esta ação.', confirmLabel: 'Excluir relatório', danger: true });
+      if (!answer.confirmed) return;
       try {
         await api(`/api/admin/reports/${btn.dataset.del}`, { method: 'DELETE' });
         await loadReports();
-        reportFeedback.textContent = 'Relatório excluído.';
+        setInlineFeedback(reportFeedback, 'Relatório excluído.', 'success');
       } catch (e) {
-        reportFeedback.textContent = e.message;
+        setInlineFeedback(reportFeedback, e.message, 'danger');
       }
     };
   });
@@ -650,10 +712,11 @@ function renderRolesCatalog() {
     </tr>`;
   }).join('');
 
-  rolesCatalogWrap.innerHTML = `<table>
-    <tr><th>Role key</th><th>Nome</th><th>Status</th><th>Usuários</th><th>Módulos ON</th><th>Ações</th></tr>
-    ${rows}
-  </table>`;
+  setCountLabel(rolesCount, rolesCatalogItems.length, 'role', 'roles');
+  rolesCatalogWrap.innerHTML = wrapTable(`<table>
+    <thead><tr><th>Role key</th><th>Nome</th><th>Status</th><th>Usuários</th><th>Módulos ON</th><th>Ações</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`);
 
   rolesCatalogWrap.querySelectorAll('.role-rename-btn').forEach((btn) => {
     btn.onclick = async () => {
@@ -661,18 +724,19 @@ function renderRolesCatalog() {
       if (!role) return;
       const current = rolesCatalogItems.find((x) => String(x.role_key) === role);
       const suggested = String(current?.display_name || role);
-      const name = window.prompt(`Novo nome de exibição para ${role}:`, suggested);
-      if (!name || !String(name).trim()) return;
+      const answer = await askSettingsAction({ eyebrow: 'Autorização', title: `Renomear role ${role}`, message: 'Informe o novo nome de exibição para esta role.', confirmLabel: 'Salvar nome', inputLabel: 'Nome de exibição', inputValue: suggested });
+      const name = String(answer.value || '').trim();
+      if (!answer.confirmed || !name) return;
       try {
         await api(`/api/admin/roles/${encodeURIComponent(role)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ display_name: String(name).trim() }),
         });
-        rolesFeedback.textContent = `Role ${role} renomeada ✅`;
+        setInlineFeedback(rolesFeedback, `Role ${role} renomeada ✅`, 'success');
         await loadRolesAdmin();
       } catch (err) {
-        rolesFeedback.textContent = err.message;
+        setInlineFeedback(rolesFeedback, err.message, 'danger');
       }
     };
   });
@@ -688,10 +752,10 @@ function renderRolesCatalog() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ active: !active }),
         });
-        rolesFeedback.textContent = `Role ${role} ${active ? 'inativada' : 'ativada'} ✅`;
+        setInlineFeedback(rolesFeedback, `Role ${role} ${active ? 'inativada' : 'ativada'} ✅`, 'success');
         await loadRolesAdmin();
       } catch (err) {
-        rolesFeedback.textContent = err.message;
+        setInlineFeedback(rolesFeedback, err.message, 'danger');
       }
     };
   });
@@ -704,17 +768,25 @@ function renderRolesCatalog() {
       const users = Number(roleItem?.usage?.users || 0);
       let url = `/api/admin/roles/${encodeURIComponent(role)}`;
       if (users > 0) {
-        const reassign = window.prompt(`A role ${role} está em uso por ${users} usuário(s).\nInforme a role de reatribuição (ex.: member):`, 'member');
-        if (!reassign || !String(reassign).trim()) return;
-        url += `?reassign_to=${encodeURIComponent(String(reassign).trim().toLowerCase())}`;
+        const answer = await askSettingsAction({
+          eyebrow: 'Autorização',
+          title: `Reatribuir usuários da role ${role}`,
+          message: `A role está em uso por ${users} usuário(s). Informe a role de reatribuição.`,
+          confirmLabel: 'Continuar',
+          inputLabel: 'Role de reatribuição',
+          inputValue: 'member',
+        });
+        const reassign = String(answer.value || '').trim();
+        if (!answer.confirmed || !reassign) return;
       }
-      if (!confirm(`Apagar role ${role}?`)) return;
+      const confirmDelete = await askSettingsAction({ eyebrow: 'Autorização', title: `Apagar role ${role}`, message: 'Esta ação remove a role do catálogo administrativo.', confirmLabel: 'Apagar role', danger: true });
+      if (!confirmDelete.confirmed) return;
       try {
         await api(url, { method: 'DELETE' });
-        rolesFeedback.textContent = `Role ${role} apagada ✅`;
+        setInlineFeedback(rolesFeedback, `Role ${role} apagada ✅`, 'success');
         await loadRolesAdmin();
       } catch (err) {
-        rolesFeedback.textContent = err.message;
+        setInlineFeedback(rolesFeedback, err.message, 'danger');
       }
     };
   });
@@ -788,7 +860,7 @@ async function saveRolesMatrix() {
 
   const roles = Object.keys(updatesByRole);
   if (!roles.length) {
-    rolesFeedback.textContent = 'Nenhuma alteração para salvar.';
+    setInlineFeedback(rolesFeedback, 'Nenhuma alteração para salvar.', 'warning');
     return;
   }
 
@@ -803,7 +875,7 @@ async function saveRolesMatrix() {
 
 smtpForm.onsubmit = async (e) => {
   e.preventDefault();
-  feedback.textContent = '';
+  setInlineFeedback(feedback, 'Atualizando configurações de comunicação...', 'neutral');
   try {
     await api('/api/admin/settings', {
       method: 'PATCH',
@@ -818,15 +890,15 @@ smtpForm.onsubmit = async (e) => {
         'invite.default_message': f.inviteDefaultMessage.value,
       }),
     });
-    feedback.textContent = 'Configurações salvas ✅';
+    setInlineFeedback(feedback, 'Configurações salvas ✅', 'success');
   } catch (err) {
-    feedback.textContent = err.message;
+    setInlineFeedback(feedback, err.message, 'danger');
   }
 };
 
 workflowForm.onsubmit = async (e) => {
   e.preventDefault();
-  workflowFeedback.textContent = '';
+  setInlineFeedback(workflowFeedback, 'Salvando comportamento do fluxo...', 'neutral');
   try {
     await api('/api/admin/settings', {
       method: 'PATCH',
@@ -837,22 +909,22 @@ workflowForm.onsubmit = async (e) => {
       }),
     });
     await loadSettings();
-    workflowFeedback.textContent = `Comportamento salvo ✅ (máximo com dependências pendentes: ${f.dependencyMaxStatus.value})`;
+    setInlineFeedback(workflowFeedback, `Comportamento salvo ✅ (máximo com dependências pendentes: ${f.dependencyMaxStatus.value})`, 'success');
   } catch (err) {
-    workflowFeedback.textContent = err.message;
+    setInlineFeedback(workflowFeedback, err.message, 'danger');
   }
 };
 
 backupForm.onsubmit = async (e) => {
   e.preventDefault();
-  backupFeedback.textContent = '';
+  setInlineFeedback(backupFeedback, 'Processando ação de backup...', 'neutral');
 
   const submitBtn = backupForm.querySelector('button[type="submit"]');
   if (submitBtn?.disabled) return;
 
   const selectedDays = checkedValues(f.backupWeekdays);
   if (f.backupEnabled.checked && !selectedDays.length) {
-    backupFeedback.textContent = 'Selecione ao menos um dia da semana para backup automático.';
+    setInlineFeedback(backupFeedback, 'Selecione ao menos um dia da semana para backup automático.', 'warning');
     return;
   }
 
@@ -883,7 +955,7 @@ backupForm.onsubmit = async (e) => {
 
     backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong> · Horário: <strong>${escHtml(f.backupRunTime.value || '-')}</strong> · Dias: <strong>${escHtml(summarizeWeekdays(persistedDays))}</strong></span>${suffix}`;
   } catch (err) {
-    backupFeedback.textContent = err.message;
+    setInlineFeedback(backupFeedback, err.message, 'danger');
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -891,7 +963,7 @@ backupForm.onsubmit = async (e) => {
 
 diagForm.onsubmit = async (e) => {
   e.preventDefault();
-  diagFeedback.textContent = '';
+  setInlineFeedback(diagFeedback, 'Executando diagnóstico do sistema...', 'neutral');
   try {
     await api('/api/admin/settings', {
       method: 'PATCH',
@@ -901,15 +973,15 @@ diagForm.onsubmit = async (e) => {
         'system.git_branch': f.systemGitBranch.value,
       }),
     });
-    diagFeedback.textContent = `Fonte de versão salva ✅ Repositório: ${f.systemGitRepo.value || '-'} · Branch: ${f.systemGitBranch.value || '-'}`;
+    setInlineFeedback(diagFeedback, `Fonte de versão salva ✅ Repositório: ${f.systemGitRepo.value || '-'} · Branch: ${f.systemGitBranch.value || '-'}`, 'danger');
   } catch (err) {
-    diagFeedback.textContent = err.message;
+    setInlineFeedback(diagFeedback, err.message, 'danger');
   }
 };
 
 deletedPolicyForm.onsubmit = async (e) => {
   e.preventDefault();
-  deletedPolicyFeedback.textContent = '';
+  setInlineFeedback(deletedPolicyFeedback, 'Atualizando política e lista de recuperação...', 'neutral');
   try {
     await api('/api/admin/settings', {
       method: 'PATCH',
@@ -918,15 +990,15 @@ deletedPolicyForm.onsubmit = async (e) => {
         'deleted.retention_days': String(f.deletedRetentionDays.value || '30'),
       }),
     });
-    deletedPolicyFeedback.textContent = 'Retenção de documentos apagados salva ✅';
+    setInlineFeedback(deletedPolicyFeedback, 'Retenção de documentos apagados salva ✅', 'success');
   } catch (err) {
-    deletedPolicyFeedback.textContent = err.message;
+    setInlineFeedback(deletedPolicyFeedback, err.message, 'danger');
   }
 };
 
 reportForm.onsubmit = async (e) => {
   e.preventDefault();
-  reportFeedback.textContent = '';
+  setInlineFeedback(reportFeedback, 'Processando relatório...', 'neutral');
   try {
     await api('/api/admin/reports', {
       method: 'POST',
@@ -942,20 +1014,20 @@ reportForm.onsubmit = async (e) => {
         active: f.rActive.checked,
       }),
     });
-    reportFeedback.textContent = 'Relatório periódico criado ✅';
+    setInlineFeedback(reportFeedback, 'Relatório periódico criado ✅', 'success');
     reportForm.reset();
     await loadReports();
   } catch (err) {
-    reportFeedback.textContent = err.message;
+    setInlineFeedback(reportFeedback, err.message, 'danger');
   }
 };
 
 testSmtpBtn.onclick = async () => {
-  feedback.textContent = '';
+  setInlineFeedback(feedback, 'Atualizando configurações de comunicação...', 'neutral');
   try {
     const to = (f.smtpTestTo.value || '').trim();
     if (!to) {
-      feedback.textContent = 'Informe um e-mail para teste SMTP.';
+      setInlineFeedback(feedback, 'Informe um e-mail para teste SMTP.', 'danger');
       return;
     }
     await api('/api/admin/settings/test-smtp', {
@@ -963,37 +1035,37 @@ testSmtpBtn.onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to }),
     });
-    feedback.textContent = `Teste SMTP enviado para ${to} ✅`;
+    setInlineFeedback(feedback, `Teste SMTP enviado para ${to} ✅`, 'success');
   } catch (err) {
-    feedback.textContent = err.message;
+    setInlineFeedback(feedback, err.message, 'danger');
   }
 };
 
 testBackupPathBtn.onclick = async () => {
-  backupFeedback.textContent = '';
+  setInlineFeedback(backupFeedback, 'Processando ação de backup...', 'neutral');
   try {
     const d = await api('/api/admin/system/backup/test-path', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: f.backupPath.value || '' }),
     });
-    backupFeedback.textContent = d.message || 'Caminho de backup validado ✅ Pronto para uso.';
+    setInlineFeedback(backupFeedback, d.message || 'Caminho de backup validado ✅ Pronto para uso.', 'success');
   } catch (err) {
     if (err?.status === 404) {
-      backupFeedback.textContent = 'Este servidor ainda não tem o endpoint de teste de permissões. Atualize/reinicie a instância com a versão mais recente do ProjectDashboard e tente novamente.';
+      setInlineFeedback(backupFeedback, 'Este servidor ainda não tem o endpoint de teste de permissões. Atualize/reinicie a instância com a versão mais recente do ProjectDashboard e tente novamente.', 'danger');
       return;
     }
     if (String(err?.message || '').includes('Permission') || String(err?.message || '').includes('Permissão')) {
       const p = (f.backupPath.value || '').trim() || '/var/backups/projectdashboard';
-      backupFeedback.textContent = `${err.message} | Sugestão: sudo mkdir -p ${p} && sudo chown -R <usuario_servico>:<grupo_servico> ${p} && sudo chmod -R 775 ${p}`;
+      setInlineFeedback(backupFeedback, `${err.message} | Sugestão: sudo mkdir -p ${p} && sudo chown -R <usuario_servico>:<grupo_servico> ${p} && sudo chmod -R 775 ${p}`, 'danger');
       return;
     }
-    backupFeedback.textContent = err?.message || 'Falha ao testar permissões do caminho de backup.';
+    setInlineFeedback(backupFeedback, err?.message || 'Falha ao testar permissões do caminho de backup.', 'danger');
   }
 };
 
 runBackupNowBtn.onclick = async () => {
-  backupFeedback.textContent = '';
+  setInlineFeedback(backupFeedback, 'Processando ação de backup...', 'neutral');
   try {
     const d = await api('/api/admin/system/backup/run', {
       method: 'POST',
@@ -1003,30 +1075,38 @@ runBackupNowBtn.onclick = async () => {
     backupFeedback.innerHTML = formatBackupRunMessage(d.message || 'Backup manual executado ✅');
     await loadBackupSnapshots();
   } catch (err) {
-    backupFeedback.textContent = err.message;
+    setInlineFeedback(backupFeedback, err.message, 'danger');
   }
 };
 
 refreshBackupListBtn.onclick = async () => {
-  backupFeedback.textContent = '';
+  setInlineFeedback(backupFeedback, 'Processando ação de backup...', 'neutral');
   try {
     await loadBackupSnapshots();
-    backupFeedback.textContent = 'Lista de backups atualizada.';
+    setInlineFeedback(backupFeedback, 'Lista de backups atualizada.', 'success');
   } catch (err) {
-    backupFeedback.textContent = err.message;
+    setInlineFeedback(backupFeedback, err.message, 'danger');
   }
 };
 
 restoreBackupBtn.onclick = async () => {
-  backupFeedback.textContent = '';
+  setInlineFeedback(backupFeedback, 'Processando ação de backup...', 'neutral');
   const stamp = getSelectedBackupStamp();
   if (!stamp) {
-    backupFeedback.textContent = 'Selecione um backup na lista.';
+    setInlineFeedback(backupFeedback, 'Selecione um backup na lista.', 'danger');
     return;
   }
-  const confirmText = prompt(`Você vai restaurar o snapshot ${stamp}.\nIsso pode sobrescrever dados atuais.\nDigite RESTAURAR para confirmar:`) || '';
-  if (String(confirmText).trim().toUpperCase() !== 'RESTAURAR') {
-    backupFeedback.textContent = 'Restauração cancelada (confirmação não informada).';
+  const restoreAnswer = await askSettingsAction({
+    eyebrow: 'Resiliência',
+    title: `Restaurar snapshot ${stamp}`,
+    message: 'Isso pode sobrescrever dados atuais. Digite RESTAURAR para confirmar.',
+    confirmLabel: 'Restaurar backup',
+    inputLabel: 'Digite RESTAURAR',
+    danger: true,
+  });
+  const confirmText = String(restoreAnswer.value || '');
+  if (!restoreAnswer.confirmed || String(confirmText).trim().toUpperCase() !== 'RESTAURAR') {
+    setInlineFeedback(backupFeedback, 'Restauração cancelada (confirmação não informada).', 'danger');
     return;
   }
 
@@ -1040,35 +1120,35 @@ restoreBackupBtn.onclick = async () => {
         confirm_text: confirmText,
       }),
     });
-    backupFeedback.textContent = d.message || `Restore do backup ${stamp} concluído ✅ Revise a aplicação e confirme o estado esperado.`;
+    setInlineFeedback(backupFeedback, d.message || `Restore do backup ${stamp} concluído ✅ Revise a aplicação e confirme o estado esperado.`, 'success');
   } catch (err) {
-    backupFeedback.textContent = err.message;
+    setInlineFeedback(backupFeedback, err.message, 'danger');
   }
 };
 
 runDiagBtn.onclick = async () => {
-  diagFeedback.textContent = '';
+  setInlineFeedback(diagFeedback, 'Executando diagnóstico do sistema...', 'neutral');
   try {
     const d = await api('/api/admin/system/diagnostics');
     renderDiagnostics(d.diagnostics || {});
-    diagFeedback.textContent = 'Diagnóstico executado ✅ Revise o resumo de saúde e os detalhes abaixo.';
+    setInlineFeedback(diagFeedback, 'Diagnóstico executado ✅ Revise o resumo de saúde e os detalhes abaixo.', 'success');
   } catch (err) {
-    diagFeedback.textContent = err.message;
+    setInlineFeedback(diagFeedback, err.message, 'danger');
   }
 };
 
 refreshDeletedBtn.onclick = async () => {
-  deletedPolicyFeedback.textContent = '';
+  setInlineFeedback(deletedPolicyFeedback, 'Atualizando política e lista de recuperação...', 'neutral');
   try {
     await loadDeletedDocuments();
-    deletedPolicyFeedback.textContent = 'Lista de documentos apagados atualizada.';
+    setInlineFeedback(deletedPolicyFeedback, 'Lista de documentos apagados atualizada.', 'success');
   } catch (err) {
-    deletedPolicyFeedback.textContent = err.message;
+    setInlineFeedback(deletedPolicyFeedback, err.message, 'danger');
   }
 };
 
 applyDeletedFiltersBtn.onclick = async () => {
-  deletedPolicyFeedback.textContent = '';
+  setInlineFeedback(deletedPolicyFeedback, 'Atualizando política e lista de recuperação...', 'neutral');
   deletedFilters = {
     q: f.deletedFilterQ.value,
     deleted_by: f.deletedFilterBy.value,
@@ -1078,14 +1158,14 @@ applyDeletedFiltersBtn.onclick = async () => {
   deletedPager.page = 1;
   try {
     await loadDeletedDocuments();
-    deletedPolicyFeedback.textContent = 'Filtros aplicados.';
+    setInlineFeedback(deletedPolicyFeedback, 'Filtros aplicados.', 'success');
   } catch (err) {
-    deletedPolicyFeedback.textContent = err.message;
+    setInlineFeedback(deletedPolicyFeedback, err.message, 'danger');
   }
 };
 
 clearDeletedFiltersBtn.onclick = async () => {
-  deletedPolicyFeedback.textContent = '';
+  setInlineFeedback(deletedPolicyFeedback, 'Atualizando política e lista de recuperação...', 'neutral');
   deletedFilters = { q: '', deleted_by: '', deleted_from: '', deleted_to: '' };
   deletedPager.page = 1;
   f.deletedFilterQ.value = '';
@@ -1094,46 +1174,46 @@ clearDeletedFiltersBtn.onclick = async () => {
   f.deletedFilterTo.value = '';
   try {
     await loadDeletedDocuments();
-    deletedPolicyFeedback.textContent = 'Filtros limpos.';
+    setInlineFeedback(deletedPolicyFeedback, 'Filtros limpos.', 'success');
   } catch (err) {
-    deletedPolicyFeedback.textContent = err.message;
+    setInlineFeedback(deletedPolicyFeedback, err.message, 'danger');
   }
 };
 
 if (rolesRefreshBtn) {
   rolesRefreshBtn.onclick = async () => {
-    rolesFeedback.textContent = '';
+    setInlineFeedback(rolesFeedback, 'Processando alterações de roles...', 'neutral');
     try {
       await loadRolesAdmin();
-      rolesFeedback.textContent = 'Catálogo e matriz atualizados.';
+      setInlineFeedback(rolesFeedback, 'Catálogo e matriz atualizados.', 'success');
     } catch (err) {
-      rolesFeedback.textContent = err.message;
+      setInlineFeedback(rolesFeedback, err.message, 'danger');
     }
   };
 }
 
 if (rolesSaveBtn) {
   rolesSaveBtn.onclick = async () => {
-    rolesFeedback.textContent = '';
+    setInlineFeedback(rolesFeedback, 'Processando alterações de roles...', 'neutral');
     try {
       await saveRolesMatrix();
       await loadRolesAdmin();
-      rolesFeedback.textContent = 'Permissões salvas ✅';
+      setInlineFeedback(rolesFeedback, 'Permissões salvas ✅', 'success');
     } catch (err) {
-      rolesFeedback.textContent = err.message;
+      setInlineFeedback(rolesFeedback, err.message, 'danger');
     }
   };
 }
 
 if (rolesSyncCatalogBtn) {
   rolesSyncCatalogBtn.onclick = async () => {
-    rolesFeedback.textContent = '';
+    setInlineFeedback(rolesFeedback, 'Processando alterações de roles...', 'neutral');
     try {
       await api('/api/modules/catalog/sync', { method: 'POST' });
       await loadRolesAdmin();
-      rolesFeedback.textContent = 'Catálogo sincronizado ✅';
+      setInlineFeedback(rolesFeedback, 'Catálogo sincronizado ✅', 'success');
     } catch (err) {
-      rolesFeedback.textContent = err.message;
+      setInlineFeedback(rolesFeedback, err.message, 'danger');
     }
   };
 }
@@ -1141,16 +1221,16 @@ if (rolesSyncCatalogBtn) {
 if (roleCreateForm) {
   roleCreateForm.onsubmit = async (e) => {
     e.preventDefault();
-    rolesFeedback.textContent = '';
+    setInlineFeedback(rolesFeedback, 'Processando alterações de roles...', 'neutral');
     if (!canManageRoles) {
-      rolesFeedback.textContent = 'Apenas admin pode criar roles.';
+      setInlineFeedback(rolesFeedback, 'Apenas admin pode criar roles.', 'warning');
       return;
     }
 
     const roleKey = String(roleKeyInput?.value || '').trim().toLowerCase();
     const displayName = String(roleDisplayNameInput?.value || '').trim();
     if (!roleKey || !displayName) {
-      rolesFeedback.textContent = 'Preencha role key e nome de exibição.';
+      setInlineFeedback(rolesFeedback, 'Preencha role key e nome de exibição.', 'warning');
       return;
     }
 
@@ -1162,10 +1242,10 @@ if (roleCreateForm) {
       });
       if (roleKeyInput) roleKeyInput.value = '';
       if (roleDisplayNameInput) roleDisplayNameInput.value = '';
-      rolesFeedback.textContent = `Role ${roleKey} criada ✅`;
+      setInlineFeedback(rolesFeedback, `Role ${roleKey} criada ✅`, 'success');
       await loadRolesAdmin();
     } catch (err) {
-      rolesFeedback.textContent = err.message;
+      setInlineFeedback(rolesFeedback, err.message, 'danger');
     }
   };
 }
@@ -1194,7 +1274,7 @@ logoutBtn.onclick = async () => {
   try {
     if (loads.length) await Promise.all(loads);
   } catch (e) {
-    backupFeedback.textContent = e?.message || 'Falha ao carregar configurações iniciais.';
+    setInlineFeedback(backupFeedback, e?.message || 'Falha ao carregar configurações iniciais.', 'danger');
   }
 
   if (hasModule('settings.backup_restore') || hasModule('settings.backup')) {
