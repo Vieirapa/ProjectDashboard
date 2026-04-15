@@ -824,16 +824,21 @@ dialog form {
 }
 
 @media (max-width: 1180px) {
-  .project-summary {
+  .project-summary,
+  .kanban-summary-refined {
     grid-template-columns: 1fr;
   }
 
-  .project-summary-topline {
+  .project-summary-topline,
+  .kanban-summary-topline-refined {
     grid-template-columns: 1fr;
   }
 
-  .project-summary-health {
+  .project-summary-health,
+  .kanban-summary-health-inline {
     justify-items: start;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .kanban-project-health-note {
@@ -866,6 +871,25 @@ dialog form {
   box-shadow: var(--shadow-lg);
 }
 
+.kanban-summary-refined {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.kanban-summary-main-refined {
+  display: grid;
+  gap: 12px;
+}
+
+.kanban-summary-topline-refined {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
 .kanban-summary-card {
   display: grid;
   gap: 8px;
@@ -879,6 +903,18 @@ dialog form {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
+}
+
+.kanban-summary-card-main-refined {
+  min-width: 0;
+}
+
+.kanban-summary-health-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
 }
 
 .kanban-summary-metrics {
@@ -906,6 +942,14 @@ dialog form {
   color: #bfdbfe;
 }
 
+.kanban-summary-status-block-refined,
+.kanban-summary-actions-refined {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .kanban-summary-status-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -914,6 +958,12 @@ dialog form {
 
 .kanban-summary-status-grid-compact {
   gap: 10px;
+}
+
+.kanban-summary-actions-refined {
+  align-self: stretch;
+  display: grid;
+  gap: 14px;
 }
 
 .kanban-status-pill {
@@ -2352,6 +2402,7 @@ dialog form {
   }
 
   .kanban-summary-card-main,
+  .kanban-summary-topline-refined,
   .card-title-row,
   .project-summary-action-buttons-inline,
   .card-selects {
@@ -2456,6 +2507,7 @@ dialog form {
   }
 
   .project-summary-topline,
+  .kanban-summary-topline-refined,
   .project-summary-action-buttons-inline {
     grid-template-columns: 1fr;
   }

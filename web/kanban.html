@@ -28,17 +28,17 @@
         </div>
       </section>
 
-      <section id="projectSummary" class="project-summary kanban-summary">
-        <div class="project-summary-main">
-          <div class="project-summary-topline">
-            <div class="kanban-summary-card kanban-summary-card-main">
+      <section id="projectSummary" class="project-summary kanban-summary kanban-summary-refined">
+        <div class="project-summary-main kanban-summary-main-refined">
+          <div class="project-summary-topline kanban-summary-topline-refined">
+            <div class="kanban-summary-card kanban-summary-card-main kanban-summary-card-main-refined">
               <div>
                 <span class="kanban-summary-label">Projeto ativo</span>
                 <h2>Visão do projeto</h2>
               </div>
               <select id="sidebarProjectSelect" class="header-project-select"></select>
             </div>
-            <div class="project-summary-health">
+            <div class="project-summary-health kanban-summary-health-inline">
               <span id="projectLifecycleStatus" class="kanban-project-health-pill">Projeto ativo</span>
               <span class="kanban-project-health-note">Fluxo e ações principais no mesmo bloco</span>
             </div>
@@ -57,9 +57,7 @@
               <strong id="projectCardTotal">0</strong>
             </div>
           </div>
-        </div>
-        <div class="project-summary-side">
-          <div class="project-summary-status-panel project-summary-status-panel-compact">
+          <div class="project-summary-status-panel project-summary-status-panel-compact kanban-summary-status-block-refined">
             <div class="project-summary-head">
               <div>
                 <span class="kanban-summary-label">Status do projeto</span>
@@ -73,27 +71,23 @@
               <div class="kanban-status-pill kanban-status-done">Concluídos <b id="sumDone">0 (0%)</b></div>
             </div>
           </div>
-          <aside class="project-summary-actions-panel project-package-panel project-package-panel-compact">
-            <div class="project-summary-head">
-              <div>
-                <span class="kanban-summary-label">Ações do projeto</span>
-                <h2>Exportar ou encerrar</h2>
-              </div>
-            </div>
-            <div class="project-package-hints">
-              <span class="detail-pill detail-pill-soft">ZIP com dados e anexos</span>
-              <span class="detail-pill detail-pill-soft">Arquivamento encerra operação</span>
-            </div>
-            <div class="project-summary-action-buttons project-summary-action-buttons-inline">
-              <button id="exportProjectBtn" type="button">Exportar pacote ZIP</button>
-              <button id="archiveProjectBtn" type="button" class="danger">Arquivar projeto</button>
-            </div>
-            <div id="projectPackageStatus" class="settings-inline-feedback status-neutral project-package-status" role="status" aria-live="polite">
-              <strong>Status</strong>
-              <span>Pronto para exportar um pacote ou concluir o arquivamento deste projeto.</span>
-            </div>
-          </aside>
         </div>
+        <aside class="project-summary-actions-panel project-package-panel project-package-panel-compact kanban-summary-actions-refined">
+          <div class="project-summary-head">
+            <div>
+              <span class="kanban-summary-label">Ações do projeto</span>
+              <h2>Exportar ou encerrar</h2>
+            </div>
+          </div>
+          <div class="project-summary-action-buttons project-summary-action-buttons-inline">
+            <button id="exportProjectBtn" type="button">Exportar pacote ZIP</button>
+            <button id="archiveProjectBtn" type="button" class="danger">Arquivar projeto</button>
+          </div>
+          <div id="projectPackageStatus" class="settings-inline-feedback status-neutral project-package-status" role="status" aria-live="polite">
+            <strong>Status</strong>
+            <span>Pronto para exportar um pacote ou concluir o arquivamento deste projeto.</span>
+          </div>
+        </aside>
       </section>
 
       <dialog id="projectPackageDialog">
