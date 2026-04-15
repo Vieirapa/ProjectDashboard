@@ -466,14 +466,19 @@ function fillDependenciesOptions() {
 
 function syncProjectSelect() {
   if (!projectSelect) return;
+  const visibleProjects = (state.projects || []).filter((p) => !p.archived);
   const selected = Number(state.selectedProjectId || 1);
   projectSelect.innerHTML = '';
-  (state.projects || []).forEach((p) => {
+  visibleProjects.forEach((p) => {
     const templateLabel = p.is_template ? ' [Template]' : '';
     const opt = new Option(`${p.project_id} · ${p.project_name}${templateLabel}`, String(p.project_id));
     if (Number(p.project_id) === selected) opt.selected = true;
     projectSelect.append(opt);
   });
+  if (!visibleProjects.some((p) => Number(p.project_id) === selected) && visibleProjects.length) {
+    state.selectedProjectId = Number(visibleProjects[0].project_id);
+    projectSelect.value = String(state.selectedProjectId);
+  }
 }
 
 function formatPtDate(raw) {
@@ -592,9 +597,23 @@ async function render() {
     const query = pidInUrl ? `?project_id=${encodeURIComponent(String(pidInUrl))}` : '';
     state = await api(`/api/documents${query}`);
 
-    if (!pidInUrl && Number(state.selectedProjectId || 0) > 0) {
+    const visibleProjects = (state.projects || []).filter((p) => !p.archived);
+    if (pidInUrl) {
+      const requested = (state.projects || []).find((p) => Number(p.project_id) === Number(pidInUrl));
+      if (requested?.archived && visibleProjects.length) {
+        const u = new URL(window.location.href);
+        state.selectedProjectId = Number(visibleProjects[0].project_id);
+        u.searchParams.set('project_id', String(state.selectedProjectId));
+        window.history.replaceState({}, '', `${u.pathname}?${u.searchParams.toString()}`);
+      }
+    } else if (Number(state.selectedProjectId || 0) > 0) {
       const u = new URL(window.location.href);
-      u.searchParams.set('project_id', String(state.selectedProjectId));
+      const selectedProject = (state.projects || []).find((p) => Number(p.project_id) === Number(state.selectedProjectId));
+      const effectiveProjectId = selectedProject?.archived && visibleProjects.length
+        ? Number(visibleProjects[0].project_id)
+        : Number(state.selectedProjectId);
+      state.selectedProjectId = effectiveProjectId;
+      u.searchParams.set('project_id', String(effectiveProjectId));
       window.history.replaceState({}, '', `${u.pathname}?${u.searchParams.toString()}`);
     }
 

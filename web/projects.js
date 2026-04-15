@@ -248,7 +248,7 @@ function hasModule(moduleId) {
 }
 
 function canUnarchiveProject() {
-  return hasModule('projects.archive');
+  return hasModule('projects.create_edit') || hasModule('projects.archive');
 }
 
 function syncProjectLifecycle(project) {
@@ -515,8 +515,10 @@ if (unarchiveBtn) {
     setFeedback('Desarquivando projeto e atualizando catálogo...', 'neutral');
     try {
       await api(`/api/admin/projects/${encodeURIComponent(String(pid))}/unarchive`, { method: 'POST' });
-      setFeedback('Projeto desarquivado com sucesso. O histórico do pacote foi preservado para consulta.', 'success');
       await refresh(pid);
+      const updated = projects.find((p) => Number(p.project_id) === pid);
+      setForm(updated || null);
+      setFeedback('Projeto desarquivado com sucesso. O histórico do pacote foi preservado para consulta.', 'success');
     } catch (e) {
       setFeedback(e.message, 'danger');
     }
