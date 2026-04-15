@@ -128,6 +128,7 @@ async function loadMe() {
   me = data.user;
   allowedModules = new Set((permsResp?.permissions?.allowedModules || []).map((x) => String(x || '').trim()));
   newBtn.style.display = canCreateCard() ? 'inline-block' : 'none';
+  syncProjectPackageActions();
 
   try {
     const prof = await api(`/api/me/profile?ts=${Date.now()}`);
@@ -234,6 +235,26 @@ function docStatusMeta(cardStatus) {
 
 function hasModule(moduleId) {
   return allowedModules.has(String(moduleId || '').trim());
+}
+
+function canExportProjectPackage() {
+  return hasModule('projects.export_download');
+}
+
+function canArchiveProject() {
+  return hasModule('projects.archive');
+}
+
+function syncProjectPackageActions() {
+  const project = (state.projects || []).find((p) => Number(p.project_id) === Number(state.selectedProjectId || currentProjectIdFromUrl()));
+  if (exportProjectBtn) {
+    exportProjectBtn.style.display = canExportProjectPackage() ? '' : 'none';
+    exportProjectBtn.disabled = !canExportProjectPackage();
+  }
+  if (archiveProjectBtn) {
+    archiveProjectBtn.style.display = canArchiveProject() ? '' : 'none';
+    archiveProjectBtn.disabled = !canArchiveProject() || !!(project && project.archived);
+  }
 }
 
 function canCreateCard() {
@@ -556,10 +577,16 @@ function updateProjectSummary() {
   if (sumDoneEl) sumDoneEl.textContent = `${done} (${pct(done, total)})`;
   if (project && project.archived) {
     setProjectPackageStatus(`Projeto arquivado em ${formatPtDate(project.archived_at || '')}. O pacote permanece disponível para consulta administrativa.`, 'success');
+  } else if (!canExportProjectPackage() && !canArchiveProject()) {
+    setProjectPackageStatus('Sem permissão para exportar ou arquivar o projeto atual.', 'neutral');
+  } else if (!canExportProjectPackage()) {
+    setProjectPackageStatus('Sem permissão para exportar pacote ZIP deste projeto.', 'neutral');
+  } else if (!canArchiveProject()) {
+    setProjectPackageStatus('Sem permissão para arquivar o projeto atual.', 'neutral');
   } else {
     setProjectPackageStatus('Pronto para exportar um pacote ZIP completo ou concluir o arquivamento deste projeto.', 'neutral');
   }
-  if (archiveProjectBtn) archiveProjectBtn.disabled = !!(project && project.archived);
+  syncProjectPackageActions();
 }
 
 async function render() {

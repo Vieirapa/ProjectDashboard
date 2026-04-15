@@ -144,6 +144,8 @@ MODULE_CATALOG_V1 = [
     {"module_id": "projects.create_edit", "page_key": "projects.html", "label": "Create/Edit Project", "active": 1},
     {"module_id": "projects.list", "page_key": "projects.html", "label": "Registered Projects", "active": 1},
     {"module_id": "projects.cards_list", "page_key": "projects.html", "label": "Cards List", "active": 1},
+    {"module_id": "projects.export_download", "page_key": "kanban.html", "label": "Export Project Package", "active": 1},
+    {"module_id": "projects.archive", "page_key": "kanban.html", "label": "Archive Project", "active": 1},
     {"module_id": "admin_users.create", "page_key": "admin-users.html", "label": "Create User", "active": 1},
     {"module_id": "admin_users.invite", "page_key": "admin-users.html", "label": "Invite New User", "active": 1},
     {"module_id": "admin_users.list", "page_key": "admin-users.html", "label": "Registered Users", "active": 1},
@@ -4118,7 +4120,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "document": doc, "statuses": STATUSES, "priorities": PRIORITIES, "users": list_usernames(), "dependencyMaxStatus": dependency_max_status()})
 
         if p.startswith("/api/admin/projects/") and p.endswith("/export/download"):
-            admin = self._require_module("projects.create_edit")
+            admin = self._require_module("projects.export_download")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 6:
@@ -4542,7 +4544,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "project_id": new_project_id if done else None, "error": None if done else msg})
 
         if p.startswith("/api/admin/projects/") and p.endswith("/export"):
-            admin = self._require_module("projects.create_edit")
+            admin = self._require_module("projects.export_download")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 5:
@@ -4555,7 +4557,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
 
         if p.startswith("/api/admin/projects/") and p.endswith("/archive"):
-            admin = self._require_module("projects.create_edit")
+            admin = self._require_module("projects.archive")
             if not admin: return
             parts = p.strip("/").split("/")
             if len(parts) != 5:

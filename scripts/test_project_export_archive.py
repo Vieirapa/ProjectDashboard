@@ -89,6 +89,19 @@ class ProjectExportArchiveTest(unittest.TestCase):
         self.assertIsNotNone(ver)
         self.assertEqual(resolved, app.DOCS_REPO_DIR / 'documents' / 'doc-export' / 'v0001_sample.pdf')
 
+    def test_module_catalog_includes_dedicated_export_and_archive_permissions(self):
+        module_ids = {m['module_id'] for m in app.list_app_modules(active_only=False)}
+        self.assertIn('projects.export_download', module_ids)
+        self.assertIn('projects.archive', module_ids)
+
+    def test_effective_permissions_keep_export_and_archive_separate(self):
+        ok, msg = app.update_role_modules('member', {'permissions': {'projects.export_download': True, 'projects.archive': False}}, 'tester')
+        self.assertTrue(ok, msg)
+        perms = app.get_effective_permissions({'username': 'member_user', 'role': 'member'})
+        allowed = set(perms.get('allowedModules') or [])
+        self.assertIn('projects.export_download', allowed)
+        self.assertNotIn('projects.archive', allowed)
+
 
 if __name__ == '__main__':
     unittest.main()
