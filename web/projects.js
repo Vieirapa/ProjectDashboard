@@ -49,21 +49,20 @@ let projectRolesCatalog = [];
 let currentProjectCards = [];
 
 function setFeedback(message, tone = 'neutral') {
-  if (!feedback) return;
-  const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
-  feedback.className = `settings-inline-feedback status-${safeTone} projects-feedback`;
-  feedback.innerHTML = `<strong>Status</strong><span>${esc(message || 'Sem atualizações no momento.')}</span>`;
+  window.ProjectDashboardUI?.setInlineFeedback(feedback, message, tone, { extraClass: 'projects-feedback' });
 }
 
-const projectsActionDialog = document.getElementById('projectsActionDialog');
-const projectsActionDialogTitle = document.getElementById('projectsActionDialogTitle');
-const projectsActionDialogMessage = document.getElementById('projectsActionDialogMessage');
-const projectsActionDialogEyebrow = document.getElementById('projectsActionDialogEyebrow');
-const projectsActionDialogInputWrap = document.getElementById('projectsActionDialogInputWrap');
-const projectsActionDialogInputLabel = document.getElementById('projectsActionDialogInputLabel');
-const projectsActionDialogInput = document.getElementById('projectsActionDialogInput');
-const projectsActionDialogCancel = document.getElementById('projectsActionDialogCancel');
-const projectsActionDialogConfirm = document.getElementById('projectsActionDialogConfirm');
+const askProjectAction = window.ProjectDashboardUI?.bindActionDialog({
+  dialogId: 'projectsActionDialog',
+  titleId: 'projectsActionDialogTitle',
+  messageId: 'projectsActionDialogMessage',
+  eyebrowId: 'projectsActionDialogEyebrow',
+  inputWrapId: 'projectsActionDialogInputWrap',
+  inputLabelId: 'projectsActionDialogInputLabel',
+  inputId: 'projectsActionDialogInput',
+  cancelId: 'projectsActionDialogCancel',
+  confirmId: 'projectsActionDialogConfirm',
+}) || (async (options = {}) => ({ confirmed: true, value: String(options.inputValue || '') }));
 
 function setCardsCountLabel(count) {
   if (projectCardsCount) projectCardsCount.textContent = `${count} ${count === 1 ? 'card' : 'cards'}`;
@@ -79,36 +78,6 @@ function getProjectSearchTerm() {
 
 function getProjectCardsSearchTerm() {
   return String(projectCardsSearchInput?.value || '').trim().toLowerCase();
-}
-
-function askProjectAction({ title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', eyebrow = 'Confirmação', inputLabel = '', inputValue = '', inputType = 'text', danger = false }) {
-  if (!projectsActionDialog) return Promise.resolve({ confirmed: true, value: String(inputValue || '') });
-  projectsActionDialogTitle.textContent = title || 'Confirmar ação';
-  projectsActionDialogMessage.innerHTML = message || 'Revise a ação antes de continuar.';
-  projectsActionDialogEyebrow.textContent = eyebrow || 'Confirmação';
-  projectsActionDialogCancel.textContent = cancelLabel;
-  projectsActionDialogConfirm.textContent = confirmLabel;
-  projectsActionDialogConfirm.className = danger ? 'danger' : '';
-  const needsInput = !!String(inputLabel || '').trim();
-  projectsActionDialogInputWrap.classList.toggle('hidden', !needsInput);
-  projectsActionDialogInputLabel.textContent = inputLabel || 'Valor';
-  projectsActionDialogInput.type = inputType || 'text';
-  projectsActionDialogInput.value = String(inputValue || '');
-  return new Promise((resolve) => {
-    const cleanup = (payload) => {
-      projectsActionDialogConfirm.onclick = null;
-      projectsActionDialogCancel.onclick = null;
-      projectsActionDialog.oncancel = null;
-      if (projectsActionDialog.open) projectsActionDialog.close();
-      resolve(payload);
-    };
-    projectsActionDialogConfirm.onclick = () => cleanup({ confirmed: true, value: projectsActionDialogInput.value });
-    projectsActionDialogCancel.onclick = () => cleanup({ confirmed: false, value: projectsActionDialogInput.value });
-    projectsActionDialog.oncancel = () => cleanup({ confirmed: false, value: projectsActionDialogInput.value });
-    projectsActionDialog.showModal();
-    if (needsInput) projectsActionDialogInput.focus();
-    else projectsActionDialogConfirm.focus();
-  });
 }
 
 function renderProjectCardsTable(docs) {
@@ -287,8 +256,8 @@ async function loadMe() {
   allowedModules = new Set(p?.permissions?.allowedModules || []);
 
   if (!(p?.permissions?.allowedPages || []).includes('projects.html')) {
-    alert('Sem acesso à página de projetos.');
-    window.location.href = '/';
+    setFeedback('Sem acesso à página de projetos. Redirecionando para a página inicial...', 'danger');
+    window.setTimeout(() => { window.location.href = '/'; }, 700);
     return;
   }
 

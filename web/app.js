@@ -364,15 +364,16 @@ function makeCard(p, statuses, priorities) {
     const prev = p.status;
     if (!statusAllowedWithDependencies(p, st.value)) {
       st.value = prev;
-      alert(`Status bloqueado por dependências pendentes. Máximo permitido: ${state?.dependencyMaxStatus || 'Backlog'}.`);
+      setProjectPackageStatus(`Status bloqueado por dependências pendentes. Máximo permitido: ${state?.dependencyMaxStatus || 'Backlog'}.`, 'warning');
       return;
     }
     try {
       await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status: st.value})});
+      setProjectPackageStatus(`Status do card ${p.name || p.slug} atualizado para ${st.value}.`, 'success');
       render();
     } catch (e) {
       st.value = prev;
-      alert(e.message || 'Falha ao alterar status.');
+      setProjectPackageStatus(e.message || 'Falha ao alterar status.', 'danger');
     }
   };
 
@@ -399,7 +400,10 @@ function makeCard(p, statuses, priorities) {
   docBtn.title = `${docMeta.label}${p.documentName ? ` · ${p.documentName}` : ''}`;
   docBtn.innerHTML = `<span class="doc-main">📄</span><span class="doc-state">${docMeta.icon}</span>`;
   docBtn.onclick = () => {
-    if (!p.hasDocument) return alert('Este documento ainda não tem anexo.');
+    if (!p.hasDocument) {
+      setProjectPackageStatus(`O card ${p.name || p.slug} ainda não possui anexo disponível para download.`, 'warning');
+      return;
+    }
     window.open(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}/document`), '_blank');
   };
   if (!p.hasDocument) {
@@ -489,35 +493,17 @@ function pct(part, total) {
 }
 
 function setProjectPackageStatus(message, tone = 'neutral') {
-  if (!projectPackageStatus) return;
-  const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
-  projectPackageStatus.className = `settings-inline-feedback status-${safeTone} project-package-status`;
-  projectPackageStatus.innerHTML = `<strong>Status</strong><span>${message}</span>`;
+  window.ProjectDashboardUI?.setInlineFeedback(projectPackageStatus, message, tone, { extraClass: 'project-package-status' });
 }
 
-function askProjectPackageAction({ title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', eyebrow = 'Confirmação', danger = false }) {
-  if (!projectPackageDialog) return Promise.resolve({ confirmed: true });
-  projectPackageDialogTitle.textContent = title || 'Confirmar ação';
-  projectPackageDialogMessage.innerHTML = message || 'Revise a ação antes de continuar.';
-  projectPackageDialogEyebrow.textContent = eyebrow || 'Confirmação';
-  projectPackageDialogCancel.textContent = cancelLabel;
-  projectPackageDialogConfirm.textContent = confirmLabel;
-  projectPackageDialogConfirm.className = danger ? 'danger' : '';
-  return new Promise((resolve) => {
-    const cleanup = (payload) => {
-      projectPackageDialogConfirm.onclick = null;
-      projectPackageDialogCancel.onclick = null;
-      projectPackageDialog.oncancel = null;
-      if (projectPackageDialog.open) projectPackageDialog.close();
-      resolve(payload);
-    };
-    projectPackageDialogConfirm.onclick = () => cleanup({ confirmed: true });
-    projectPackageDialogCancel.onclick = () => cleanup({ confirmed: false });
-    projectPackageDialog.oncancel = () => cleanup({ confirmed: false });
-    projectPackageDialog.showModal();
-    projectPackageDialogConfirm.focus();
-  });
-}
+const askProjectPackageAction = window.ProjectDashboardUI?.bindActionDialog({
+  dialogId: 'projectPackageDialog',
+  titleId: 'projectPackageDialogTitle',
+  messageId: 'projectPackageDialogMessage',
+  eyebrowId: 'projectPackageDialogEyebrow',
+  cancelId: 'projectPackageDialogCancel',
+  confirmId: 'projectPackageDialogConfirm',
+}) || (async () => ({ confirmed: true }));
 
 async function exportCurrentProject() {
   const pid = currentProjectIdFromUrl();
@@ -680,7 +666,7 @@ form.onsubmit = async (e) => {
   try {
     const owner = (pOwner.value || '').trim();
     if (owner && !(state.users || []).includes(owner)) {
-      alert('Responsável inválido. Selecione um usuário existente.');
+      setProjectPackageStatus('Responsável inválido. Selecione um usuário existente antes de salvar o card.', 'warning');
       return;
     }
     const pid = currentProjectIdFromUrl();
@@ -730,8 +716,11 @@ form.onsubmit = async (e) => {
     }
 
     dialog.close();
+    setProjectPackageStatus(`Card ${name} criado com sucesso no projeto atual.`, 'success');
     render();
-  } catch (e) { alert(e.message); }
+  } catch (e) {
+    setProjectPackageStatus(e.message || 'Falha ao criar card no projeto atual.', 'danger');
+  }
 };
 
 
@@ -744,6 +733,6 @@ form.onsubmit = async (e) => {
       window.location.href = '/login.html';
       return;
     }
-    alert(e?.message || 'Falha ao iniciar kanban.');
+    setProjectPackageStatus(e?.message || 'Falha ao iniciar kanban.', 'danger');
   }
 })();

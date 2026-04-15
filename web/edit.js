@@ -59,6 +59,14 @@ const currentDocumentHint = document.getElementById('currentDocumentHint');
 const currentDocumentActions = document.getElementById('currentDocumentActions');
 const documentVersionsSummary = document.getElementById('documentVersionsSummary');
 const reviewSummary = document.getElementById('reviewSummary');
+const askEditAction = window.ProjectDashboardUI?.bindActionDialog({
+  dialogId: 'editActionDialog',
+  titleId: 'editActionDialogTitle',
+  messageId: 'editActionDialogMessage',
+  eyebrowId: 'editActionDialogEyebrow',
+  cancelId: 'editActionDialogCancel',
+  confirmId: 'editActionDialogConfirm',
+}) || (async () => ({ confirmed: true }));
 
 const f = {
   name: document.getElementById('name'),
@@ -571,10 +579,16 @@ window.addEventListener('beforeunload', (e) => {
   e.returnValue = '';
 });
 
-function navigateBackToBoard() {
+async function navigateBackToBoard() {
   if (isDirty && !isSaving) {
-    const leave = confirm('Você fez alterações que ainda não foram salvas. Se sair agora, elas serão perdidas. Deseja continuar?');
-    if (!leave) return;
+    const leave = await askEditAction({
+      eyebrow: 'Alterações pendentes',
+      title: 'Sair sem salvar este card?',
+      message: 'Existem alterações ainda não salvas neste card. Se você sair agora, elas serão perdidas.',
+      confirmLabel: 'Sair sem salvar',
+      danger: true,
+    });
+    if (!leave.confirmed) return;
   }
   location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;
 }
@@ -584,8 +598,14 @@ if (backLinkBtn) backLinkBtn.onclick = navigateBackToBoard;
 
 logoutBtn.onclick = async () => {
   if (isDirty && !isSaving) {
-    const leave = confirm('Você fez alterações que ainda não foram salvas. Se sair agora, elas serão perdidas. Deseja continuar?');
-    if (!leave) return;
+    const leave = await askEditAction({
+      eyebrow: 'Alterações pendentes',
+      title: 'Encerrar sessão sem salvar?',
+      message: 'Existem alterações ainda não salvas neste card. Se você continuar, elas serão perdidas antes do logout.',
+      confirmLabel: 'Sair e fazer logout',
+      danger: true,
+    });
+    if (!leave.confirmed) return;
   }
   await api('/api/logout',{method:'POST'});
   location.href='/login.html';
@@ -724,7 +744,14 @@ formEl.addEventListener('submit', (e) => {
 saveBtn.onclick = handleSave;
 
 deleteBtn.onclick = async () => {
-  if (!confirm('Apagar este documento do dashboard? Esta ação moverá o item para a área recuperável e pode afetar o fluxo do projeto. (somente admin)')) return;
+  const answer = await askEditAction({
+    eyebrow: 'Exclusão do card',
+    title: 'Apagar este documento do dashboard?',
+    message: 'Esta ação moverá o item para a área recuperável e pode impactar o fluxo do projeto. Continue apenas se a remoção for intencional.',
+    confirmLabel: 'Apagar documento',
+    danger: true,
+  });
+  if (!answer.confirmed) return;
   try {
     await api(withProjectId(`/api/documents/${encodeURIComponent(slug)}`), {method:'DELETE'});
     location.href = `/kanban.html?project_id=${encodeURIComponent(String(currentProjectId()))}`;

@@ -138,7 +138,23 @@
       </section>
     </main>
   </div>
+
+  <dialog id="editActionDialog">
+    <form method="dialog" class="inline-dialog-form">
+      <div class="inline-dialog-head">
+        <p id="editActionDialogEyebrow" class="eyebrow">Confirmação</p>
+        <h3 id="editActionDialogTitle" class="mt-0">Confirmar ação</h3>
+      </div>
+      <p id="editActionDialogMessage" class="mb-0">Revise a ação antes de continuar.</p>
+      <div class="dialog-actions actions-left actions-wrap">
+        <button type="button" id="editActionDialogCancel" class="secondary">Cancelar</button>
+        <button type="button" id="editActionDialogConfirm">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/sidebar.js"></script>
+  <script src="/ui-helpers.js"></script>
   <script src="/edit.js"></script>
 </body>
 </html>

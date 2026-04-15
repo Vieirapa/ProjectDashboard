@@ -161,15 +161,17 @@ function getSetting(settings, key, fallback = '') {
   return settings?.[key]?.value ?? fallback;
 }
 
-const settingsActionDialog = document.getElementById('settingsActionDialog');
-const settingsActionDialogTitle = document.getElementById('settingsActionDialogTitle');
-const settingsActionDialogMessage = document.getElementById('settingsActionDialogMessage');
-const settingsActionDialogEyebrow = document.getElementById('settingsActionDialogEyebrow');
-const settingsActionDialogInputWrap = document.getElementById('settingsActionDialogInputWrap');
-const settingsActionDialogInputLabel = document.getElementById('settingsActionDialogInputLabel');
-const settingsActionDialogInput = document.getElementById('settingsActionDialogInput');
-const settingsActionDialogCancel = document.getElementById('settingsActionDialogCancel');
-const settingsActionDialogConfirm = document.getElementById('settingsActionDialogConfirm');
+const askSettingsAction = window.ProjectDashboardUI?.bindActionDialog({
+  dialogId: 'settingsActionDialog',
+  titleId: 'settingsActionDialogTitle',
+  messageId: 'settingsActionDialogMessage',
+  eyebrowId: 'settingsActionDialogEyebrow',
+  inputWrapId: 'settingsActionDialogInputWrap',
+  inputLabelId: 'settingsActionDialogInputLabel',
+  inputId: 'settingsActionDialogInput',
+  cancelId: 'settingsActionDialogCancel',
+  confirmId: 'settingsActionDialogConfirm',
+}) || (async (options = {}) => ({ confirmed: true, value: String(options.inputValue || '') }));
 
 function wrapTable(html) {
   return `<div class="table-shell">${html}</div>`;
@@ -180,40 +182,7 @@ function setCountLabel(el, count, singular, plural) {
 }
 
 function setInlineFeedback(el, message, tone = 'neutral') {
-  if (!el) return;
-  const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
-  el.className = `settings-inline-feedback status-${safeTone}`;
-  el.innerHTML = `<strong>Status</strong><span>${escHtml(message || 'Sem atualizações no momento.')}</span>`;
-}
-
-function askSettingsAction({ title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', eyebrow = 'Ação sensível', inputLabel = '', inputValue = '', inputType = 'text', danger = false }) {
-  if (!settingsActionDialog) return Promise.resolve({ confirmed: true, value: String(inputValue || '') });
-  settingsActionDialogTitle.textContent = title || 'Confirmar ação';
-  settingsActionDialogMessage.innerHTML = message || 'Revise a ação antes de continuar.';
-  settingsActionDialogEyebrow.textContent = eyebrow || 'Ação sensível';
-  settingsActionDialogCancel.textContent = cancelLabel;
-  settingsActionDialogConfirm.textContent = confirmLabel;
-  settingsActionDialogConfirm.className = danger ? 'danger' : '';
-  const needsInput = !!String(inputLabel || '').trim();
-  settingsActionDialogInputWrap.classList.toggle('hidden', !needsInput);
-  settingsActionDialogInputLabel.textContent = inputLabel || 'Valor';
-  settingsActionDialogInput.type = inputType || 'text';
-  settingsActionDialogInput.value = String(inputValue || '');
-  return new Promise((resolve) => {
-    const cleanup = (payload) => {
-      settingsActionDialogConfirm.onclick = null;
-      settingsActionDialogCancel.onclick = null;
-      settingsActionDialog.oncancel = null;
-      if (settingsActionDialog.open) settingsActionDialog.close();
-      resolve(payload);
-    };
-    settingsActionDialogConfirm.onclick = () => cleanup({ confirmed: true, value: settingsActionDialogInput.value });
-    settingsActionDialogCancel.onclick = () => cleanup({ confirmed: false, value: settingsActionDialogInput.value });
-    settingsActionDialog.oncancel = () => cleanup({ confirmed: false, value: settingsActionDialogInput.value });
-    settingsActionDialog.showModal();
-    if (needsInput) settingsActionDialogInput.focus();
-    else settingsActionDialogConfirm.focus();
-  });
+  window.ProjectDashboardUI?.setInlineFeedback(el, message, tone);
 }
 
 function checkedValues(container) {
