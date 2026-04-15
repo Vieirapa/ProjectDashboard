@@ -472,12 +472,19 @@ deleteBtn.onclick = async () => {
     const docsData = await api(`/api/documents?project_id=${encodeURIComponent(String(pid))}`);
     const cardCount = Array.isArray(docsData?.documents) ? docsData.documents.length : 0;
 
-    const msg = cardCount > 0
-      ? `ATENÇÃO: o projeto "${pname}" possui ${cardCount} card(s)/documento(s) anexado(s).\n\nSe você confirmar, todos esses cards serão excluídos permanentemente junto com o projeto, e não poderão ser restaurados.\n\nDeseja continuar?`
-      : `Apagar o projeto "${pname}"?`;
+    const warningText = cardCount > 0
+      ? `ATENÇÃO: o projeto "${pname}" possui ${cardCount} card(s)/documento(s). Se continuar, todos eles também serão excluídos permanentemente.`
+      : `Você está prestes a apagar o projeto "${pname}".`;
 
-    const answer = await askProjectAction({ eyebrow: 'Projeto', title: 'Apagar projeto', message: msg.replaceAll('\n', '<br>'), confirmLabel: 'Apagar projeto', danger: true });
-    if (!answer.confirmed) return;
+    const confirmation = window.prompt(
+      `${warningText}\n\nDigite APAGAR PROJETO para confirmar.`,
+      ''
+    );
+    if (confirmation === null) return;
+    if (String(confirmation || '').trim().toUpperCase() !== 'APAGAR PROJETO') {
+      setFeedback('Confirmação inválida. Digite APAGAR PROJETO exatamente para concluir a exclusão.', 'warning');
+      return;
+    }
 
     setFeedback('Apagando projeto selecionado...', 'warning');
     const del = await api(`/api/admin/projects/${pid}`, { method: 'DELETE' });
