@@ -1263,6 +1263,10 @@ dialog form {
   gap: 6px;
 }
 
+.card-state-row-refined {
+  align-items: center;
+}
+
 .card-state-badge {
   display: inline-flex;
   align-items: center;
@@ -1275,6 +1279,13 @@ dialog form {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.02em;
+}
+
+.card-refined .card-state-badge,
+.card-refined .card-chip {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 11px;
 }
 
 .card-state-badge-success {
@@ -1317,6 +1328,10 @@ dialog form {
 .card-body-compact {
   display: grid;
   gap: 8px;
+}
+
+.card-body-refined {
+  gap: 10px;
 }
 
 .card-chip-row {
@@ -1448,8 +1463,32 @@ dialog form {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.card-meta-grid-refined {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .card-meta-grid div {
   padding: 8px 10px;
+}
+
+.card-meta-grid-refined div {
+  padding: 8px 12px;
+  min-height: 54px;
+  display: grid;
+  align-content: center;
+}
+
+.card-meta-grid-refined dt {
+  margin-bottom: 2px;
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.card-meta-grid-refined dd {
+  font-size: 15px;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .card-selects select {
@@ -1461,8 +1500,38 @@ dialog form {
   height: 100%;
 }
 
+.card-controls-refined {
+  grid-template-columns: minmax(0, 1fr) 84px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.card-selects-refined {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.card-select-refined,
+.details-btn-refined {
+  min-height: 42px;
+  border-radius: 10px;
+}
+
+.card-select-refined {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.92);
+}
+
 .details-btn {
   font-size: 12px;
+}
+
+.details-btn-refined {
+  width: 100%;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .doc-btn {
@@ -1478,10 +1547,21 @@ dialog form {
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.22), 0 3px 10px rgba(0,0,0,.18);
 }
 
+.doc-btn-refined {
+  width: 84px;
+  min-width: 84px;
+  height: 136px;
+  border-radius: 16px;
+}
+
 .doc-btn .doc-main {
   font-size: 52px;
   line-height: 1;
   filter: grayscale(.1);
+}
+
+.doc-btn-refined .doc-main {
+  font-size: 58px;
 }
 
 .doc-btn .doc-state {
@@ -2411,6 +2491,16 @@ dialog form {
 
   .card-owner-badge {
     max-width: 100%;
+  }
+
+  .card-controls-refined {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-btn-refined {
+    width: 100%;
+    min-width: 0;
+    height: 108px;
   }
 
   #board {

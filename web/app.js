@@ -282,7 +282,7 @@ function statusAllowedWithDependencies(doc, targetStatus) {
 
 function makeCard(p, statuses, priorities) {
   const card = document.createElement('div');
-  card.className = 'card';
+  card.className = 'card card-refined';
   const docMeta = docStatusMeta(p.status);
   const ownerLabel = (p.owner || '').trim() || 'Sem responsável';
   const ageLabel = String(p.ageLabel || 'Dias desde abertura')
@@ -299,11 +299,9 @@ function makeCard(p, statuses, priorities) {
   const isOverdue = !!p.dueDate && toTimestamp(p.dueDate) < Date.now() && String(p.status || '') !== 'Concluído';
   const stateBadges = [
     blockedDeps.length ? `<span class="card-state-badge card-state-badge-danger" title="Dependências pendentes: ${blockedDeps.map((d) => d.name).join(', ')}">🔒 Bloqueado</span>` : '<span class="card-state-badge card-state-badge-success">✅ Fluxo livre</span>',
-    isOverdue ? '<span class="card-state-badge card-state-badge-warning">Prazo vencido</span>' : '',
-    p.hasDocument ? '<span class="card-state-badge">📎 Anexo</span>' : '<span class="card-state-badge card-state-badge-muted">Sem anexo</span>',
-  ].filter(Boolean).join('');
-  const badges = [
+    p.hasDocument ? '<span class="card-state-badge">📎 Anexo</span>' : '',
     `<span class="card-chip card-chip-priority">${p.priority || 'Sem prioridade'}</span>`,
+    isOverdue ? '<span class="card-state-badge card-state-badge-warning">Prazo vencido</span>' : '',
     blockedDeps.length ? `<span class="card-chip card-chip-danger">${blockedDeps.length} dependência(s)</span>` : resolvedDepsCount ? `<span class="card-chip card-chip-success">${resolvedDepsCount} dependência(s) ok</span>` : '',
   ].filter(Boolean).join('');
   const dependencySummary = blockedDeps.length
@@ -322,22 +320,20 @@ function makeCard(p, statuses, priorities) {
     : '';
 
   card.innerHTML = `
-    <div class="card-head card-head-compact">
+    <div class="card-head card-head-compact card-head-refined">
       <div class="card-title-row">
         <h3>${p.name}</h3>
         <span class="card-owner-badge ${p.owner ? '' : 'card-owner-badge-muted'}">👤 ${ownerLabel}</span>
       </div>
-      <div class="card-state-row">${stateBadges}</div>
+      <div class="card-state-row card-state-row-refined">${stateBadges}</div>
     </div>
-    <div class="card-body-compact">
+    <div class="card-body-compact card-body-refined">
       <p>${p.description || 'Sem descrição cadastrada para este card.'}</p>
-      <div class="card-chip-row card-chip-row-compact">${badges}</div>
-      ${dependencySummary}
-      <dl class="meta meta-grid meta-grid-compact card-meta-grid">
-        <div><dt>Prazo</dt><dd>${p.dueDate || '-'}</dd></div>
+      <dl class="meta meta-grid meta-grid-compact card-meta-grid card-meta-grid-refined">
+        <div><dt>Prazo</dt><dd>${p.dueDate ? formatPtDate(p.dueDate) : 'DD/MM/AAAA'}</dd></div>
         <div><dt>${ageLabel}</dt><dd>${p.ageDays ?? '-'}</dd></div>
-        <div><dt>Documento</dt><dd>${docMeta.label}</dd></div>
       </dl>
+      ${dependencySummary}
     </div>
   `;
 
@@ -388,20 +384,26 @@ function makeCard(p, statuses, priorities) {
   pr.onchange = async () => { await api(withProjectId(`/api/documents/${encodeURIComponent(p.slug)}`), { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({priority: pr.value})}); render(); };
 
   const controls = document.createElement('div');
-  controls.className = 'card-controls';
+  controls.className = 'card-controls card-controls-refined';
 
   const selectsWrap = document.createElement('div');
-  selectsWrap.className = 'card-selects';
+  selectsWrap.className = 'card-selects card-selects-refined';
+
+  st.classList.add('card-select-refined');
+  pr.classList.add('card-select-refined');
+  Array.from(pr.options).forEach((opt) => {
+    opt.textContent = String(opt.value || opt.textContent || '').trim();
+  });
 
   const detailsBtn = document.createElement('button');
-  detailsBtn.className = 'secondary details-btn';
+  detailsBtn.className = 'secondary details-btn details-btn-refined';
   detailsBtn.textContent = 'Detalhes';
   detailsBtn.onclick = () => window.location.href = `/edit.html?slug=${encodeURIComponent(p.slug)}&project_id=${encodeURIComponent(String(currentProjectIdFromUrl()))}`;
 
   selectsWrap.append(st, pr, detailsBtn);
 
   const docBtn = document.createElement('button');
-  docBtn.className = `doc-btn ${docMeta.cls}`;
+  docBtn.className = `doc-btn doc-btn-refined ${docMeta.cls}`;
   docBtn.title = `${docMeta.label}${p.documentName ? ` · ${p.documentName}` : ''}`;
   docBtn.innerHTML = `<span class="doc-main">📄</span><span class="doc-state">${docMeta.icon}</span>`;
   docBtn.onclick = () => {
