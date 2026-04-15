@@ -38,6 +38,7 @@ const templatesCount = document.getElementById('templatesCount');
 
 const newBtn = document.getElementById('newBtn');
 const saveBtn = document.getElementById('saveBtn');
+const unarchiveBtn = document.getElementById('unarchiveBtn');
 const cloneBtn = document.getElementById('cloneBtn');
 const deleteBtn = document.getElementById('deleteBtn');
 
@@ -285,6 +286,7 @@ function setForm(p = null) {
   saveBtn.disabled = !canEditProjectModule;
 
   deleteBtn.disabled = !p || !canEditProjectModule;
+  if (unarchiveBtn) unarchiveBtn.disabled = !(p && p.archived && canEditProjectModule);
   if (cloneBtn) cloneBtn.disabled = !(p && p.is_template && canEditProjectModule);
 
   if (selectedProjectId) {
@@ -320,8 +322,8 @@ function renderList() {
     return;
   }
   projectsList.innerHTML = wrapTable(`<table>
-    <thead><tr><th class="template-flag-col"></th><th>ID</th><th>Nome</th><th>Início</th><th>Roles</th></tr></thead>
-    <tbody>${shown.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}</tbody>
+    <thead><tr><th class="template-flag-col"></th><th>ID</th><th>Nome</th><th>Status</th><th>Início</th><th>Roles</th></tr></thead>
+    <tbody>${shown.map(p => `<tr data-id="${p.project_id}"><td class="template-flag-col">${p.is_template ? '<span class="template-chip">Template</span>' : ''}</td><td>${p.project_id}</td><td>${esc(p.project_name)}</td><td>${p.archived ? '<span class="template-chip">Arquivado</span>' : '<span class="small">Ativo</span>'}</td><td>${esc((p.start_date || '').slice(0,10))}</td><td>${esc(p.allowed_roles || '')}</td></tr>`).join('')}</tbody>
   </table>`);
   projectsList.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.style.cursor = 'pointer';
@@ -453,6 +455,30 @@ deleteBtn.onclick = async () => {
     setFeedback(e.message, 'danger');
   }
 };
+
+if (unarchiveBtn) {
+  unarchiveBtn.onclick = async () => {
+    if (!hasModule('projects.create_edit')) return;
+    const pid = Number(projectId.value || selectedProjectId || 0);
+    if (!pid) return;
+    const selected = projects.find((p) => Number(p.project_id) === pid);
+    if (!selected?.archived) {
+      setFeedback('Selecione um projeto arquivado para desarquivar.', 'warning');
+      return;
+    }
+    const answer = await askProjectAction({ eyebrow: 'Projeto', title: 'Desarquivar projeto', message: `O projeto <strong>${esc(selected.project_name || `ID ${pid}`)}</strong> voltará ao catálogo ativo e poderá ser acessado novamente por usuários autorizados.`, confirmLabel: 'Desarquivar projeto' });
+    if (!answer.confirmed) return;
+
+    setFeedback('Desarquivando projeto selecionado...', 'warning');
+    try {
+      await api(`/api/admin/projects/${pid}/unarchive`, { method: 'POST' });
+      setFeedback('Projeto desarquivado com sucesso.', 'success');
+      await refresh(pid);
+    } catch (e) {
+      setFeedback(e.message, 'danger');
+    }
+  };
+}
 
 if (cloneBtn) {
   cloneBtn.onclick = async () => {

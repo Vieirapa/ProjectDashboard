@@ -2001,6 +2001,24 @@ def archive_project(project_id: int, actor: str) -> tuple[bool, str, str | None]
     return True, "ok", package_path
 
 
+def unarchive_project(project_id: int, actor: str) -> tuple[bool, str]:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT archived FROM projects WHERE project_id=?",
+            (project_id,),
+        ).fetchone()
+        if not row:
+            return False, "Projeto não encontrado"
+        if not bool(int(row["archived"] or 0)):
+            return False, "Projeto já está ativo"
+        conn.execute(
+            "UPDATE projects SET archived=0, archived_at='', archived_by='' WHERE project_id=?",
+            (project_id,),
+        )
+    audit(actor, "project.unarchive", str(project_id))
+    return True, "ok"
+
+
 def delete_project_registry(project_id: int) -> tuple[bool, str, int]:
     """
     Removes um projeto do registro e apaga seus artefatos associados quando aplicável.
@@ -4568,6 +4586,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "Invalid ID"})
             done, msg, package_path = archive_project(project_id, admin["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg, "package_path": package_path})
+
+        if p.startswith("/api/admin/projects/") and p.endswith("/unarchive"):
+            admin = self._require_module("projects.create_edit")
+            if not admin: return
+            parts = p.strip("/").split("/")
+            if len(parts) != 5:
+                return self._json(404, {"ok": False, "error": "not found"})
+            try:
+                project_id = int(parts[3])
+            except Exception:
+                return self._json(400, {"ok": False, "error": "Invalid ID"})
+            done, msg = unarchive_project(project_id, admin["username"])
+            return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
 
         if p == "/api/admin/storage/reconcile":
             admin = self._require_module("projects.create_edit")

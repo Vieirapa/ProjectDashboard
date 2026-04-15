@@ -78,6 +78,26 @@ class ProjectExportArchiveTest(unittest.TestCase):
         self.assertTrue(proj['archived'])
         self.assertEqual(proj['archive_package_path'], package_path)
 
+    def test_unarchive_project_reactivates_project_and_keeps_latest_package(self):
+        ok, msg, package_path = app.archive_project(self.project_id, 'admin')
+        self.assertTrue(ok, msg)
+        self.assertTrue(package_path)
+
+        ok, msg = app.unarchive_project(self.project_id, 'admin')
+        self.assertTrue(ok, msg)
+
+        projects = app.list_projects_registry()
+        proj = next(p for p in projects if int(p['project_id']) == self.project_id)
+        self.assertFalse(proj['archived'])
+        self.assertEqual(proj['archived_at'], '')
+        self.assertEqual(proj['archived_by'], '')
+        self.assertEqual(proj['archive_package_path'], package_path)
+
+    def test_unarchive_project_rejects_active_project(self):
+        ok, msg = app.unarchive_project(self.project_id, 'admin')
+        self.assertFalse(ok)
+        self.assertEqual(msg, 'Projeto já está ativo')
+
     def test_reconcile_document_storage_reports_missing_files(self):
         current_doc = Path(app.DATA_DIR / 'sample.pdf')
         current_doc.unlink(missing_ok=True)
