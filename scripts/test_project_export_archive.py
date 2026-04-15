@@ -60,6 +60,15 @@ class ProjectExportArchiveTest(unittest.TestCase):
             self.assertEqual(manifest['project']['id'], self.project_id)
             self.assertEqual(manifest['counts']['documents'], 1)
 
+    def test_export_project_package_persists_downloadable_package_path(self):
+        ok, msg, package_path = app.export_project_package(self.project_id, 'admin')
+        self.assertTrue(ok, msg)
+        self.assertTrue(package_path)
+        projects = app.list_projects_registry()
+        proj = next(p for p in projects if int(p['project_id']) == self.project_id)
+        self.assertFalse(proj['archived'])
+        self.assertEqual(proj['archive_package_path'], package_path)
+
     def test_archive_project_flags_project_and_persists_package_path(self):
         ok, msg, package_path = app.archive_project(self.project_id, 'admin')
         self.assertTrue(ok, msg)

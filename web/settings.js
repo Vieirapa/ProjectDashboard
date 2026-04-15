@@ -527,6 +527,7 @@ async function loadDeletedDocuments() {
   renderDeletedFiltersState();
 
   if (!filteredRows.length) {
+    setCountLabel(deletedDocumentsCount, 0, 'item', 'itens');
     const hasFilter = Object.values(deletedFilters).some((x) => String(x || '').trim());
     deletedDocumentsList.textContent = hasFilter
       ? 'Nenhum documento apagado encontrado para os filtros informados. Ajuste ou limpe os filtros para ampliar a busca.'
@@ -735,7 +736,7 @@ function renderRolesCatalog() {
       if (!role) return;
       const roleItem = rolesCatalogItems.find((x) => String(x.role_key) === role);
       const users = Number(roleItem?.usage?.users || 0);
-      let url = `/api/admin/roles/${encodeURIComponent(role)}`;
+      let reassign = '';
       if (users > 0) {
         const answer = await askSettingsAction({
           eyebrow: 'Autorização',
@@ -745,13 +746,15 @@ function renderRolesCatalog() {
           inputLabel: 'Role de reatribuição',
           inputValue: 'member',
         });
-        const reassign = String(answer.value || '').trim();
+        reassign = String(answer.value || '').trim().toLowerCase();
         if (!answer.confirmed || !reassign) return;
       }
       const confirmDelete = await askSettingsAction({ eyebrow: 'Autorização', title: `Apagar role ${role}`, message: 'Esta ação remove a role do catálogo administrativo.', confirmLabel: 'Apagar role', danger: true });
       if (!confirmDelete.confirmed) return;
       try {
-        await api(url, { method: 'DELETE' });
+        const url = new URL(`/api/admin/roles/${encodeURIComponent(role)}`, window.location.origin);
+        if (reassign) url.searchParams.set('reassign_to', reassign);
+        await api(`${url.pathname}${url.search}`, { method: 'DELETE' });
         setInlineFeedback(rolesFeedback, `Role ${role} apagada ✅`, 'success');
         await loadRolesAdmin();
       } catch (err) {
@@ -942,7 +945,7 @@ diagForm.onsubmit = async (e) => {
         'system.git_branch': f.systemGitBranch.value,
       }),
     });
-    setInlineFeedback(diagFeedback, `Fonte de versão salva ✅ Repositório: ${f.systemGitRepo.value || '-'} · Branch: ${f.systemGitBranch.value || '-'}`, 'danger');
+    setInlineFeedback(diagFeedback, `Fonte de versão salva ✅ Repositório: ${f.systemGitRepo.value || '-'} · Branch: ${f.systemGitBranch.value || '-'}`, 'success');
   } catch (err) {
     setInlineFeedback(diagFeedback, err.message, 'danger');
   }

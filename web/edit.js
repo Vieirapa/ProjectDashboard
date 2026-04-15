@@ -520,6 +520,8 @@ async function loadDocument() {
     author: p.owner || p.createdBy || '-',
     label: p.updatedAt ? `edição do card em ${fmtDateTime(p.updatedAt)}` : `abertura em ${fmtDateTime(p.openedAt)}`,
   });
+  f.status.innerHTML = '';
+  f.priority.innerHTML = '';
   d.statuses.forEach(s => f.status.append(new Option(s,s))); f.status.value = p.status;
   d.priorities.forEach(x => f.priority.append(new Option(x,x))); f.priority.value = p.priority;
   ownersList.innerHTML = '';

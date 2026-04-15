@@ -66,7 +66,7 @@
     root.innerHTML = `
       <div class="sidebar-brand">
         <p class="eyebrow sidebar-eyebrow">Workspace</p>
-        <h2>ProjectDashbord</h2>
+        <h2>ProjectDashboard</h2>
         <p class="sidebar-subtitle">Gestão operacional de projetos, documentos e revisão.</p>
       </div>
 
