@@ -29,12 +29,21 @@
       </section>
 
       <section id="projectSummary" class="project-summary kanban-summary">
-        <div class="project-summary-left">
-          <div class="kanban-summary-card">
-            <span class="kanban-summary-label">Projeto ativo</span>
-            <select id="sidebarProjectSelect" class="header-project-select"></select>
+        <div class="project-summary-main">
+          <div class="project-summary-topline">
+            <div class="kanban-summary-card kanban-summary-card-main">
+              <div>
+                <span class="kanban-summary-label">Projeto ativo</span>
+                <h2>Visão do projeto</h2>
+              </div>
+              <select id="sidebarProjectSelect" class="header-project-select"></select>
+            </div>
+            <div class="project-summary-health">
+              <span id="projectLifecycleStatus" class="kanban-project-health-pill">Projeto ativo</span>
+              <span class="kanban-project-health-note">Fluxo e ações principais no mesmo bloco</span>
+            </div>
           </div>
-          <div class="kanban-summary-metrics">
+          <div class="kanban-summary-metrics kanban-summary-metrics-compact">
             <div class="kanban-summary-metric">
               <span class="kanban-summary-label">Data de início</span>
               <strong id="projectStartDate">-</strong>
@@ -43,38 +52,39 @@
               <span class="kanban-summary-label">Colaboradores</span>
               <strong id="projectCollaborators">0</strong>
             </div>
+            <div class="kanban-summary-metric">
+              <span class="kanban-summary-label">Cards no fluxo</span>
+              <strong id="projectCardTotal">0</strong>
+            </div>
           </div>
         </div>
-        <div class="project-summary-right project-summary-right-split">
-          <div class="project-summary-status-panel">
+        <div class="project-summary-side">
+          <div class="project-summary-status-panel project-summary-status-panel-compact">
             <div class="project-summary-head">
               <div>
-                <span class="kanban-summary-label">Leitura do fluxo</span>
-                <h2>Status do projeto</h2>
+                <span class="kanban-summary-label">Status do projeto</span>
+                <h2>Leitura rápida do fluxo</h2>
               </div>
             </div>
-            <div class="kanban-summary-status-grid">
+            <div class="kanban-summary-status-grid kanban-summary-status-grid-compact">
               <div class="kanban-status-pill kanban-status-backlog">Backlog <b id="sumBacklog">0 (0%)</b></div>
               <div class="kanban-status-pill kanban-status-progress">Em andamento <b id="sumProgress">0 (0%)</b></div>
               <div class="kanban-status-pill kanban-status-review">Em revisão <b id="sumReview">0 (0%)</b></div>
               <div class="kanban-status-pill kanban-status-done">Concluídos <b id="sumDone">0 (0%)</b></div>
             </div>
           </div>
-          <aside class="project-summary-actions-panel project-package-panel">
+          <aside class="project-summary-actions-panel project-package-panel project-package-panel-compact">
             <div class="project-summary-head">
               <div>
-                <span class="kanban-summary-label">Arquivos e andamento</span>
-                <h2>Exportação e arquivamento</h2>
+                <span class="kanban-summary-label">Ações do projeto</span>
+                <h2>Exportar ou encerrar</h2>
               </div>
             </div>
-            <div class="project-package-copy">
-              <p class="small muted-text">Use a exportação para guardar um pacote ZIP do projeto atual. Arquive apenas quando o fluxo operacional já puder ser encerrado para usuários não admin.</p>
-              <div class="project-package-hints">
-                <span class="detail-pill detail-pill-soft">ZIP com dados e anexos</span>
-                <span class="detail-pill detail-pill-soft">Arquivamento bloqueia acesso operacional</span>
-              </div>
+            <div class="project-package-hints">
+              <span class="detail-pill detail-pill-soft">ZIP com dados e anexos</span>
+              <span class="detail-pill detail-pill-soft">Arquivamento encerra operação</span>
             </div>
-            <div class="project-summary-action-buttons">
+            <div class="project-summary-action-buttons project-summary-action-buttons-inline">
               <button id="exportProjectBtn" type="button">Exportar pacote ZIP</button>
               <button id="archiveProjectBtn" type="button" class="danger">Arquivar projeto</button>
             </div>

@@ -10,6 +10,8 @@ const sortOrderFilter = document.getElementById('sortOrderFilter');
 const projectSelect = document.getElementById('sidebarProjectSelect');
 const projectStartDateEl = document.getElementById('projectStartDate');
 const projectCollaboratorsEl = document.getElementById('projectCollaborators');
+const projectCardTotalEl = document.getElementById('projectCardTotal');
+const projectLifecycleStatusEl = document.getElementById('projectLifecycleStatus');
 const sumBacklogEl = document.getElementById('sumBacklog');
 const sumProgressEl = document.getElementById('sumProgress');
 const sumReviewEl = document.getElementById('sumReview');
@@ -282,6 +284,7 @@ function makeCard(p, statuses, priorities) {
   const card = document.createElement('div');
   card.className = 'card';
   const docMeta = docStatusMeta(p.status);
+  const ownerLabel = (p.owner || '').trim() || 'Sem responsável';
   const ageLabel = String(p.ageLabel || 'Dias desde abertura')
     .replace('DIAS PARA SOLUÇÃO', 'Dia até solução')
     .replace('DIAS PARA SOLUCAO', 'Dia até solução')
@@ -301,8 +304,7 @@ function makeCard(p, statuses, priorities) {
   ].filter(Boolean).join('');
   const badges = [
     `<span class="card-chip card-chip-priority">${p.priority || 'Sem prioridade'}</span>`,
-    p.owner ? `<span class="card-chip">👤 ${p.owner}</span>` : '<span class="card-chip card-chip-muted">Sem responsável</span>',
-    blockedDeps.length ? `<span class="card-chip card-chip-danger">${blockedDeps.length} dependência(s)</span>` : resolvedDepsCount ? `<span class="card-chip card-chip-success">${resolvedDepsCount} dependência(s) concluída(s)</span>` : '',
+    blockedDeps.length ? `<span class="card-chip card-chip-danger">${blockedDeps.length} dependência(s)</span>` : resolvedDepsCount ? `<span class="card-chip card-chip-success">${resolvedDepsCount} dependência(s) ok</span>` : '',
   ].filter(Boolean).join('');
   const dependencySummary = blockedDeps.length
     ? `
@@ -320,20 +322,23 @@ function makeCard(p, statuses, priorities) {
     : '';
 
   card.innerHTML = `
-    <div class="card-head">
-      <div class="card-title-wrap">
+    <div class="card-head card-head-compact">
+      <div class="card-title-row">
         <h3>${p.name}</h3>
-        <div class="card-state-row">${stateBadges}</div>
+        <span class="card-owner-badge ${p.owner ? '' : 'card-owner-badge-muted'}">👤 ${ownerLabel}</span>
       </div>
-      <span class="card-doc-state">${docMeta.icon} ${docMeta.label}</span>
+      <div class="card-state-row">${stateBadges}</div>
     </div>
-    <div class="card-chip-row">${badges}</div>
-    <p>${p.description || 'Sem descrição cadastrada para este card.'}</p>
-    ${dependencySummary}
-    <dl class="meta meta-grid meta-grid-compact">
-      <div><dt>Prazo</dt><dd>${p.dueDate || '-'}</dd></div>
-      <div><dt>${ageLabel}</dt><dd>${p.ageDays ?? '-'}</dd></div>
-    </dl>
+    <div class="card-body-compact">
+      <p>${p.description || 'Sem descrição cadastrada para este card.'}</p>
+      <div class="card-chip-row card-chip-row-compact">${badges}</div>
+      ${dependencySummary}
+      <dl class="meta meta-grid meta-grid-compact card-meta-grid">
+        <div><dt>Prazo</dt><dd>${p.dueDate || '-'}</dd></div>
+        <div><dt>${ageLabel}</dt><dd>${p.ageDays ?? '-'}</dd></div>
+        <div><dt>Documento</dt><dd>${docMeta.label}</dd></div>
+      </dl>
+    </div>
   `;
 
   if (behavior.priorityColorEnabled) {
@@ -557,6 +562,11 @@ function updateProjectSummary() {
 
   if (projectStartDateEl) projectStartDateEl.textContent = formatPtDate(project?.start_date || '');
   if (projectCollaboratorsEl) projectCollaboratorsEl.textContent = String(collaborators);
+  if (projectCardTotalEl) projectCardTotalEl.textContent = String(total);
+  if (projectLifecycleStatusEl) {
+    projectLifecycleStatusEl.textContent = project?.archived ? 'Projeto arquivado' : 'Projeto ativo';
+    projectLifecycleStatusEl.classList.toggle('is-archived', !!project?.archived);
+  }
   if (sumBacklogEl) sumBacklogEl.textContent = `${backlog} (${pct(backlog, total)})`;
   if (sumProgressEl) sumProgressEl.textContent = `${progress} (${pct(progress, total)})`;
   if (sumReviewEl) sumReviewEl.textContent = `${review} (${pct(review, total)})`;

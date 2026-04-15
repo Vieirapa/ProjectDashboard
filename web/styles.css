@@ -716,30 +716,63 @@ dialog form {
 .project-summary {
   background: linear-gradient(135deg, #102043 0%, #14284f 100%);
   color: #eaf2ff;
-  padding: var(--space-5);
+  padding: var(--space-4);
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-5);
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.9fr);
+  gap: var(--space-4);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .project-summary h2 {
-  margin: 0 0 var(--space-2);
+  margin: 0;
   font-size: 18px;
   font-weight: 700;
   color: #f8fbff;
 }
 
-.project-summary-left,
-.project-summary-right {
+.project-summary-main,
+.project-summary-side {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   align-content: start;
 }
 
-.project-summary-right-split {
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
-  gap: var(--space-4);
+.project-summary-topline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.project-summary-health {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.kanban-project-health-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.16);
+  border: 1px solid rgba(74, 222, 128, 0.32);
+  color: #dcfce7;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kanban-project-health-pill.is-archived {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fee2e2;
+}
+
+.kanban-project-health-note {
+  font-size: 12px;
+  color: #bfdbfe;
+  text-align: right;
 }
 
 .project-summary-status-panel,
@@ -791,8 +824,20 @@ dialog form {
 }
 
 @media (max-width: 1180px) {
-  .project-summary-right-split {
+  .project-summary {
     grid-template-columns: 1fr;
+  }
+
+  .project-summary-topline {
+    grid-template-columns: 1fr;
+  }
+
+  .project-summary-health {
+    justify-items: start;
+  }
+
+  .kanban-project-health-note {
+    text-align: left;
   }
 }
 
@@ -826,16 +871,30 @@ dialog form {
   gap: 8px;
 }
 
+.kanban-summary-card-main {
+  grid-template-columns: minmax(0, auto) minmax(240px, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+}
+
 .kanban-summary-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
+.kanban-summary-metrics-compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .kanban-summary-metric {
   display: grid;
-  gap: 6px;
-  padding: var(--space-3);
+  gap: 4px;
+  padding: 12px 14px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-md);
 }
@@ -853,13 +912,17 @@ dialog form {
   gap: var(--space-3);
 }
 
+.kanban-summary-status-grid-compact {
+  gap: 10px;
+}
+
 .kanban-status-pill {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: var(--space-3);
-  padding: 12px 14px;
-  border-radius: 999px;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.1);
   color: #eff6ff;
   font-size: 13px;
@@ -1096,9 +1159,22 @@ dialog form {
   margin-bottom: 10px;
 }
 
+.card-head-compact {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .card-title-wrap {
   min-width: 0;
   display: grid;
+  gap: 8px;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
 }
 
@@ -1106,6 +1182,29 @@ dialog form {
   margin: 0;
   font-size: 15px;
   line-height: 1.35;
+}
+
+.card-owner-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  max-width: 48%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-owner-badge-muted {
+  background: #f8fafc;
+  color: #64748b;
+  border-color: rgba(148, 163, 184, 0.18);
 }
 
 .card-state-row {
@@ -1165,11 +1264,20 @@ dialog form {
   white-space: nowrap;
 }
 
+.card-body-compact {
+  display: grid;
+  gap: 8px;
+}
+
 .card-chip-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+.card-chip-row-compact {
+  margin-bottom: 0;
 }
 
 .card-chip {
@@ -1214,10 +1322,10 @@ dialog form {
 }
 
 .card p {
-  margin-bottom: 10px;
-  line-height: 1.45;
+  margin-bottom: 0;
+  line-height: 1.4;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1225,7 +1333,7 @@ dialog form {
 .card-dependency-box {
   display: grid;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   padding: 10px;
   border-radius: 12px;
   background: #fff7ed;
@@ -1273,17 +1381,25 @@ dialog form {
 
 .card-controls {
   display: grid;
-  grid-template-columns: 1fr 92px;
-  gap: var(--space-3);
+  grid-template-columns: 1fr 72px;
+  gap: 10px;
   align-items: stretch;
-  margin-top: var(--space-3);
+  margin-top: 10px;
 }
 
 .card-selects {
   display: grid;
-  grid-template-rows: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  height: 124px;
+  height: auto;
+}
+
+.card-meta-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.card-meta-grid div {
+  padding: 8px 10px;
 }
 
 .card-selects select {
@@ -1663,6 +1779,14 @@ dialog form {
 .project-package-panel {
   display: grid;
   gap: var(--space-3);
+}
+
+.project-package-panel-compact {
+  align-content: start;
+}
+
+.project-summary-action-buttons-inline {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .project-package-copy {
@@ -2222,8 +2346,20 @@ dialog form {
   .settings-check-grid,
   .review-note-meta-grid,
   .card-controls,
-  .meta-grid {
+  .meta-grid,
+  .card-meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .kanban-summary-card-main,
+  .card-title-row,
+  .project-summary-action-buttons-inline,
+  .card-selects {
+    grid-template-columns: 1fr;
+  }
+
+  .card-owner-badge {
+    max-width: 100%;
   }
 
   #board {
@@ -2314,9 +2450,13 @@ dialog form {
   }
 
   .project-name-row,
-  .project-summary-right-split,
   .kanban-summary-status-grid,
   #filters {
+    grid-template-columns: 1fr;
+  }
+
+  .project-summary-topline,
+  .project-summary-action-buttons-inline {
     grid-template-columns: 1fr;
   }
 
