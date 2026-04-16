@@ -181,8 +181,14 @@ function setCountLabel(el, count, singular, plural) {
   if (el) el.textContent = `${count} ${count === 1 ? singular : plural}`;
 }
 
-function setInlineFeedback(el, message, tone = 'neutral') {
-  window.ProjectDashboardUI?.setInlineFeedback(el, message, tone);
+function setInlineFeedback(el, message, tone = 'neutral', options) {
+  if (window.ProjectDashboardUI?.setInlineFeedback) {
+    window.ProjectDashboardUI.setInlineFeedback(el, message, tone, options);
+  } else if (el) {
+    const safeTone = ['neutral', 'success', 'warning', 'danger'].includes(tone) ? tone : 'neutral';
+    el.className = `settings-inline-feedback status-${safeTone}`;
+    el.innerHTML = `<strong>Status</strong><span>${escHtml(message || '')}</span>`;
+  }
 }
 
 function checkedValues(container) {
@@ -379,7 +385,7 @@ async function loadSettings() {
   f.defaultDueDays.value = getSetting(s, 'workflow.default_due_days', '7');
   f.dependencyMaxStatus.value = getSetting(s, 'workflow.dependency_max_status', 'Backlog');
   f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
-  f.backupPath.value = getSetting(s, 'backup.path', '/opt/documentdashboard/data/backups');
+  f.backupPath.value = getSetting(s, 'backup.path', '');
   lastPersistedBackupPath = f.backupPath.value || '';
   f.backupRunTime.value = getSetting(s, 'backup.run_time', '03:00');
   f.systemGitRepo.value = getSetting(s, 'system.git_repo', 'https://github.com/Vieirapa/ProjectDashboard.git');
@@ -397,8 +403,8 @@ async function loadSettings() {
 // ---------------------------------------------------------------------------
 // Carregamento da lista de snapshots de backup
 // ---------------------------------------------------------------------------
-async function loadBackupSnapshots() {
-  const path = (f.backupPath.value || '').trim();
+async function loadBackupSnapshots(pathOverride) {
+  const path = (pathOverride || f.backupPath.value || '').trim();
   const q = new URLSearchParams();
   if (path) q.set('path', path);
   const d = await api(`/api/admin/system/backup/available${q.toString() ? `?${q.toString()}` : ''}`);
@@ -927,7 +933,8 @@ backupForm.onsubmit = async (e) => {
       suffix = `<br><span class="small" style="color:#b45309;">⚠️ Divergência detectada em: ${escHtml(resp.mismatch.map((m) => m.key).join(', '))}</span>`;
     }
 
-    backupFeedback.innerHTML = `Política de backup salva ✅<br><span class="small">Caminho persistido: <strong>${escHtml(f.backupPath.value)}</strong> · Automático: <strong>${f.backupEnabled.checked ? 'TRUE' : 'FALSE'}</strong> · Horário: <strong>${escHtml(f.backupRunTime.value || '-')}</strong> · Dias: <strong>${escHtml(summarizeWeekdays(persistedDays))}</strong></span>${suffix}`;
+    const confirmHtml = `Política de backup salva. Caminho: ${escHtml(f.backupPath.value || '(padrão)')} · Automático: ${f.backupEnabled.checked ? 'SIM' : 'NÃO'} · Horário: ${escHtml(f.backupRunTime.value || '-')} · Dias: ${escHtml(summarizeWeekdays(persistedDays))}${suffix}`;
+    setInlineFeedback(backupFeedback, confirmHtml, 'success', { allowHtml: true });
   } catch (err) {
     setInlineFeedback(backupFeedback, err.message, 'danger');
   } finally {
@@ -1016,21 +1023,28 @@ testSmtpBtn.onclick = async () => {
 };
 
 testBackupPathBtn.onclick = async () => {
-  setInlineFeedback(backupFeedback, 'Processando ação de backup...', 'neutral');
+  setInlineFeedback(backupFeedback, 'Testando permissões do caminho de backup...', 'neutral');
   try {
     const d = await api('/api/admin/system/backup/test-path', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: f.backupPath.value || '' }),
     });
-    setInlineFeedback(backupFeedback, d.message || 'Caminho de backup validado ✅ Pronto para uso.', 'success');
+    const detail = d.detail || {};
+    const pathUsed = detail.path || f.backupPath.value || '(padrão)';
+    const msg = d.message || `Caminho ${pathUsed} validado. Pronto para uso.`;
+    setInlineFeedback(backupFeedback, msg, 'success');
+    if (detail.path && !f.backupPath.value.trim()) {
+      f.backupPath.value = detail.path;
+    }
   } catch (err) {
     if (err?.status === 404) {
       setInlineFeedback(backupFeedback, 'Este servidor ainda não tem o endpoint de teste de permissões. Atualize/reinicie a instância com a versão mais recente do ProjectDashboard e tente novamente.', 'danger');
       return;
     }
-    if (String(err?.message || '').includes('Permission') || String(err?.message || '').includes('Permissão')) {
-      const p = (f.backupPath.value || '').trim() || '/var/backups/projectdashboard';
+    const detail = err?.data?.detail || {};
+    const p = detail.path || (f.backupPath.value || '').trim() || '/var/backups/projectdashboard';
+    if (!detail.writable) {
       setInlineFeedback(backupFeedback, `${err.message} | Sugestão: sudo mkdir -p ${p} && sudo chown -R <usuario_servico>:<grupo_servico> ${p} && sudo chmod -R 775 ${p}`, 'danger');
       return;
     }
@@ -1039,22 +1053,26 @@ testBackupPathBtn.onclick = async () => {
 };
 
 runBackupNowBtn.onclick = async () => {
-  setInlineFeedback(backupFeedback, 'Processando ação de backup...', 'neutral');
+  setInlineFeedback(backupFeedback, 'Executando backup agora...', 'neutral');
   try {
     const d = await api('/api/admin/system/backup/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: f.backupPath.value || '' }),
     });
-    backupFeedback.innerHTML = formatBackupRunMessage(d.message || 'Backup manual executado ✅');
-    await loadBackupSnapshots();
+    const usedPath = d.used_path || '';
+    if (usedPath && usedPath !== (f.backupPath.value || '').trim()) {
+      f.backupPath.value = usedPath;
+    }
+    setInlineFeedback(backupFeedback, d.message || 'Backup manual executado com sucesso.', 'success');
+    await loadBackupSnapshots(usedPath);
   } catch (err) {
     setInlineFeedback(backupFeedback, err.message, 'danger');
   }
 };
 
 refreshBackupListBtn.onclick = async () => {
-  setInlineFeedback(backupFeedback, 'Processando ação de backup...', 'neutral');
+  setInlineFeedback(backupFeedback, 'Atualizando lista de backups...', 'neutral');
   try {
     await loadBackupSnapshots();
     setInlineFeedback(backupFeedback, 'Lista de backups atualizada.', 'success');

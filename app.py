@@ -3225,7 +3225,7 @@ def test_backup_path_permissions(path_raw: str | None = None) -> tuple[bool, str
 # ---------------------------------------------------------------------------
 # Execução de backup do sistema
 # ---------------------------------------------------------------------------
-def run_system_backup(actor: str = "system", path_override: str | None = None) -> tuple[bool, str]:
+def run_system_backup(actor: str = "system", path_override: str | None = None) -> tuple[bool, str, str]:
     """
     Executa backup do banco e dos artefatos documentais do sistema.
 
@@ -3238,8 +3238,8 @@ def run_system_backup(actor: str = "system", path_override: str | None = None) -
 
     Return
     -------
-    tuple[bool, str]
-        Resultado textual da operação.
+    tuple[bool, str, str]
+        (ok, message, used_path) com caminho efetivo usado no backup.
     """
     settings = get_admin_settings()
     cfg = _backup_config(settings)
@@ -3275,17 +3275,17 @@ def run_system_backup(actor: str = "system", path_override: str | None = None) -
                 f"Obs: caminho configurado sem permissão. {hint}"
             )
             audit(actor, "system.backup.run", str(used_dir), msg)
-            return True, msg
+            return True, msg, str(used_dir)
         except Exception as e2:
-            return False, f"falha no backup. {_backup_permission_hint(primary_out_dir)} | detalhe: {e2}"
+            return False, f"falha no backup. {_backup_permission_hint(primary_out_dir)} | detalhe: {e2}", ""
     except Exception as e:
-        return False, f"falha no backup: {e}"
+        return False, f"falha no backup: {e}", ""
 
     if not copied:
-        return False, "nenhum artefato encontrado para backup"
+        return False, "nenhum artefato encontrado para backup", ""
 
     audit(actor, "system.backup.run", str(used_dir), ", ".join(copied))
-    return True, f"backup salvo em {used_dir} ({', '.join(copied)})"
+    return True, f"backup salvo em {used_dir} ({', '.join(copied)})", str(used_dir)
 
 # ---------------------------------------------------------------------------
 # Catálogo de backups disponíveis
@@ -3393,7 +3393,7 @@ def report_scheduler_loop():
                     lock = conn.execute("SELECT value FROM app_settings WHERE key='backup.last_run_key'").fetchone()
                     last_key = (lock["value"] if lock else "")
                     if last_key != backup_key:
-                        ok, msg = run_system_backup("system")
+                        ok, msg, _used = run_system_backup("system")
                         conn.execute(
                             "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?) "
                             "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, updated_at=excluded.updated_at",
@@ -4577,8 +4577,8 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 body = {}
             path_raw = str((body or {}).get("path") or "").strip() or None
-            done, msg = run_system_backup(admin["username"], path_raw)
-            return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg})
+            done, msg, used_path = run_system_backup(admin["username"], path_raw)
+            return self._json(200 if done else 400, {"ok": done, "message": msg if done else None, "error": None if done else msg, "used_path": used_path if done else None})
 
         if p == "/api/admin/system/backup/test-path":
             admin = self._require_module("settings.backup")
