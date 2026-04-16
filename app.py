@@ -53,6 +53,7 @@ from backend.auth.session import (
     current_user_from_cookie as current_user_from_session_cookie,
     hash_password,
     parse_cookie,
+    validate_password_strength,
     verify_password,
 )
 from backend.admin.settings import (
@@ -4102,7 +4103,12 @@ class Handler(BaseHTTPRequestHandler):
             if not user: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            done, msg = change_own_password(user["username"], body.get("currentPassword") or "", body.get("newPassword") or "")
+            new_pwd = body.get("newPassword") or ""
+            if new_pwd:
+                pwd_ok, pwd_msg = validate_password_strength(new_pwd)
+                if not pwd_ok:
+                    return self._json(400, {"ok": False, "error": pwd_msg})
+            done, msg = change_own_password(user["username"], body.get("currentPassword") or "", new_pwd)
             if done:
                 audit(user["username"], "user.password.change", user["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
@@ -4323,6 +4329,9 @@ class Handler(BaseHTTPRequestHandler):
             role = requested_role if role_exists(requested_role, active_only=True) else resolve_fallback_role("member")
             if not username or not password:
                 return self._json(400, {"ok": False, "error": "username e password são obrigatórios"})
+            pwd_ok, pwd_msg = validate_password_strength(password)
+            if not pwd_ok:
+                return self._json(400, {"ok": False, "error": pwd_msg})
             try:
                 with db() as conn:
                     conn.execute("INSERT INTO users (username,password_hash,role,created_at) VALUES (?,?,?,?)",
@@ -4402,6 +4411,9 @@ class Handler(BaseHTTPRequestHandler):
             password = body.get("password") or ""
             if not token or not username or not password:
                 return self._json(400, {"ok": False, "error": "incomplete data"})
+            pwd_ok, pwd_msg = validate_password_strength(password)
+            if not pwd_ok:
+                return self._json(400, {"ok": False, "error": pwd_msg})
             with db() as conn:
                 inv = conn.execute("SELECT token, role, used_by, expires_at FROM invites WHERE token=?", (token,)).fetchone()
                 if not inv: return self._json(400, {"ok": False, "error": "invalid invite"})
@@ -4612,8 +4624,9 @@ class Handler(BaseHTTPRequestHandler):
                 params.append(role)
             if "password" in body:
                 pwd = body.get("password") or ""
-                if len(pwd) < 4:
-                    return self._json(400, {"ok": False, "error": "senha muito curta"})
+                pwd_ok, pwd_msg = validate_password_strength(pwd)
+                if not pwd_ok:
+                    return self._json(400, {"ok": False, "error": pwd_msg})
                 updates.append("password_hash=?")
                 params.append(hash_password(pwd))
 

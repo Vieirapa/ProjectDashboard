@@ -57,11 +57,21 @@ Login endpoint (`POST /api/login`) is protected by IP-based rate limiting (added
 - **Response:** HTTP 429 with wait time in seconds
 - **Audit:** Every failed login is recorded in `audit_logs` with action `login.failed` and client IP
 
+## Password Policy
+
+New passwords are validated at all entry points (added 2026-04-16):
+
+- Minimum 8 characters
+- At least one letter (a-z or A-Z)
+- At least one number or special character (`0-9`, `!@#$%^&*` etc.)
+
+Validation is applied to: user creation, admin password update, own change-password, and signup via invite. Existing passwords are **not** retroactively invalidated.
+
 ## Hardening roadmap
 
 1. Move sessions to Redis/DB-backed storage
 2. ~~Add HTTP security headers and SameSite=Strict cookie~~ ✅ Implemented 2026-04-16
 3. ~~Add rate limiting on login endpoint~~ ✅ Implemented 2026-04-16
-4. Add CSRF token protections for mutating endpoints (mitigated by SameSite=Strict)
-5. Add password complexity/rotation policies
+4. ~~Add password complexity policy~~ ✅ Implemented 2026-04-16
+5. Add CSRF token protections for mutating endpoints (mitigated by SameSite=Strict)
 6. Centralize session invalidation controls
