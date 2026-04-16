@@ -3,8 +3,22 @@
 ## Authentication
 
 - Username/password login
-- HttpOnly session cookie
+- HttpOnly session cookie with `SameSite=Strict`
 - Server-side session validation
+
+## HTTP Security Headers
+
+All responses include the following security headers (added 2026-04-16):
+
+| Header | Value |
+|---|---|
+| `X-Frame-Options` | `DENY` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `geolocation=(), microphone=(), camera=()` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'` |
+
+Session cookie flags: `HttpOnly; SameSite=Strict; Path=/`
 
 ## Password storage
 
@@ -37,6 +51,7 @@ Critical actions are recorded in `audit_logs`, including:
 ## Hardening roadmap
 
 1. Move sessions to Redis/DB-backed storage
-2. Add CSRF token protections for mutating endpoints
-3. Add password complexity/rotation policies
-4. Centralize session invalidation controls
+2. ~~Add HTTP security headers and SameSite=Strict cookie~~ ✅ Implemented 2026-04-16
+3. Add CSRF token protections for mutating endpoints (mitigated by SameSite=Strict)
+4. Add password complexity/rotation policies
+5. Centralize session invalidation controls

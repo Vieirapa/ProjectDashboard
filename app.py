@@ -3250,6 +3250,21 @@ class Handler(BaseHTTPRequestHandler):
     """
 
     # -----------------------------------------------------------------------
+    # Headers de segurança HTTP
+    # -----------------------------------------------------------------------
+    def _send_security_headers(self):
+        """Anexa headers de segurança HTTP obrigatórios a toda resposta."""
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.send_header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+        )
+
+    # -----------------------------------------------------------------------
     # Resposta JSON padrão
     # -----------------------------------------------------------------------
     def _json(self, code: int, payload: dict, set_cookie: str | None = None):
@@ -3280,6 +3295,7 @@ class Handler(BaseHTTPRequestHandler):
         if set_cookie:
             self.send_header("Set-Cookie", set_cookie)
         self.send_header("Content-Length", str(len(body)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -3316,6 +3332,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(b)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(b)
 
@@ -3960,7 +3977,7 @@ class Handler(BaseHTTPRequestHandler):
             if not row or not verify_password(password, row["password_hash"]):
                 return self._json(401, {"ok": False, "error": "Invalid credentials"})
             tok = create_auth_session(SESSIONS, SESSION_TTL_SECONDS, row["username"], row["role"])
-            cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECONDS}"
+            cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_TTL_SECONDS}"
             role_active = role_is_active(row["role"])
             return self._json(200, {
                 "ok": True,
@@ -3976,7 +3993,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/logout":
             u = self._user()
             if u: SESSIONS.pop(u["token"], None)
-            return self._json(200, {"ok": True}, set_cookie=f"{SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
+            return self._json(200, {"ok": True}, set_cookie=f"{SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
 
         if p == "/api/me/change-password":
             user = self._require_auth()

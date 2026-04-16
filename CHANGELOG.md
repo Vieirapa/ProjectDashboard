@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security
+- Add `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, and `Content-Security-Policy` headers to all HTTP responses.
+- Upgrade session cookie to `SameSite=Strict` (was `SameSite=Lax`).
+
 ### Fixed
 - System diagnostics now default to the `develop` branch when no explicit `system.git_branch` setting is stored, aligning version checks with the active development flow.
 
