@@ -79,7 +79,7 @@ fi
 echo "[1/10] Installing dependencies..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y python3 python3-venv rsync curl git ca-certificates ufw
+apt-get install -y python3 python3-venv rsync curl git ca-certificates ufw libmagic1
 if [[ "$ENABLE_NGINX" == "yes" ]]; then
   apt-get install -y nginx
 fi
@@ -132,6 +132,9 @@ if [[ ! -d "${INSTALL_DIR}/.venv" || ! -x "${INSTALL_DIR}/.venv/bin/python" ]]; 
   rm -rf "${INSTALL_DIR}/.venv"
   sudo -u "${APP_USER}" "${PYTHON_BIN}" -m venv "${INSTALL_DIR}/.venv"
 fi
+
+# Instalar dependências Python no venv
+sudo -u "${APP_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --quiet python-magic
 
 CURRENT_APP_HOST=""
 if [[ -f /etc/projectdashboard.env ]]; then

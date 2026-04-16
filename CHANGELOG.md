@@ -7,6 +7,7 @@
 - Upgrade session cookie to `SameSite=Strict` (was `SameSite=Lax`).
 - Add IP-based rate limiting on `/api/login`: 5 attempts per 5-minute window, 15-minute lockout. Failed logins are now recorded in `audit_logs`.
 - Enforce 100 MB request body limit in `_read_json()` and raise decoded file size limit from 12 MB to 50 MB. Expose `uploadLimitMb` in `/api/me` response.
+- Validate real MIME type via `python-magic` (libmagic) on upload; reject non-allowlisted types with HTTP 400. Force `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` on file downloads.
 
 ### Fixed
 - System diagnostics now default to the `develop` branch when no explicit `system.git_branch` setting is stored, aligning version checks with the active development flow.

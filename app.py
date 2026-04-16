@@ -188,6 +188,47 @@ def _check_login_rate_limit(ip: str) -> tuple[bool, int]:
 
 
 # ---------------------------------------------------------------------------
+# MIME type validation — upload endpoint
+# ---------------------------------------------------------------------------
+try:
+    import magic as _magic_lib
+    _MAGIC_AVAILABLE = True
+except ImportError:
+    _MAGIC_AVAILABLE = False
+
+ALLOWED_UPLOAD_MIMES = frozenset({
+    "application/pdf",
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain", "text/csv", "text/markdown",
+    "application/zip", "application/x-zip-compressed",
+    "application/json",
+    "application/octet-stream",  # fallback genérico permitido
+})
+
+
+def _validate_upload_mime(decoded_bytes: bytes, declared_mime: str) -> tuple[bool, str]:
+    """
+    Valida o MIME type real do arquivo pelos seus primeiros bytes.
+
+    Se python-magic não estiver disponível, aceita com base no MIME declarado.
+    Retorna (ok, mime_detectado).
+    """
+    if not _MAGIC_AVAILABLE:
+        mime = declared_mime or "application/octet-stream"
+        return mime in ALLOWED_UPLOAD_MIMES, mime
+    detected = _magic_lib.from_buffer(decoded_bytes[:8192], mime=True)
+    if detected not in ALLOWED_UPLOAD_MIMES:
+        return False, detected
+    return True, detected
+
+
+# ---------------------------------------------------------------------------
 # Utilitários base de data, texto e conexão
 # ---------------------------------------------------------------------------
 def now_iso() -> str:
@@ -3142,6 +3183,15 @@ def save_document_file(slug: str, filename: str, mime_type: str, b64_content: st
     if len(raw) > MAX_UPLOAD_DECODED_BYTES:
         return False, f"Arquivo excede {MAX_UPLOAD_DECODED_MB}MB"
 
+    mime_ok, detected_mime = _validate_upload_mime(raw, mime_type)
+    if not mime_ok:
+        return False, (
+            f"Tipo de arquivo não permitido: {detected_mime}. "
+            "Formatos aceitos: PDF, imagens (PNG/JPG/GIF/WebP), "
+            f"documentos Office (Word/Excel/PowerPoint), texto e ZIP."
+        )
+    mime_type = detected_mime  # usar MIME detectado em vez do declarado pelo cliente
+
     with db() as conn:
         row = conn.execute("SELECT COALESCE(MAX(version), 0) AS last FROM document_versions WHERE document_slug=?", (slug,)).fetchone()
         next_version = int(row["last"]) + 1
@@ -3830,10 +3880,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"ok": False, "error": "Arquivo da versão não encontrado"})
             content = doc_path.read_bytes()
 
+            safe_dl_name = re.sub(r'[^a-zA-Z0-9._\-]', '_', ver.get('document_name') or 'documento.bin')
             self.send_response(200)
             self.send_header("Content-Type", ver.get("document_mime") or "application/octet-stream")
-            self.send_header("Content-Disposition", f"inline; filename=\"{ver.get('document_name') or 'documento.bin'}\"")
+            self.send_header("Content-Disposition", f'attachment; filename="{safe_dl_name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(content)))
+            self._send_security_headers()
             self.end_headers()
             self.wfile.write(content)
             return
