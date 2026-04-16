@@ -97,6 +97,7 @@ const f = {
 };
 
 let meta = { statuses: [], roles: [] };
+let lastWorkflowSettings = { defaultDueDays: null, dependencyMaxStatus: null };
 let deletedFilters = {
   q: '',
   deleted_by: '',
@@ -384,6 +385,7 @@ async function loadSettings() {
   f.inviteDefaultMessage.value = getSetting(s, 'invite.default_message', '');
   f.defaultDueDays.value = getSetting(s, 'workflow.default_due_days', '7');
   f.dependencyMaxStatus.value = getSetting(s, 'workflow.dependency_max_status', 'Backlog');
+  lastWorkflowSettings = { defaultDueDays: f.defaultDueDays.value, dependencyMaxStatus: f.dependencyMaxStatus.value };
   f.backupEnabled.checked = String(getSetting(s, 'backup.enabled', 'false')).toLowerCase() === 'true';
   f.backupPath.value = getSetting(s, 'backup.path', '');
   lastPersistedBackupPath = f.backupPath.value || '';
@@ -879,6 +881,8 @@ smtpForm.onsubmit = async (e) => {
 workflowForm.onsubmit = async (e) => {
   e.preventDefault();
   setInlineFeedback(workflowFeedback, 'Salvando comportamento do fluxo...', 'neutral');
+  const prevDueDays = lastWorkflowSettings.defaultDueDays;
+  const prevMaxStatus = lastWorkflowSettings.dependencyMaxStatus;
   try {
     await api('/api/admin/settings', {
       method: 'PATCH',
@@ -889,7 +893,17 @@ workflowForm.onsubmit = async (e) => {
       }),
     });
     await loadSettings();
-    setInlineFeedback(workflowFeedback, `Comportamento salvo ✅ (máximo com dependências pendentes: ${f.dependencyMaxStatus.value})`, 'success');
+    const newDueDays = f.defaultDueDays.value;
+    const newMaxStatus = f.dependencyMaxStatus.value;
+    const changedParts = [];
+    if (prevDueDays !== null && String(prevDueDays) !== String(newDueDays)) {
+      changedParts.push(`prazo padrão: ${prevDueDays} → ${newDueDays} dias`);
+    }
+    if (prevMaxStatus !== null && prevMaxStatus !== newMaxStatus) {
+      changedParts.push(`máximo com dependências pendentes: ${prevMaxStatus} → ${newMaxStatus}`);
+    }
+    const detail = changedParts.length ? ` (${changedParts.join('; ')})` : ' (sem alterações nos valores do fluxo)';
+    setInlineFeedback(workflowFeedback, `Comportamento salvo ✅${detail}`, 'success');
   } catch (err) {
     setInlineFeedback(workflowFeedback, err.message, 'danger');
   }
