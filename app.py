@@ -154,6 +154,11 @@ SKIP_DIRS = {"ProjectDashboard", "__pycache__"}
 SESSION_COOKIE = "pdash_session"
 SESSION_TTL_SECONDS = 60 * 60 * 24
 
+# Upload / request size limits
+MAX_REQUEST_BYTES = 100 * 1024 * 1024       # 100 MB — acomoda base64 de arquivo de 50 MB
+MAX_UPLOAD_DECODED_MB = 50
+MAX_UPLOAD_DECODED_BYTES = MAX_UPLOAD_DECODED_MB * 1024 * 1024  # 50 MB arquivo real
+
 SESSIONS: dict[str, dict] = {}
 
 # ---------------------------------------------------------------------------
@@ -3134,8 +3139,8 @@ def save_document_file(slug: str, filename: str, mime_type: str, b64_content: st
     except Exception:
         return False, "Arquivo inválido (base64)"
 
-    if len(raw) > 12 * 1024 * 1024:
-        return False, "Arquivo excede 12MB"
+    if len(raw) > MAX_UPLOAD_DECODED_BYTES:
+        return False, f"Arquivo excede {MAX_UPLOAD_DECODED_MB}MB"
 
     with db() as conn:
         row = conn.execute("SELECT COALESCE(MAX(version), 0) AS last FROM document_versions WHERE document_slug=?", (slug,)).fetchone()
@@ -3379,6 +3384,15 @@ class Handler(BaseHTTPRequestHandler):
         Deve ser usada por rotas POST/PATCH/DELETE que esperam JSON no body.
         """
         l = int(self.headers.get("Content-Length", "0"))
+        if l > MAX_REQUEST_BYTES:
+            # Consumir body parcialmente para não deixar o socket sujo
+            self.rfile.read(min(l, 4096))
+            self.send_response(413)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self._send_security_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": False, "error": "Requisição excede o limite permitido"}).encode())
+            return False, {"error": "Requisição excede o limite permitido"}
         raw = self.rfile.read(l).decode("utf-8") if l else "{}"
         try:
             return True, json.loads(raw)
@@ -3727,6 +3741,7 @@ class Handler(BaseHTTPRequestHandler):
                 "role_active": active,
                 "inactive_message": None if active else "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
                 "build": ops_get_runtime_build_info(APP_DIR),
+                "uploadLimitMb": MAX_UPLOAD_DECODED_MB,
             })
 
         if p == "/api/me/permissions":
