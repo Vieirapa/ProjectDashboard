@@ -48,10 +48,20 @@ Critical actions are recorded in `audit_logs`, including:
 - project create/update/delete
 - document workflow events
 
+## Rate Limiting
+
+Login endpoint (`POST /api/login`) is protected by IP-based rate limiting (added 2026-04-16):
+
+- **Window:** 5 attempts per 5 minutes per IP
+- **Lockout:** 15-minute block after limit exceeded
+- **Response:** HTTP 429 with wait time in seconds
+- **Audit:** Every failed login is recorded in `audit_logs` with action `login.failed` and client IP
+
 ## Hardening roadmap
 
 1. Move sessions to Redis/DB-backed storage
 2. ~~Add HTTP security headers and SameSite=Strict cookie~~ ✅ Implemented 2026-04-16
-3. Add CSRF token protections for mutating endpoints (mitigated by SameSite=Strict)
-4. Add password complexity/rotation policies
-5. Centralize session invalidation controls
+3. ~~Add rate limiting on login endpoint~~ ✅ Implemented 2026-04-16
+4. Add CSRF token protections for mutating endpoints (mitigated by SameSite=Strict)
+5. Add password complexity/rotation policies
+6. Centralize session invalidation controls

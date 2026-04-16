@@ -41,6 +41,7 @@ import smtplib
 import shutil
 import threading
 import time
+from collections import defaultdict
 from email.message import EmailMessage
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -154,6 +155,31 @@ SESSION_COOKIE = "pdash_session"
 SESSION_TTL_SECONDS = 60 * 60 * 24
 
 SESSIONS: dict[str, dict] = {}
+
+# ---------------------------------------------------------------------------
+# Rate limiting — login endpoint
+# ---------------------------------------------------------------------------
+_LOGIN_ATTEMPTS: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_MAX = 5               # max tentativas por janela
+_RATE_LIMIT_WINDOW_SECONDS = 300  # janela de 5 minutos
+_RATE_LIMIT_LOCKOUT_SECONDS = 900 # bloqueio de 15 minutos
+
+
+def _check_login_rate_limit(ip: str) -> tuple[bool, int]:
+    """
+    Verifica rate limit de login por IP.
+
+    Retorna (permitido, segundos_restantes_de_bloqueio).
+    """
+    now = time.monotonic()
+    window_start = now - _RATE_LIMIT_WINDOW_SECONDS
+    recent = [t for t in _LOGIN_ATTEMPTS[ip] if t > window_start]
+    _LOGIN_ATTEMPTS[ip] = recent
+    if len(recent) >= _RATE_LIMIT_MAX:
+        wait = int(_RATE_LIMIT_LOCKOUT_SECONDS - (now - recent[0]))
+        return False, max(wait, 0)
+    _LOGIN_ATTEMPTS[ip].append(now)
+    return True, 0
 
 
 # ---------------------------------------------------------------------------
@@ -3968,6 +3994,13 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
 
         if p == "/api/login":
+            client_ip = self.client_address[0]
+            allowed, wait_seconds = _check_login_rate_limit(client_ip)
+            if not allowed:
+                return self._json(429, {
+                    "ok": False,
+                    "error": f"Muitas tentativas de login. Aguarde {wait_seconds} segundos antes de tentar novamente.",
+                })
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             username = (body.get("username") or "").strip()
@@ -3975,6 +4008,7 @@ class Handler(BaseHTTPRequestHandler):
             with db() as conn:
                 row = conn.execute("SELECT username,password_hash,role FROM users WHERE username=?", (username,)).fetchone()
             if not row or not verify_password(password, row["password_hash"]):
+                audit(username or "(unknown)", "login.failed", username or "(unknown)", f"IP: {client_ip}")
                 return self._json(401, {"ok": False, "error": "Invalid credentials"})
             tok = create_auth_session(SESSIONS, SESSION_TTL_SECONDS, row["username"], row["role"])
             cookie = f"{SESSION_COOKIE}={tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_TTL_SECONDS}"
