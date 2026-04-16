@@ -41,6 +41,7 @@ import smtplib
 import shutil
 import threading
 import time
+from collections import defaultdict
 from email.message import EmailMessage
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -53,6 +54,7 @@ from backend.auth.session import (
     current_user_from_cookie as current_user_from_session_cookie,
     hash_password,
     parse_cookie,
+    validate_password_strength,
     verify_password,
 )
 from backend.admin.settings import (
@@ -163,7 +165,78 @@ SKIP_DIRS = {"ProjectDashboard", "__pycache__"}
 SESSION_COOKIE = "pdash_session"
 SESSION_TTL_SECONDS = 60 * 60 * 24
 
+# Upload / request size limits
+MAX_REQUEST_BYTES = 100 * 1024 * 1024       # 100 MB — acomoda base64 de arquivo de 50 MB
+MAX_UPLOAD_DECODED_MB = 50
+MAX_UPLOAD_DECODED_BYTES = MAX_UPLOAD_DECODED_MB * 1024 * 1024  # 50 MB arquivo real
+
 SESSIONS: dict[str, dict] = {}
+
+# ---------------------------------------------------------------------------
+# Rate limiting — login endpoint
+# ---------------------------------------------------------------------------
+_LOGIN_ATTEMPTS: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_MAX = 5               # max tentativas por janela
+_RATE_LIMIT_WINDOW_SECONDS = 300  # janela de 5 minutos
+_RATE_LIMIT_LOCKOUT_SECONDS = 900 # bloqueio de 15 minutos
+
+
+def _check_login_rate_limit(ip: str) -> tuple[bool, int]:
+    """
+    Verifica rate limit de login por IP.
+
+    Retorna (permitido, segundos_restantes_de_bloqueio).
+    """
+    now = time.monotonic()
+    window_start = now - _RATE_LIMIT_WINDOW_SECONDS
+    recent = [t for t in _LOGIN_ATTEMPTS[ip] if t > window_start]
+    _LOGIN_ATTEMPTS[ip] = recent
+    if len(recent) >= _RATE_LIMIT_MAX:
+        wait = int(_RATE_LIMIT_LOCKOUT_SECONDS - (now - recent[0]))
+        return False, max(wait, 0)
+    _LOGIN_ATTEMPTS[ip].append(now)
+    return True, 0
+
+
+# ---------------------------------------------------------------------------
+# MIME type validation — upload endpoint
+# ---------------------------------------------------------------------------
+try:
+    import magic as _magic_lib
+    _MAGIC_AVAILABLE = True
+except ImportError:
+    _MAGIC_AVAILABLE = False
+
+ALLOWED_UPLOAD_MIMES = frozenset({
+    "application/pdf",
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain", "text/csv", "text/markdown",
+    "application/zip", "application/x-zip-compressed",
+    "application/json",
+    "application/octet-stream",  # fallback genérico permitido
+})
+
+
+def _validate_upload_mime(decoded_bytes: bytes, declared_mime: str) -> tuple[bool, str]:
+    """
+    Valida o MIME type real do arquivo pelos seus primeiros bytes.
+
+    Se python-magic não estiver disponível, aceita com base no MIME declarado.
+    Retorna (ok, mime_detectado).
+    """
+    if not _MAGIC_AVAILABLE:
+        mime = declared_mime or "application/octet-stream"
+        return mime in ALLOWED_UPLOAD_MIMES, mime
+    detected = _magic_lib.from_buffer(decoded_bytes[:8192], mime=True)
+    if detected not in ALLOWED_UPLOAD_MIMES:
+        return False, detected
+    return True, detected
 
 
 # ---------------------------------------------------------------------------
@@ -3457,8 +3530,17 @@ def save_document_file(slug: str, filename: str, mime_type: str, b64_content: st
     except Exception:
         return False, "Arquivo inválido (base64)"
 
-    if len(raw) > 12 * 1024 * 1024:
-        return False, "Arquivo excede 12MB"
+    if len(raw) > MAX_UPLOAD_DECODED_BYTES:
+        return False, f"Arquivo excede {MAX_UPLOAD_DECODED_MB}MB"
+
+    mime_ok, detected_mime = _validate_upload_mime(raw, mime_type)
+    if not mime_ok:
+        return False, (
+            f"Tipo de arquivo não permitido: {detected_mime}. "
+            "Formatos aceitos: PDF, imagens (PNG/JPG/GIF/WebP), "
+            f"documentos Office (Word/Excel/PowerPoint), texto e ZIP."
+        )
+    mime_type = detected_mime  # usar MIME detectado em vez do declarado pelo cliente
 
     with db() as conn:
         row = conn.execute("SELECT COALESCE(MAX(version), 0) AS last FROM document_versions WHERE document_slug=?", (slug,)).fetchone()
@@ -3605,6 +3687,21 @@ class Handler(BaseHTTPRequestHandler):
     """
 
     # -----------------------------------------------------------------------
+    # Headers de segurança HTTP
+    # -----------------------------------------------------------------------
+    def _send_security_headers(self):
+        """Anexa headers de segurança HTTP obrigatórios a toda resposta."""
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.send_header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+        )
+
+    # -----------------------------------------------------------------------
     # Resposta JSON padrão
     # -----------------------------------------------------------------------
     def _json(self, code: int, payload: dict, set_cookie: str | None = None):
@@ -3635,6 +3732,7 @@ class Handler(BaseHTTPRequestHandler):
         if set_cookie:
             self.send_header("Set-Cookie", set_cookie)
         self.send_header("Content-Length", str(len(body)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -3671,6 +3769,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(b)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(b)
 
@@ -3691,6 +3790,15 @@ class Handler(BaseHTTPRequestHandler):
         Deve ser usada por rotas POST/PATCH/DELETE que esperam JSON no body.
         """
         l = int(self.headers.get("Content-Length", "0"))
+        if l > MAX_REQUEST_BYTES:
+            # Consumir body parcialmente para não deixar o socket sujo
+            self.rfile.read(min(l, 4096))
+            self.send_response(413)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self._send_security_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": False, "error": "Requisição excede o limite permitido"}).encode())
+            return False, {"error": "Requisição excede o limite permitido"}
         raw = self.rfile.read(l).decode("utf-8") if l else "{}"
         try:
             return True, json.loads(raw)
@@ -4045,6 +4153,7 @@ class Handler(BaseHTTPRequestHandler):
                 "role_active": active,
                 "inactive_message": None if active else "Os privilégios de acesso deste usuário estão inativados temporariamente. Entre em contato com o administrador do sistema.",
                 "build": ops_get_runtime_build_info(APP_DIR),
+                "uploadLimitMb": MAX_UPLOAD_DECODED_MB,
             })
 
         if p == "/api/me/permissions":
@@ -4121,10 +4230,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"ok": False, "error": "Arquivo da versão não encontrado"})
             content = doc_path.read_bytes()
 
+            safe_dl_name = re.sub(r'[^a-zA-Z0-9._\-]', '_', ver.get('document_name') or 'documento.bin')
             self.send_response(200)
             self.send_header("Content-Type", ver.get("document_mime") or "application/octet-stream")
-            self.send_header("Content-Disposition", f"inline; filename=\"{ver.get('document_name') or 'documento.bin'}\"")
+            self.send_header("Content-Disposition", f'attachment; filename="{safe_dl_name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(content)))
+            self._send_security_headers()
             self.end_headers()
             self.wfile.write(content)
             return
@@ -4325,6 +4437,13 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
 
         if p == "/api/login":
+            client_ip = self.client_address[0]
+            allowed, wait_seconds = _check_login_rate_limit(client_ip)
+            if not allowed:
+                return self._json(429, {
+                    "ok": False,
+                    "error": f"Muitas tentativas de login. Aguarde {wait_seconds} segundos antes de tentar novamente.",
+                })
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
             username = (body.get("username") or "").strip()
@@ -4332,6 +4451,7 @@ class Handler(BaseHTTPRequestHandler):
             with db() as conn:
                 row = conn.execute("SELECT username,password_hash,role FROM users WHERE username=?", (username,)).fetchone()
             if not row or not verify_password(password, row["password_hash"]):
+                audit(username or "(unknown)", "login.failed", username or "(unknown)", f"IP: {client_ip}")
                 return self._json(401, {"ok": False, "error": "Invalid credentials"})
             tok = create_auth_session(SESSIONS, SESSION_TTL_SECONDS, row["username"], row["role"])
             cookie_flags = [f"{SESSION_COOKIE}={tok}", "HttpOnly", "SameSite=Lax", "Path=/", f"Max-Age={SESSION_TTL_SECONDS}"]
@@ -4363,7 +4483,12 @@ class Handler(BaseHTTPRequestHandler):
             if not user: return
             ok, body = self._read_json()
             if not ok: return self._json(400, {"ok": False, "error": body["error"]})
-            done, msg = change_own_password(user["username"], body.get("currentPassword") or "", body.get("newPassword") or "")
+            new_pwd = body.get("newPassword") or ""
+            if new_pwd:
+                pwd_ok, pwd_msg = validate_password_strength(new_pwd)
+                if not pwd_ok:
+                    return self._json(400, {"ok": False, "error": pwd_msg})
+            done, msg = change_own_password(user["username"], body.get("currentPassword") or "", new_pwd)
             if done:
                 audit(user["username"], "user.password.change", user["username"])
             return self._json(200 if done else 400, {"ok": done, "error": None if done else msg})
@@ -4635,6 +4760,9 @@ class Handler(BaseHTTPRequestHandler):
             role = requested_role if role_exists(requested_role, active_only=True) else resolve_fallback_role("member")
             if not username or not password:
                 return self._json(400, {"ok": False, "error": "username e password são obrigatórios"})
+            pwd_ok, pwd_msg = validate_password_strength(password)
+            if not pwd_ok:
+                return self._json(400, {"ok": False, "error": pwd_msg})
             try:
                 with db() as conn:
                     conn.execute("INSERT INTO users (username,password_hash,role,created_at) VALUES (?,?,?,?)",
@@ -4714,6 +4842,9 @@ class Handler(BaseHTTPRequestHandler):
             password = body.get("password") or ""
             if not token or not username or not password:
                 return self._json(400, {"ok": False, "error": "incomplete data"})
+            pwd_ok, pwd_msg = validate_password_strength(password)
+            if not pwd_ok:
+                return self._json(400, {"ok": False, "error": pwd_msg})
             with db() as conn:
                 inv = conn.execute("SELECT token, role, used_by, expires_at FROM invites WHERE token=?", (token,)).fetchone()
                 if not inv: return self._json(400, {"ok": False, "error": "invalid invite"})
@@ -4924,8 +5055,9 @@ class Handler(BaseHTTPRequestHandler):
                 params.append(role)
             if "password" in body:
                 pwd = body.get("password") or ""
-                if len(pwd) < 4:
-                    return self._json(400, {"ok": False, "error": "senha muito curta"})
+                pwd_ok, pwd_msg = validate_password_strength(pwd)
+                if not pwd_ok:
+                    return self._json(400, {"ok": False, "error": pwd_msg})
                 updates.append("password_hash=?")
                 params.append(hash_password(pwd))
 

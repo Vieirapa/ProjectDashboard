@@ -32,6 +32,7 @@ horizontal.
 import hashlib
 import hmac
 import os
+import re
 import secrets
 from datetime import UTC, datetime
 from http import cookies
@@ -195,3 +196,31 @@ def current_user_from_cookie(sessions: dict[str, dict], session_cookie: str, raw
         sessions.pop(tok, None)
         return None
     return {'username': s['username'], 'role': s['role'], 'token': tok}
+
+
+def validate_password_strength(password: str) -> tuple[bool, str]:
+    """
+    Valida requisitos mínimos de complexidade de senha.
+
+    Regras:
+    - Pelo menos 8 caracteres
+    - Pelo menos uma letra (a-z ou A-Z)
+    - Pelo menos um número ou símbolo especial
+
+    Return
+    ------
+    tuple[bool, str]
+        (válida, mensagem_de_erro_ou_vazio)
+
+    How it should be used
+    ---------------------
+    Chamar em todos os endpoints que definem ou atualizam senha.
+    NÃO aplicar a senhas existentes — apenas a novas senhas sendo salvas.
+    """
+    if not password or len(password) < 8:
+        return False, "A senha deve ter pelo menos 8 caracteres."
+    if not re.search(r'[A-Za-z]', password):
+        return False, "A senha deve conter pelo menos uma letra."
+    if not re.search(r'[0-9!@#$%^&*()\-_=+\[\]{};:\'",.<>/?\\|`~]', password):
+        return False, "A senha deve conter pelo menos um número ou símbolo especial."
+    return True, ""
