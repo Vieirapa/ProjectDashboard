@@ -7,11 +7,15 @@ WEB_DIR="$ROOT_DIR/web"
 echo "[nav-test] static sidebar consistency checks"
 
 pages=(index.html projects.html profile.html admin-users.html settings.html edit.html)
+helper_pages=(projects.html settings.html edit.html)
 for p in "${pages[@]}"; do
   f="$WEB_DIR/$p"
   grep -q 'id="sidebar-root"' "$f" || { echo "[nav-test] FAIL: $p missing sidebar-root"; exit 1; }
   grep -q 'data-active=' "$f" || { echo "[nav-test] FAIL: $p missing data-active"; exit 1; }
   grep -q '/sidebar.js' "$f" || { echo "[nav-test] FAIL: $p missing sidebar.js include"; exit 1; }
+  if printf '%s\n' "${helper_pages[@]}" | grep -qx "$p"; then
+    grep -q '/ui-helpers.js' "$f" || { echo "[nav-test] FAIL: $p missing ui-helpers.js include"; exit 1; }
+  fi
   grep -q 'Área de trabalho\|ProjectDashbord\|ProjectDashboard\|<aside class="sidebar"' "$f" || true
   echo "[nav-test] OK: $p"
 done

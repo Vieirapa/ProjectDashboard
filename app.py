@@ -4134,7 +4134,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             return self._serve(WEB_DIR / "settings.html", "text/html; charset=utf-8")
-        if p in ["/app.js", "/dashboard.js", "/edit.js", "/projects.js", "/sidebar.js", "/sidebar-project-select.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
+        if p in ["/app.js", "/dashboard.js", "/edit.js", "/projects.js", "/sidebar.js", "/sidebar-project-select.js", "/ui-helpers.js", "/login.js", "/signup.js", "/admin-users.js", "/profile.js", "/settings.js", "/styles.css"]:
             ctype = "application/javascript; charset=utf-8" if p.endswith(".js") else "text/css; charset=utf-8"
             return self._serve(WEB_DIR / p.lstrip("/"), ctype)
 
