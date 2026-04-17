@@ -90,3 +90,7 @@ PY
 echo
 echo "[redeploy] host access URL"
 echo "http://${HOST_ACCESS_IP}:${PORT}/login.html"
+
+echo "restarting ProjectDashboard..."
+sudo systemctl restart projectdashboard
+
