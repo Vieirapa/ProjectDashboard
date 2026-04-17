@@ -54,6 +54,7 @@
         const cleanup = (payload) => {
           if (confirmEl) confirmEl.onclick = null;
           if (cancelEl) cancelEl.onclick = null;
+          if (inputEl) inputEl.onkeydown = null;
           dialog.oncancel = null;
           if (dialog.open) dialog.close();
           resolve(payload);
@@ -61,6 +62,7 @@
 
         if (confirmEl) confirmEl.onclick = () => cleanup({ confirmed: true, value: inputEl ? inputEl.value : '' });
         if (cancelEl) cancelEl.onclick = () => cleanup({ confirmed: false, value: inputEl ? inputEl.value : '' });
+        if (inputEl) inputEl.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); cleanup({ confirmed: true, value: inputEl.value }); } };
         dialog.oncancel = () => cleanup({ confirmed: false, value: inputEl ? inputEl.value : '' });
         dialog.showModal();
         if (needsInput && inputEl) inputEl.focus();
