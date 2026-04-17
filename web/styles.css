@@ -2093,9 +2093,10 @@ dialog form {
 
 .inline-dialog-form {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
   min-width: min(560px, calc(100vw - 48px));
   max-width: 680px;
+  padding: var(--space-6);
 }
 
 #settingsActionDialog {
