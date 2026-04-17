@@ -77,49 +77,66 @@ Source: `docs/15-known-bugs.md`
 #### B1.1 [P1][ux][owner: Dave/Bob] Validar manualmente a melhoria da mensagem de sucesso em `CONFIGURAÇÕES > FLUXO`
 Source: memória recente + código (`web/settings.js`), último commit conhecido `c2a9668`
 
-- [ ] Confirmar comportamento ao salvar sem alterar nada
-- [ ] Confirmar comportamento ao mudar só prazo padrão
-- [ ] Confirmar comportamento ao mudar só status máximo com dependências pendentes
-- [ ] Confirmar comportamento ao mudar ambos
-- [ ] Registrar evidência do comportamento observado
-- [ ] Decidir: aprovado, ajuste pequeno, ou bug novo
+- [X] Confirmar comportamento ao salvar sem alterar nada (panosso)
+  - REGISTRO MSG : Comportamento salvo ✅ (sem alterações nos valores do fluxo)
+- [X] Confirmar comportamento ao mudar só prazo padrão (panosso)
+  - REGISTRO MSG : Comportamento salvo ✅ (prazo padrão: 15 → 10 dias)
+- [X] Confirmar comportamento ao mudar só status máximo com dependências pendentes (panosso)
+  - REGISTRO MSG : Comportamento salvo ✅ (máximo com dependências pendentes: Em andamento → Em revisão)
+- [X] Confirmar comportamento ao mudar ambos (panosso)
+  - REGISTRO MSG : Comportamento salvo ✅ (prazo padrão: 10 → 15 dias; máximo com dependências pendentes: Em revisão → Em andamento) 
+- [X] Registrar evidência do comportamento observado (panosso)
+- [X] Decidir: aprovado, ajuste pequeno, ou bug novo : (panosso)
+  - APROVADO (panosso)
+- [X] Inspeção de código concluída
+  - Evidência: `web/settings.js` linhas ~883-906 montam mensagem dinâmica com diff dos campos alterados e caso explícito de "sem alterações nos valores do fluxo"
 
 #### B1.2 [P1][ux/backend][owner: Kevin/Dave] Confirmar status real de `Documentos Apagados` (filtros + paginação)
 Source: `docs/19-backlog-executavel-sprint-proxima.md`
 
-- [ ] Inspecionar backend atual do módulo de Documentos Apagados
-- [ ] Inspecionar frontend atual do módulo de Documentos Apagados
-- [ ] Verificar se filtros combinados mantêm resultado consistente
-- [ ] Verificar se estado dos filtros é refletido corretamente na UI
-- [ ] Verificar se paginação backend usa `page` e `page_size`
-- [ ] Verificar se controles anterior/próxima existem e funcionam
-- [ ] Verificar se filtros são preservados durante navegação entre páginas
-- [ ] Classificar resultado em uma das opções:
-  - [ ] já entregue, doc desatualizada
+- [X] Inspecionar backend atual do módulo de Documentos Apagados
+  - Evidência: `backend/admin/recovery.py` e `app.py` suportam listagem com `deleted_by`, `page` e `page_size`
+- [X] Inspecionar frontend atual do módulo de Documentos Apagados
+  - Evidência: `web/settings.js` e `web/settings.html` já implementam filtros, estado visível e pager
+- [X] Verificar se filtros combinados mantêm resultado consistente (panosso)
+- [X] Verificar se estado dos filtros é refletido corretamente na UI (panosso)
+- [X] Verificar se paginação backend usa `page` e `page_size`
+- [X] Verificar se controles anterior/próxima existem e funcionam (panosso)
+- [X] Verificar se filtros são preservados durante navegação entre páginas (panosso)
+- [X] Validar apagar e restaurar cards a partir de listas filtradas (panosso)
+- [X] Classificar resultado em uma das opções:
+  - [X] já entregue, doc desatualizada
   - [ ] parcialmente entregue, precisa ajuste
   - [ ] ainda pendente, requer implementação
-- [ ] Registrar backlog residual exato desta frente
+- [X] Registrar backlog residual exato desta frente
+  - Resultado atual: sem backlog residual imediato identificado nesta frente
 
 #### B1.3 [P1][ops][owner: Eve] Formalizar preflight de desenvolvimento do Kevin via Claude CLI
 Source: memória recente + regra operacional
 
-- [ ] Executar `openclaw models status` antes de novas sessões de desenvolvimento com Kevin
-- [ ] Confirmar autenticação válida de `claude-cli` antes de delegar codificação
+- [X] Executar `openclaw models status` antes de novas sessões de desenvolvimento com Kevin
+- [X] Confirmar autenticação válida de `claude-cli` antes de delegar codificação
 - [ ] Registrar falha de autenticação como bloqueador operacional quando ocorrer
-- [ ] Padronizar esta checagem como etapa fixa do ciclo
+- [X] Padronizar esta checagem como etapa fixa do ciclo
+  - Evidência inicial: `openclaw models status` executado em 2026-04-17, `claude-cli` autenticado e válido por mais 6h
 
 ### B2. Próxima camada P1, baixo risco e alta utilidade
 
 #### B2.1 [P1][ops][owner: Kevin] Backup, teste preventivo de permissão
 Source: `docs/19-backlog-executavel-sprint-proxima.md`
 
-- [ ] Mapear endpoint, backend e tela atual de backup
-- [ ] Definir como validar permissão de escrita antes da operação crítica
-- [ ] Definir mensagem de erro com remediação clara para operador
-- [ ] Implementar validação preventiva
-- [ ] Validar comportamento em cenário permitido
+- [X] Mapear endpoint, backend e tela atual de backup
+- [X] Definir como validar permissão de escrita antes da operação crítica
+- [X] Definir mensagem de erro com remediação clara para operador
+- [X] Implementar validação preventiva
+- [X] Validar comportamento em cenário permitido (panosso)
+  - Evidência: teste do caminho OK, política salva, dias e horário salvos, backup manual executado e snapshot listado
 - [ ] Validar comportamento em cenário sem permissão
 - [ ] Registrar evidência e risco residual
+- [ ] Corrigir bug no restore de backup: restauração cancelada indevidamente com snapshot selecionado
+  - Evidência: ao tentar restaurar backup após selecionar snapshot, UI retornou `Restauração cancelada (confirmação não informada).`
+  - Evidência adicional 2026-04-17: build `9936a93` já estava carregada na UI durante reteste e o problema permaneceu
+  - Ação: Kevin deve debugar fluxo completo real do restore, do rádio selecionado até o payload final enviado ao backend, e corrigir
 
 #### B2.2 [P1][ops][owner: Kevin/Bob] Diagnóstico e saúde operacional, classificação de severidade
 Source: `docs/19-backlog-executavel-sprint-proxima.md`

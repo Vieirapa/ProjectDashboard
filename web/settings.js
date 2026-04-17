@@ -420,8 +420,8 @@ async function loadBackupSnapshots(pathOverride) {
   backupRestoreList.innerHTML = wrapTable(`<table>
     <thead><tr><th></th><th>Data/Hora</th><th>DB</th><th>Docs</th></tr></thead>
     <tbody>${backupSnapshots.map((b, idx) => `<tr>
-      <td><input type="radio" name="backup_stamp" value="${b.stamp}" ${idx === 0 ? 'checked' : ''}></td>
-      <td>${b.when || b.stamp}</td>
+      <td><input type="radio" name="backup_stamp" value="${escHtml(b.stamp)}" ${idx === 0 ? 'checked' : ''}></td>
+      <td>${escHtml(b.when || b.stamp)}</td>
       <td>${b.db_backup ? '✅' : '—'}</td>
       <td>${b.docs_backup ? '✅' : '—'}</td>
     </tr>`).join('')}</tbody>
@@ -429,7 +429,8 @@ async function loadBackupSnapshots(pathOverride) {
 }
 
 function getSelectedBackupStamp() {
-  const el = document.querySelector('input[name="backup_stamp"]:checked');
+  const scope = backupRestoreList || document;
+  const el = scope.querySelector('input[name="backup_stamp"]:checked');
   return el ? String(el.value || '').trim() : '';
 }
 
