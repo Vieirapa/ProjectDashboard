@@ -259,6 +259,29 @@ function formatBackupRunMessage(message) {
   return `Backup salvo em <strong>${escHtml(backupPath)}</strong><br><span class="small">${escHtml(concise)}</span>`;
 }
 
+function formatBackupRestoreMessage(message, stamp) {
+  const raw = String(message || '').trim();
+  const safeStamp = escHtml(String(stamp || '').trim());
+  const snapshotMatch = raw.match(/Safety snapshot:\s*(.+)$/i);
+  const safetyPath = snapshotMatch ? snapshotMatch[1].trim() : '';
+  const docsSkipped = /documents-backup provided/i.test(raw) || /docs_restore skipped/i.test(raw);
+  const nonRoot = /Non-root mode/i.test(raw);
+
+  const summaryBits = [];
+  if (nonRoot) summaryBits.push('modo não-root aplicado');
+  if (docsSkipped) summaryBits.push('documentos não restaurados neste snapshot');
+
+  const summary = summaryBits.length
+    ? `Restore concluído para <strong>${safeStamp}</strong> (${escHtml(summaryBits.join(' · '))}).`
+    : `Restore concluído para <strong>${safeStamp}</strong>.`;
+
+  const detailLines = [];
+  if (safetyPath) detailLines.push(`Snapshot de segurança: ${safetyPath}`);
+  if (raw) detailLines.push(`Detalhes técnicos: ${raw}`);
+
+  return `${summary}${detailLines.length ? `<div class="settings-feedback-details"><strong>Detalhes</strong><pre>${escHtml(detailLines.join('\n'))}</pre></div>` : ''}`;
+}
+
 function resolveRelativeBackupPath(inputPath) {
   const raw = String(inputPath || '').trim();
   if (!raw || raw.startsWith('/')) return raw;
@@ -1127,7 +1150,8 @@ restoreBackupBtn.onclick = async () => {
         confirm_text: confirmText,
       }),
     });
-    setInlineFeedback(backupFeedback, d.message || `Restore do backup ${stamp} concluído ✅ Revise a aplicação e confirme o estado esperado.`, 'success');
+    const restoreHtml = formatBackupRestoreMessage(d.message || '', stamp);
+    setInlineFeedback(backupFeedback, restoreHtml, 'success', { allowHtml: true });
   } catch (err) {
     setInlineFeedback(backupFeedback, err.message, 'danger');
   }

@@ -1751,6 +1751,30 @@ dialog form {
   line-height: 1.45;
 }
 
+.settings-inline-feedback > span {
+  min-width: 0;
+}
+
+.settings-feedback-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.settings-feedback-details strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.settings-feedback-details pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .settings-inline-feedback strong {
   white-space: nowrap;
 }
@@ -2070,6 +2094,19 @@ dialog form {
 .inline-dialog-form {
   display: grid;
   gap: var(--space-3);
+  min-width: min(560px, calc(100vw - 48px));
+  max-width: 680px;
+}
+
+#settingsActionDialog {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  padding: 0;
+  box-shadow: var(--shadow-lg);
+}
+
+#settingsActionDialog::backdrop {
+  background: rgba(15, 23, 42, 0.32);
 }
 
 .inline-dialog-head {

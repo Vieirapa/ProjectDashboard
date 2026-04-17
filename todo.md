@@ -133,10 +133,15 @@ Source: `docs/19-backlog-executavel-sprint-proxima.md`
   - Evidência: teste do caminho OK, política salva, dias e horário salvos, backup manual executado e snapshot listado
 - [ ] Validar comportamento em cenário sem permissão
 - [ ] Registrar evidência e risco residual
-- [ ] Corrigir bug no restore de backup: restauração cancelada indevidamente com snapshot selecionado
-  - Evidência: ao tentar restaurar backup após selecionar snapshot, UI retornou `Restauração cancelada (confirmação não informada).`
-  - Evidência adicional 2026-04-17: build `9936a93` já estava carregada na UI durante reteste e o problema permaneceu
-  - Ação: Kevin deve debugar fluxo completo real do restore, do rádio selecionado até o payload final enviado ao backend, e corrigir
+- [X] Corrigir bug no restore de backup: restauração cancelada indevidamente com snapshot selecionado
+  - Evidência original: ao tentar restaurar backup após selecionar snapshot, UI retornou `Restauração cancelada (confirmação não informada).`
+  - Causa raiz confirmada: `ui-helpers.js` não estava sendo servido pelo backend, gerando 404 e impedindo a abertura do diálogo de confirmação.
+  - Correção aplicada: servidor passou a expor `/ui-helpers.js`.
+  - Validação do usuário: restore funcionalmente OK após correção.
+- [ ] Refinar UX do restore de backup
+  - Melhorar largura e conforto visual do modal de confirmação
+  - Resumir mensagem de sucesso do restore para leitura humana
+  - Opcional: manter detalhes técnicos em bloco secundário, expansível ou visualmente separado
 
 #### B2.2 [P1][ops][owner: Kevin/Bob] Diagnóstico e saúde operacional, classificação de severidade
 Source: `docs/19-backlog-executavel-sprint-proxima.md`
